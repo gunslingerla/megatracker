@@ -1,29 +1,28 @@
-const { newestByOrder, tempLink } = require("./_dropbox");
+const { albumData, tempLink } = require("./_dropbox");
 const { requireAuth } = require("./_auth");
 
-// Returns a fresh streaming URL per track number, newest version, from the live Dropbox folder.
-// Frontend maps each item to a track by Track Order.
+// Streaming URLs for one album's songs. Pass ?folder=<album folder link/path>&prefix=<project prefix>.
+// Order + title come from each "PREFIX_NN_Name" project folder; audio is the newest file in its Bounces.
 module.exports = async (req, res) => {
   if (!requireAuth(req, res)) return;
+  const folder = req.query.folder || "";
+  const prefix = req.query.prefix || "";
   try {
-    const { tok, byOrder } = await newestByOrder();
-    const items = [];
-    for (const key of Object.keys(byOrder)) {
-      const f = byOrder[key];
-      const url = await tempLink(f.path_lower, tok);
-      items.push({
-        order: Number(key),
-        name: f.name,
-        ext: f.name.split(".").pop().toLowerCase(),
-        modified: f.server_modified,
-        url,
-      });
+    const { tok, items } = await albumData(folder, prefix);
+    const out = [];
+    for (const it of items) {
+      let url = null, ext = null, modified = null, name = it.folder;
+      if (it.file) {
+        url = await tempLink(it.file.path_lower, tok);
+        name = it.file.name;
+        ext = it.file.name.split(".").pop().toLowerCase();
+        modified = it.file.server_modified;
+      }
+      out.push({ order: it.order, title: it.title, folder: it.folder, name, ext, modified, url });
     }
-    items.sort((a, b) => a.order - b.order);
     res.setHeader("Cache-Control", "no-store");
-    res.status(200).json({ items, configured: true });
+    res.status(200).json({ items: out, configured: true });
   } catch (e) {
-    // If Dropbox isn't configured yet, respond gracefully so the board still works.
     const msg = String(e.message || e);
     const configured = !/not configured|DROPBOX_/.test(msg);
     res.status(configured ? 500 : 200).json({ items: [], configured: false, error: msg });

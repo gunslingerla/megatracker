@@ -28,6 +28,8 @@ const F = {
     tracks: "fldCxxX53zNoRKUvt",
     progress: "fldqndhUQdqjbcQhr",
     trackCount: "fldr9b77emNbU1nV4",
+    dropboxFolder: "fldrgy8vF45MirkKT",
+    trackPrefix: "fldtoIxyNrItdk0gJ",
   },
   track: {
     title: "fldmHI4nP7OIeZQ3q",
@@ -60,6 +62,7 @@ const F = {
     status: "fldZr8ROpMgbAmrry",
     track: "fldNAQ2fPgNBobOQ3",
     author: "fldjtnnsl8PhwxePj",
+    version: "fldciN7WbSCDDT5l1",
   },
   phase: {
     name: "fld1LCOJADedeOh8e",

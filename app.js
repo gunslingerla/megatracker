@@ -12,9 +12,19 @@ const state = {
   view: "tracks",
   filters: { albumId: "", ip: "", memberId: "" },
   openTrackId: null,
-  audio: { map: {}, currentOrder: null, playing: false, configured: false, queue: [] },
+  audio: { byTrack: {}, order: {}, currentId: null, playing: false, configured: false, queue: [] },
 };
 const CANT_PLAY_EXT = ["aif", "aiff"]; // browsers (esp. Chrome) usually can't play AIFF
+// Normalize a title (or filename) for matching Dropbox audio to a track.
+const normTitle = (s) => String(s || "").toLowerCase().replace(/\.[a-z0-9]+$/, "").replace(/^\s*\d+[_\-.\s]+/, "").replace(/_v\d+.*$/i, "").replace(/[^a-z0-9]+/g, "");
+const trackById = (id) => state.data.tracks.find((t) => t.id === id);
+const audioFor = (t) => (t && state.audio.byTrack ? state.audio.byTrack[t.id] : null);
+// A track's order comes from its Dropbox filename number when available; else the Airtable Track Order.
+const effOrder = (t) => (state.audio.order && state.audio.order[t.id] != null ? state.audio.order[t.id] : (t.order ?? 999));
+const dispNum = (t) => (state.audio.order && state.audio.order[t.id] != null) ? state.audio.order[t.id] : (t.order || "");
+// The current bounce filename for a track — feedback is pinned to this so a new bounce starts fresh.
+const currentVersion = (t) => { const it = audioFor(t); return it ? it.name : ""; };
+const openFbCount = (t) => (t.feedback || []).filter((fb) => fb.status === "Open" && (fb.version || "") === (currentVersion(t) || "")).length;
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -55,7 +65,7 @@ async function refresh(keepDrawer = true) {
     syncFilters();
     render();
     if (keepDrawer && state.openTrackId) openDrawer(state.openTrackId);
-    if (state.audio.currentOrder != null) renderMarkers();
+    if (state.audio.currentId != null) renderMarkers();
   }
   if (refreshQueued) { refreshQueued = false; refresh(keepDrawer); }
 }
@@ -156,15 +166,16 @@ function cardHTML(t) {
     notDone.forEach((p) => p.ownerIds.forEach((oid, idx) => { rem.add(oid); nameById[oid] = p.owners[idx] || nameById[oid]; }));
     if (t.stage === "Production" && !t.productionComplete && notDone.length > 0 && rem.size === 1) waitingName = nameById[[...rem][0]] || "";
   }
-  const audio = state.audio.map[t.order];
-  const playingThis = state.audio.currentOrder === t.order && state.audio.playing;
+  const audio = audioFor(t);
+  const playingThis = state.audio.currentId === t.id && state.audio.playing;
   const playBtn = audio
-    ? `<button class="play-btn ${playingThis ? "playing" : ""}" data-play="${t.order}" title="Play latest bounce">${playingThis ? "&#9208;" : "&#9654;"}</button>`
+    ? `<button class="play-btn ${playingThis ? "playing" : ""}" data-play="${t.id}" title="Play latest bounce">${playingThis ? "&#9208;" : "&#9654;"}</button>`
     : "";
+  const num = dispNum(t);
   return `
     <div class="card" draggable="true" data-id="${t.id}">
       <div class="top">
-        <div class="title-wrap">${playBtn}<div class="title">${esc(t.title)}</div></div>
+        <div class="title-wrap">${playBtn}${num !== "" ? `<span class="tnum">${num}</span>` : ""}<div class="title">${esc(t.title)}</div></div>
         ${t.inspiredBy ? `<div class="ip">${esc(t.inspiredBy)}</div>` : ""}
       </div>
       ${t.reference ? `<div class="ref">${esc(t.reference)}</div>` : ""}
@@ -173,7 +184,7 @@ function cardHTML(t) {
         <span class="prog-num">${t.phasesDone}/${t.phasesTotal} phases</span>
         <button class="lyr-btn" data-lyr="${t.id}" title="Edit lyrics">&#9998; Lyrics</button>
         ${waitingName ? `<span class="waiting" title="Only ${esc(waitingName)}'s part is left">&#9203; Waiting on ${esc(waitingName)}</span>` : (gated ? `<span class="lock" title="All phases must be Done to reach Mixing">&#128274; gated</span>` : "")}
-        ${t.openFeedback ? `<span class="fb-badge" title="${t.openFeedback} open feedback">&#128172; ${t.openFeedback}</span>` : ""}
+        ${openFbCount(t) ? `<span class="fb-badge" title="${openFbCount(t)} open feedback on current version">&#128172; ${openFbCount(t)}</span>` : ""}
         <div class="avatars">${avatars}</div>
       </div>
     </div>`;
@@ -185,7 +196,7 @@ function boardHTML(tracks) {
   const shown = stages.filter((s) => active.some((t) => t.stage === s));
   if (!shown.length) return `<div class="loading">No tracks here yet.</div>`;
   const cols = shown.map((s) => {
-    const inCol = active.filter((t) => t.stage === s);
+    const inCol = active.filter((t) => t.stage === s).sort((a, b) => effOrder(a) - effOrder(b));
     const locked = stages.indexOf(s) > PROD_IDX;
     return `
       <div class="col${locked ? " locked-target" : ""}" data-stage="${esc(s)}">
@@ -198,7 +209,7 @@ function boardHTML(tracks) {
 
 // Dedicated On Hold tab — held tracks live only here, hidden from every other view.
 function holdHTML() {
-  const held = state.data.tracks.filter((t) => t.onHold).sort((a, b) => a.order - b.order);
+  const held = state.data.tracks.filter((t) => t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
   if (!held.length) return `<div class="loading">Nothing on hold. Put a track on hold from its detail panel.</div>`;
   return `<div class="preview"><div class="palbum">
     <div class="phead"><div class="cover">&#9208;</div><div><h1>On Hold</h1><div class="sub">${held.length} track(s) parked — open one and untick “On hold” to bring it back</div></div></div>
@@ -240,7 +251,7 @@ function membersHTML() {
     t.phases.filter((p) => p.status !== "Done").forEach((p) => {
       p.ownerIds.forEach((oid) => {
         const rec = byMember[oid]; if (!rec) return;
-        (rec.songs[t.id] = rec.songs[t.id] || { title: t.title, items: [] }).items.push({ phaseId: p.id, phase: p.phase, status: p.status });
+        (rec.songs[t.id] = rec.songs[t.id] || { title: t.title, order: effOrder(t), num: dispNum(t), items: [] }).items.push({ phaseId: p.id, phase: p.phase, status: p.status });
         rec.count++;
       });
     });
@@ -250,9 +261,9 @@ function membersHTML() {
     return b.count - a.count;
   });
   const cards = entries.map(({ member, songs, count }) => {
-    const songCards = Object.values(songs).map((s) => `
+    const songCards = Object.values(songs).sort((a, b) => a.order - b.order).map((s) => `
       <div class="song-card">
-        <div class="song-title">${esc(s.title)}</div>
+        <div class="song-title">${s.num !== "" ? `<span class="tnum">${s.num}</span> ` : ""}${esc(s.title)}</div>
         ${s.items.map((it) => `<label class="song-task" data-phase="${it.phaseId}"><input type="checkbox" /> <span class="stp">${esc(it.phase)}</span>${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}</label>`).join("")}
       </div>`).join("") || `<div class="empty">All caught up &#10003;</div>`;
     const meCls = me && member.id === me.id ? " me" : "";
@@ -312,7 +323,7 @@ function wireBoard() {
     c.addEventListener("click", () => openAlbumDrawer(c.dataset.album)));
 
   document.querySelectorAll(".play-btn[data-play]").forEach((b) =>
-    b.addEventListener("click", (e) => { e.stopPropagation(); playOrder(Number(b.dataset.play)); }));
+    b.addEventListener("click", (e) => { e.stopPropagation(); playTrack(b.dataset.play); }));
 
   document.querySelectorAll(".lyr-btn[data-lyr]").forEach((b) =>
     b.addEventListener("click", (e) => { e.stopPropagation(); openLyricsEditor(b.dataset.lyr); }));
@@ -437,7 +448,7 @@ function openDrawer(id) {
         <div class="field"><label>Project file</label><input id="dProj" type="text" value="${esc(t.projectFile)}" placeholder="https://…" /></div>
       </div>
       ${links.length ? `<div class="field"><label>Open</label><div class="chip-links">${links.join("")}</div></div>` : ""}
-      ${state.audio.map[t.order] ? `<div class="field"><label>Latest bounce</label><button class="add-btn" id="dPlay">&#9654; Play &middot; ${esc(state.audio.map[t.order].name)}</button></div>` : ""}
+      ${audioFor(t) ? `<div class="field"><label>Latest bounce</label><button class="add-btn" id="dPlay">&#9654; Play &middot; ${esc(audioFor(t).name)}</button></div>` : ""}
       <div class="field"><label>Track owner / next up</label>${memberChecks(members, t.ownerIds)}</div>
       <div class="field">
         <label>Production phases</label>
@@ -501,10 +512,10 @@ function openDrawer(id) {
   });
 
   const dPlay = $("#dPlay");
-  if (dPlay) dPlay.onclick = () => playOrder(t.order);
+  if (dPlay) dPlay.onclick = () => playTrack(t.id);
   $("#dLyricsEdit").onclick = () => openLyricsEditor(id);
   $("#dTele").onclick = () => openTeleprompter(id);
-  $("#dVerLoad").onclick = () => loadVersions(t.order);
+  $("#dVerLoad").onclick = () => loadVersions(t);
   renderFeedback(t);
 
   $("#dDelete").addEventListener("click", async () => {
@@ -531,6 +542,9 @@ function openAlbumDrawer(id) {
         <div class="field"><label>Release date</label><input id="aRelease" type="date" value="${a.releaseDate || ""}" /></div>
       </div>
       <div class="field"><label>Playlist link</label><input id="aPlaylist" type="text" value="${esc(a.playlist)}" placeholder="https://…" /></div>
+      <div class="field"><label>Dropbox album folder</label><input id="aFolder" type="text" value="${esc(a.dropboxFolder)}" placeholder="https://www.dropbox.com/scl/fo/…" /></div>
+      <div class="field"><label>Project folder prefix</label><input id="aPrefix" type="text" value="${esc(a.trackPrefix)}" placeholder="e.g. The Belmonts" /><div class="gate-note ok" style="color:var(--muted)">Reads folders named PREFIX_##_Song, pulling audio from each song's “Bounces”.</div></div>
+      <div class="field"><button class="add-btn ghost" id="aMakeFolders">&#128193; Create missing song folders</button></div>
       <div class="field"><label>Concept / Notes</label><textarea id="aNotes" style="min-height:200px">${esc(a.notes)}</textarea></div>
       <div class="drawer-actions"><button class="danger-btn" id="aDelete">Delete album</button></div>
     </div>`);
@@ -546,6 +560,18 @@ function openAlbumDrawer(id) {
   save("#aRelease", "releaseDate", (v) => v || null);
   save("#aPlaylist", "playlist", (v) => v.trim(), true);
   save("#aNotes", "notes");
+  const saveFolder = (sel, key) => $(sel).addEventListener("change", async (e) => {
+    const r = await update("album", id, { [key]: e.target.value.trim() });
+    if (r.ok) { toast("Saved"); await refresh(false); await fetchPlaylist(); render(); }
+  });
+  saveFolder("#aFolder", "dropboxFolder");
+  saveFolder("#aPrefix", "trackPrefix");
+  $("#aMakeFolders").onclick = async () => {
+    if (!confirm("Create a Dropbox project folder (with a Bounces subfolder) for every track that doesn't already have one?")) return;
+    toast("Creating folders…");
+    const r = await post("/api/makefolders", { albumId: id });
+    if (r.ok) { toast(`Created ${r.created ? r.created.length : 0} folder(s)`); await refresh(false); await fetchPlaylist(); render(); }
+  };
   $("#aDelete").addEventListener("click", async () => {
     if (!confirm(`Delete album "${a.title}"? (Only works if it has no tracks.)`)) return;
     const r = await deleteEntity("album", id);
@@ -631,35 +657,47 @@ function closeDrawer() {
 
 /* ---- Audio playlist --------------------------------------------------------*/
 async function fetchPlaylist() {
-  try {
-    const r = await fetch("/api/playlist", { headers: { "Cache-Control": "no-store" } });
-    if (!r.ok) return;
-    const j = await r.json();
-    state.audio.configured = !!j.configured;
-    state.audio.map = {};
-    (j.items || []).forEach((it) => (state.audio.map[it.order] = it));
-  } catch {}
+  const byTrack = {}, order = {};
+  let configured = state.audio.configured;
+  const albums = (state.data && state.data.albums) ? state.data.albums.filter((a) => a.dropboxFolder) : [];
+  for (const alb of albums) {
+    try {
+      const u = "/api/playlist?folder=" + encodeURIComponent(alb.dropboxFolder) + "&prefix=" + encodeURIComponent(alb.trackPrefix || "");
+      const r = await fetch(u, { headers: { "Cache-Control": "no-store" } });
+      if (!r.ok) continue;
+      const j = await r.json();
+      configured = !!j.configured || configured;
+      const idx = {};
+      (j.items || []).forEach((it) => { idx[normTitle(it.title)] = it; });
+      state.data.tracks.filter((t) => t.albumId === alb.id).forEach((t) => {
+        const it = idx[normTitle(t.title)];
+        if (it) { order[t.id] = it.order; if (it.url) byTrack[t.id] = it; } // order from Dropbox even if no bounce yet
+      });
+    } catch {}
+  }
+  state.audio.byTrack = byTrack;
+  state.audio.order = order;
+  state.audio.configured = configured;
 }
 
 const audioEl = () => document.getElementById("audio");
-function trackByOrder(order) { return state.data.tracks.find((t) => t.order === order); }
 function playQueue() {
   const alb = currentAlbum();
   return state.data.tracks
-    .filter((t) => (!alb || t.albumId === alb.id) && state.audio.map[t.order])
-    .sort((a, b) => a.order - b.order)
-    .map((t) => t.order);
+    .filter((t) => (!alb || t.albumId === alb.id) && !t.onHold && audioFor(t))
+    .sort((a, b) => effOrder(a) - effOrder(b))
+    .map((t) => t.id);
 }
 const fmt = (s) => (isNaN(s) ? "0:00" : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`);
 
 let triedRelink = false;
-function playOrder(order) {
-  const item = state.audio.map[order];
+function playTrack(id) {
+  const item = audioFor(trackById(id));
   if (!item) return;
   const a = audioEl();
-  if (state.audio.currentOrder === order) { a.paused ? a.play().catch(() => {}) : a.pause(); return; }
-  state.audio.currentOrder = order;
-  if (!state.audio.queue || !state.audio.queue.includes(order)) state.audio.queue = playQueue();
+  if (state.audio.currentId === id) { a.paused ? a.play().catch(() => {}) : a.pause(); return; }
+  state.audio.currentId = id;
+  if (!state.audio.queue || !state.audio.queue.includes(id)) state.audio.queue = playQueue();
   triedRelink = false;
   a.src = item.url;
   a.play().catch(() => {});
@@ -667,20 +705,20 @@ function playOrder(order) {
 }
 function playNext(dir = 1) {
   const q = (state.audio.queue && state.audio.queue.length) ? state.audio.queue : playQueue();
-  const i = q.indexOf(state.audio.currentOrder);
+  const i = q.indexOf(state.audio.currentId);
   const ni = i < 0 ? 0 : i + dir;
-  if (ni >= 0 && ni < q.length) playOrder(q[ni]);
+  if (ni >= 0 && ni < q.length) playTrack(q[ni]);
 }
 function playAlbum(albumId) {
-  const q = state.data.tracks.filter((t) => t.albumId === albumId && state.audio.map[t.order]).sort((a, b) => a.order - b.order).map((t) => t.order);
+  const q = state.data.tracks.filter((t) => t.albumId === albumId && audioFor(t)).sort((a, b) => effOrder(a) - effOrder(b)).map((t) => t.id);
   if (!q.length) { toast("No audio in this album yet", true); return; }
   state.audio.queue = q;
-  playOrder(q[0]);
+  playTrack(q[0]);
 }
 
 function updatePlayButtons() {
   document.querySelectorAll(".play-btn[data-play]").forEach((b) => {
-    const on = Number(b.dataset.play) === state.audio.currentOrder && state.audio.playing;
+    const on = b.dataset.play === state.audio.currentId && state.audio.playing;
     b.classList.toggle("playing", on);
     b.innerHTML = on ? "&#9208;" : "&#9654;";
   });
@@ -688,9 +726,9 @@ function updatePlayButtons() {
 
 function renderPlayer() {
   const el = document.getElementById("player");
-  const order = state.audio.currentOrder;
-  const item = state.audio.map[order];
-  const t = trackByOrder(order);
+  const id = state.audio.currentId;
+  const t = trackById(id);
+  const item = audioFor(t);
   if (!item || !t) { el.className = "player hidden"; return; }
   const a = audioEl();
   const warn = CANT_PLAY_EXT.includes(item.ext)
@@ -711,13 +749,39 @@ function renderPlayer() {
     </div>
     <div class="ptime" id="pTime">0:00 / 0:00</div>
     ${warn}
-    <button class="pclose" id="pClose" title="Close">&times;</button>`;
+    <button class="pbtn mini" id="pFbBtn" title="Add feedback at current time">&#128172;</button>
+    <button class="pclose" id="pClose" title="Close">&times;</button>
+    <div class="pfb hidden" id="pFbForm">
+      <span class="ptime">@ <span id="pFbTime">0:00</span></span>
+      <input type="text" id="pFbText" placeholder="Add a note at this moment…" />
+      <button class="fb-mini" id="pFbSend">Add note</button>
+    </div>`;
   document.getElementById("pToggle").onclick = () => (a.paused ? a.play().catch(() => {}) : a.pause());
   document.getElementById("pPrev").onclick = () => playNext(-1);
   document.getElementById("pNext").onclick = () => playNext(1);
-  document.getElementById("pClose").onclick = () => { a.pause(); state.audio.currentOrder = null; el.className = "player hidden"; updatePlayButtons(); };
+  document.getElementById("pClose").onclick = () => { a.pause(); state.audio.currentId = null; el.className = "player hidden"; updatePlayButtons(); };
   const seek = document.getElementById("pSeek");
   seek.oninput = () => { if (a.duration) a.currentTime = (seek.value / 1000) * a.duration; };
+
+  // Quick timestamped feedback from the play bar.
+  let fbStamp = 0;
+  document.getElementById("pFbBtn").onclick = () => {
+    const form = document.getElementById("pFbForm");
+    if (!form.classList.contains("hidden")) { form.classList.add("hidden"); return; }
+    fbStamp = Math.floor(a.currentTime || 0);
+    document.getElementById("pFbTime").textContent = fmt(fbStamp);
+    form.classList.remove("hidden");
+    document.getElementById("pFbText").focus();
+  };
+  const sendFb = async () => {
+    const text = document.getElementById("pFbText").value.trim();
+    if (!text) { toast("Write a note first", true); return; }
+    const me = await ensureMe();
+    const r = await createEntity("feedback", { trackId: state.audio.currentId, timestamp: fbStamp, comment: text, authorId: me ? me.id : undefined, version: currentVersion(trackById(state.audio.currentId)) });
+    if (r.ok) { toast("Feedback added"); document.getElementById("pFbText").value = ""; document.getElementById("pFbForm").classList.add("hidden"); await refresh(); renderMarkers(); }
+  };
+  document.getElementById("pFbSend").onclick = sendFb;
+  document.getElementById("pFbText").addEventListener("keydown", (e) => { if (e.key === "Enter") sendFb(); });
   renderMarkers();
 }
 
@@ -726,9 +790,10 @@ function renderMarkers() {
   const wrap = document.getElementById("pMarkers");
   if (!wrap) return;
   const a = audioEl();
-  const t = trackByOrder(state.audio.currentOrder);
+  const t = trackById(state.audio.currentId);
   if (!t || !a.duration || !isFinite(a.duration)) { wrap.innerHTML = ""; return; }
-  wrap.innerHTML = (t.feedback || []).map((fb) => {
+  const cur = currentVersion(t);
+  wrap.innerHTML = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "")).map((fb) => {
     const pct = Math.min(100, Math.max(0, (fb.timestamp / a.duration) * 100));
     return `<div class="marker ${fb.status === "Resolved" ? "resolved" : "open"}" style="left:${pct}%" data-mk="${fb.timestamp}" title="${esc(mmss(fb.timestamp))} — ${esc(fb.author || "")}: ${esc((fb.comment || "").slice(0, 80))}"></div>`;
   }).join("");
@@ -749,12 +814,12 @@ function wireAudio() {
     if (time) time.textContent = `${fmt(a.currentTime)} / ${fmt(a.duration)}`;
   });
   a.addEventListener("error", async () => {
-    const item = state.audio.map[state.audio.currentOrder];
+    const item = audioFor(trackById(state.audio.currentId));
     if (item && CANT_PLAY_EXT.includes(item.ext)) { toast(`${item.ext.toUpperCase()} can't play in this browser`, true); return; }
     if (!triedRelink) { // temp links expire (~4h) — refresh once and retry
       triedRelink = true;
       await fetchPlaylist();
-      const fresh = state.audio.map[state.audio.currentOrder];
+      const fresh = audioFor(trackById(state.audio.currentId));
       if (fresh) { a.src = fresh.url; a.play().catch(() => {}); }
     } else {
       toast("Couldn't play this file", true);
@@ -793,24 +858,24 @@ function closeModal() { $("#mscrim").classList.remove("open"); $("#modal").class
 
 /* ---- Preview album ---------------------------------------------------------*/
 function trackRowHTML(t) {
-  const audio = state.audio.map[t.order];
-  const playing = state.audio.currentOrder === t.order && state.audio.playing;
+  const audio = audioFor(t);
+  const playing = state.audio.currentId === t.id && state.audio.playing;
   const btn = audio
-    ? `<button class="play-btn ${playing ? "playing" : ""}" data-play="${t.order}">${playing ? "&#9208;" : "&#9654;"}</button>`
+    ? `<button class="play-btn ${playing ? "playing" : ""}" data-play="${t.id}">${playing ? "&#9208;" : "&#9654;"}</button>`
     : `<span class="play-btn" style="visibility:hidden">&#9654;</span>`;
   return `
     <div class="trow ${playing ? "playing" : ""}" data-tid="${t.id}">
-      <div class="num">${t.order || ""}</div>${btn}
+      <div class="num">${dispNum(t)}</div>${btn}
       <div class="tp"><div class="tt">${esc(t.title)}</div><div class="ts">${esc(t.inspiredBy || "")}${t.reference ? " &middot; " + esc(t.reference) : ""}</div></div>
-      ${t.openFeedback ? `<span class="fb-badge">&#128172; ${t.openFeedback}</span>` : ""}
+      ${openFbCount(t) ? `<span class="fb-badge">&#128172; ${openFbCount(t)}</span>` : ""}
       <span class="badge">${esc(t.stage)}</span>
       ${audio ? "" : `<span class="noaudio">no audio</span>`}
     </div>`;
 }
 function albumPreviewSection(alb) {
-  const tracks = state.data.tracks.filter((t) => t.albumId === alb.id && !t.onHold).sort((a, b) => a.order - b.order);
+  const tracks = state.data.tracks.filter((t) => t.albumId === alb.id && !t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
   const cover = alb.cover[0] ? `style="background-image:url('${alb.cover[0].thumb}')"` : "";
-  const anyAudio = tracks.some((t) => state.audio.map[t.order]);
+  const anyAudio = tracks.some((t) => audioFor(t));
   return `
     <div class="palbum">
       <div class="phead">
@@ -826,7 +891,7 @@ function albumPreviewSection(alb) {
 }
 function previewHTML() {
   const albums = state.data.albums;
-  const unassigned = state.data.tracks.filter((t) => !t.albumId && !t.onHold).sort((a, b) => a.order - b.order);
+  const unassigned = state.data.tracks.filter((t) => !t.albumId && !t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
   if (!albums.length && !unassigned.length) return `<div class="loading">No albums yet — use “+ Album”.</div>`;
   let html = albums.map(albumPreviewSection).join("");
   if (unassigned.length) html += `<div class="palbum"><div class="phead"><div class="cover">&#9834;</div><div><h1>Unassigned</h1><div class="sub">${unassigned.length} track(s) not on an album</div></div></div>${unassigned.map(trackRowHTML).join("")}</div>`;
@@ -914,14 +979,13 @@ function openLyricsEditor(id) {
   }
   function draw() {
     openModal(`
-      <div class="mhd"><h2>Lyrics &middot; ${esc(t.title)}</h2><button class="icon-btn close" id="mClose">&times;</button></div>
+      <div class="mhd"><h2>Lyrics &middot; ${esc(t.title)}</h2><span style="flex:1"></span><button class="add-btn ghost" id="teleBtn">&#128253; Teleprompter</button><button class="icon-btn close" id="mClose">&times;</button></div>
       <div class="mbd">
         ${secs.map((s, i) => sectionHTML(s, i, secs)).join("") || `<p style="color:var(--muted-2)">No sections yet — add one below.</p>`}
         <div class="addsec">
           <select id="newLabel">${LYRIC_LABELS.map((l) => `<option>${l}</option>`).join("")}</select>
           <button class="add-btn ghost" id="addSec">+ Add section</button>
           <button class="add-btn ghost" id="importBtn">&#128203; Paste / import</button>
-          <button class="add-btn ghost" id="teleBtn">&#128253; Teleprompter</button>
           <span class="spacer" style="flex:1"></span>
           <button class="add-btn" id="saveSecs">Save lyrics</button>
         </div>
@@ -1043,17 +1107,15 @@ function parseTime(str) {
   if (p.length === 2 && !isNaN(p[0]) && !isNaN(p[1])) return p[0] * 60 + p[1];
   const n = Number(str); return isNaN(n) ? 0 : Math.floor(n);
 }
-function seekTo(order, seconds) {
-  if (!state.audio.map[order]) { toast("No audio for this track", true); return; }
-  if (state.audio.currentOrder !== order) playOrder(order);
+function seekTo(id, seconds) {
+  if (!audioFor(trackById(id))) { toast("No audio for this track", true); return; }
+  if (state.audio.currentId !== id) playTrack(id);
   const a = audioEl();
   const go = () => { a.currentTime = seconds; a.play().catch(() => {}); };
   if (a.readyState > 0) go(); else a.addEventListener("loadedmetadata", go, { once: true });
 }
-function renderFeedback(t) {
-  const el = $("#dFeedback"); if (!el) return;
-  const list = t.feedback || [];
-  const rows = list.map((fb) => `
+function fbItemHTML(fb) {
+  return `
     <div class="fb-item ${fb.status === "Resolved" ? "resolved" : ""}" data-fb="${fb.id}">
       <div class="fb-top">
         <span class="fb-time" data-seek="${fb.timestamp}">${mmss(fb.timestamp)}</span>
@@ -1064,10 +1126,24 @@ function renderFeedback(t) {
         </div>
       </div>
       <div class="fb-comment">${esc(fb.comment)}</div>
-    </div>`).join("") || `<div class="empty">No feedback yet.</div>`;
-  const curT = state.audio.currentOrder === t.order ? Math.floor(audioEl().currentTime || 0) : 0;
+    </div>`;
+}
+function renderFeedback(t) {
+  const el = $("#dFeedback"); if (!el) return;
+  const all = t.feedback || [];
+  const cur = currentVersion(t);
+  const curList = all.filter((fb) => (fb.version || "") === (cur || ""));
+  const older = all.filter((fb) => (fb.version || "") !== (cur || ""));
+  const olderByVer = {};
+  older.forEach((fb) => { const k = fb.version || "(no version)"; (olderByVer[k] = olderByVer[k] || []).push(fb); });
+  const curRows = curList.length ? curList.map(fbItemHTML).join("") : `<div class="empty">No feedback on the current version yet.</div>`;
+  const olderHTML = Object.keys(olderByVer).length
+    ? `<details class="fb-older"><summary>Earlier versions (${older.length})</summary>${Object.entries(olderByVer).map(([v, list]) => `<div class="fb-vergroup"><div class="fb-verhd">${esc(v)}</div>${list.map(fbItemHTML).join("")}</div>`).join("")}</details>`
+    : "";
+  const curT = state.audio.currentId === t.id ? Math.floor(audioEl().currentTime || 0) : 0;
   el.innerHTML = `
-    <div class="fb-list">${rows}</div>
+    ${cur ? `<div class="fb-vercur" title="Feedback is pinned to this bounce">Current version: ${esc(cur)}</div>` : ""}
+    <div class="fb-list">${curRows}</div>
     <div class="fb-add" style="margin-top:8px">
       <div class="fb-atwrap"><span style="color:var(--muted);font-size:12px">At</span>
         <input type="text" id="fbTime" value="${mmss(curT)}" />
@@ -1075,8 +1151,9 @@ function renderFeedback(t) {
       </div>
       <textarea id="fbComment" placeholder="Add a note at this time…"></textarea>
       <button class="add-btn" id="fbAdd">Add feedback</button>
-    </div>`;
-  el.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.order, Number(s.dataset.seek)));
+    </div>
+    ${olderHTML}`;
+  el.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Number(s.dataset.seek)));
   el.querySelectorAll(".fb-item").forEach((item) => {
     const id = item.dataset.fb;
     item.querySelector("[data-fbtoggle]").onclick = async () => {
@@ -1091,24 +1168,27 @@ function renderFeedback(t) {
     };
   });
   $("#fbNow").onclick = () => {
-    if (state.audio.currentOrder === t.order) $("#fbTime").value = mmss(Math.floor(audioEl().currentTime || 0));
+    if (state.audio.currentId === t.id) $("#fbTime").value = mmss(Math.floor(audioEl().currentTime || 0));
     else toast("Play this track first", true);
   };
   $("#fbAdd").onclick = async () => {
     const comment = $("#fbComment").value.trim();
     if (!comment) { toast("Write a note first", true); return; }
     const me = await ensureMe();
-    const r = await createEntity("feedback", { trackId: t.id, timestamp: parseTime($("#fbTime").value), comment, authorId: me ? me.id : undefined });
+    const r = await createEntity("feedback", { trackId: t.id, timestamp: parseTime($("#fbTime").value), comment, authorId: me ? me.id : undefined, version: cur });
     if (r.ok) { toast("Feedback added"); refresh(); }
   };
 }
 
 /* ---- Versions --------------------------------------------------------------*/
-async function loadVersions(order) {
+async function loadVersions(t) {
   const el = $("#dVersions"); if (!el) return;
+  const alb = state.data.albums.find((a) => a.id === t.albumId);
+  if (!alb || !alb.dropboxFolder) { el.innerHTML = `<div class="empty">Set this album's Dropbox folder to see versions.</div>`; return; }
   el.innerHTML = `<div class="empty">Loading…</div>`;
   try {
-    const r = await fetch("/api/versions?order=" + order);
+    const u = "/api/versions?folder=" + encodeURIComponent(alb.dropboxFolder) + "&prefix=" + encodeURIComponent(alb.trackPrefix || "") + "&order=" + effOrder(t);
+    const r = await fetch(u);
     const j = await r.json();
     if (!j.items || !j.items.length) { el.innerHTML = `<div class="empty">No audio files found for this track.</div>`; return; }
     el.innerHTML = `<div class="ver-list">${j.items.map((v) => `
@@ -1119,7 +1199,7 @@ async function loadVersions(order) {
         <button class="fb-mini" data-vurl="${esc(v.url)}" title="Play this version">&#9654;</button>
       </div>`).join("")}</div>`;
     el.querySelectorAll("[data-vurl]").forEach((b) => b.onclick = () => {
-      const a = audioEl(); state.audio.currentOrder = null; a.src = b.dataset.vurl; a.play().catch(() => {});
+      const a = audioEl(); state.audio.currentId = null; a.src = b.dataset.vurl; a.play().catch(() => {});
       toast("Playing selected version");
     });
   } catch { el.innerHTML = `<div class="empty">Couldn't load versions.</div>`; }
@@ -1144,7 +1224,7 @@ function wireChrome() {
   $("#newTrack").addEventListener("click", openCreateTrack);
   $("#newAlbum").addEventListener("click", openCreateAlbum);
   $("#whoami").addEventListener("click", pickIdentity);
-  $("#refresh").addEventListener("click", () => refresh(false));
+  $("#refresh").addEventListener("click", async () => { await refresh(false); await fetchPlaylist(); render(); });
   $("#logout").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); location.href = "/login.html"; });
   $("#scrim").addEventListener("click", closeDrawer);
   $("#mscrim").addEventListener("click", closeModal);

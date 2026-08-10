@@ -61,6 +61,7 @@ module.exports = async (req, res) => {
         [F.feedback.status]: "Open",
       };
       if (fields.authorId) ff[F.feedback.author] = [fields.authorId];
+      if (fields.version) ff[F.feedback.version] = fields.version;
       const rec = await create(T.feedback, [{ fields: ff }]);
       return res.status(200).json({ ok: true, id: rec[0].id });
     }

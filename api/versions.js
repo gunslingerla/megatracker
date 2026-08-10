@@ -1,30 +1,26 @@
-const { allFiles, tempLink, parseOrder } = require("./_dropbox");
+const { projectVersions, tempLink } = require("./_dropbox");
 const { requireAuth } = require("./_auth");
 
-// Returns every version of a track's audio (current + PREVIOUS VERSIONS), newest first,
-// with streaming links — so the band can see and play the version history.
+// Every bounce for one song's project folder, newest first.
+// Pass ?folder=<album folder>&prefix=<prefix>&order=<track number>.
 module.exports = async (req, res) => {
   if (!requireAuth(req, res)) return;
+  const folder = req.query.folder || "";
+  const prefix = req.query.prefix || "";
   const order = Number(req.query.order);
   if (!order) return res.status(400).json({ error: "order required" });
   try {
-    const { tok, files } = await allFiles();
-    const mine = files
-      .filter((f) => parseOrder(f.name) === order)
-      .sort((a, b) => (a.server_modified < b.server_modified ? 1 : -1));
-    // The current version is the top-level file (not inside PREVIOUS VERSIONS).
-    const currentIdx = mine.findIndex((f) => !/previous versions/i.test(f.path_lower || ""));
+    const { tok, files } = await projectVersions(folder, prefix, order);
     const items = [];
-    for (let i = 0; i < mine.length; i++) {
-      const f = mine[i];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
       const vm = f.name.match(/_v(\d+)/i) || f.name.match(/\bv(\d+)\b/i);
       items.push({
         name: f.name,
         version: vm ? "v" + vm[1] : "",
         ext: f.name.split(".").pop().toLowerCase(),
         modified: f.server_modified,
-        current: i === (currentIdx === -1 ? 0 : currentIdx),
-        previous: /previous versions/i.test(f.path_lower || ""),
+        current: i === 0,
         url: await tempLink(f.path_lower, tok),
       });
     }

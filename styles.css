@@ -323,6 +323,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .play-btn.playing { background: var(--accent); color: var(--accent-text); }
 .card .title-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .card .title-wrap .title { overflow: hidden; text-overflow: ellipsis; }
+.tnum { flex: none; font-size: 11px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 16px; text-align: right; }
+.song-title .tnum { color: var(--accent-2); }
 
 .player {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 55;
@@ -350,6 +352,9 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .player .marker:hover { transform: translate(-50%, -50%) scale(1.25); }
 .player .ptime { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
 .player .pwarn { color: var(--warn); font-size: 11px; max-width: 200px; }
+.player .pfb { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.player .pfb.hidden { display: none; }
+.player .pfb input { flex: 1; }
 .player .pclose { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 18px; }
 .player .pclose:hover { color: var(--text); }
 .drawer-play { display: inline-flex; align-items: center; gap: 8px; }
@@ -387,6 +392,11 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .fb-comment { font-size: 13px; line-height: 1.4; white-space: pre-wrap; }
 .fb-add { display: flex; flex-direction: column; gap: 8px; border: 1px dashed var(--stroke-strong); border-radius: 10px; padding: 10px; }
 .fb-add .fb-atwrap { display: flex; align-items: center; gap: 8px; }
+.fb-vercur { font-size: 11px; color: var(--muted); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-older { margin-top: 12px; }
+.fb-older summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.fb-vergroup { margin-top: 8px; }
+.fb-verhd { font-size: 11px; color: var(--muted-2); margin: 6px 0 4px; }
 .fb-add input[type="text"] { width: 84px; }
 
 /* ---- Versions --------------------------------------------------------------*/

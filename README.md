@@ -47,15 +47,19 @@ fallback, so you don't even need `DROPBOX_SHARED_LINK` unless the folder moves. 
 
 ## Playlist (Dropbox) setup
 
-The player reads the shared folder **live** at play time, matches each file to a track by its
-leading number (`02_Vampire Killer_v01.aif` → track 2), and always uses the **newest** version.
-The `PREVIOUS VERSIONS` subfolder is ignored.
+Each **album** points at its own Dropbox folder (set on the album's detail panel: **Dropbox album
+folder** + **Project folder prefix**). Inside that folder, each song is its own project folder named
+`PREFIX_NN_Name` (e.g. `The Belmonts_01_Prologue`); the app reads the number + name for ordering and
+matches to tracks by title. The song **preview** is the newest audio file in that project's
+**`Bounces`** subfolder, and **track order comes from the Dropbox folder number** (updates on reload).
+Folders that don't match the prefix/number pattern are ignored.
 
 To let the deployed app read Dropbox, create an app + refresh token once:
 1. dropbox.com/developers/apps → **Create app** → Scoped access → **Full Dropbox** (or the app folder
    that contains the songs) → name it. Copy the **App key** and **App secret**.
 2. In the app's **Permissions** tab, enable: `files.metadata.read`, `files.content.read`,
-   `sharing.read`. Submit.
+   `sharing.read` (and `files.content.write` if you want the album panel's "Create missing song
+   folders" button to work). Submit.
 3. Get a refresh token (one-time). In a browser, visit:
    `https://www.dropbox.com/oauth2/authorize?client_id=YOUR_APP_KEY&response_type=code&token_access_type=offline`
    Approve, copy the code, then exchange it (run in a terminal):

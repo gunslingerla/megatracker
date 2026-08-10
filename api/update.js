@@ -31,6 +31,7 @@ const MAP = {
       title: F.album.title, artist: F.album.artist, stage: F.album.stage,
       releaseDate: F.album.releaseDate, playlist: F.album.playlist, genre: F.album.genre,
       label: F.album.label, notes: F.album.notes, ownerIds: F.album.owner,
+      dropboxFolder: F.album.dropboxFolder, trackPrefix: F.album.trackPrefix,
     },
     links: ["ownerIds"],
   },

@@ -107,4 +107,107 @@ async function tempLink(path, tok) {
   return j.link;
 }
 
-module.exports = { newestByOrder, allFiles, tempLink, parseOrder };
+// ---- Per-album model: master folder -> "PREFIX_NN_Name" project folders -> "Bounces" ----
+
+const linkPathCache = {};
+async function resolveFolderPath(input, tok) {
+  if (!input) return folderPath(tok);
+  if (linkPathCache[input]) return linkPathCache[input];
+  let path = input;
+  if (/^https?:\/\//i.test(input)) {
+    const m = await dbx("sharing/get_shared_link_metadata", { url: input }, tok);
+    path = m.path_lower;
+  }
+  linkPathCache[input] = path;
+  return path;
+}
+
+async function listChildren(path, tok) {
+  let res = await dbx("files/list_folder", { path, recursive: false, limit: 1000 }, tok);
+  const entries = res.entries.slice();
+  while (res.has_more) {
+    res = await dbx("files/list_folder/continue", { cursor: res.cursor }, tok);
+    entries.push(...res.entries);
+  }
+  return entries;
+}
+
+// "The Belmonts_01_Prologue" (prefix "The Belmonts") -> { order:1, title:"Prologue" }
+function parseProject(name, prefix) {
+  let rest = name;
+  if (prefix && name.toLowerCase().startsWith(prefix.toLowerCase())) rest = name.slice(prefix.length);
+  const m = rest.match(/^[\s_\-.]*(\d+)[\s_\-.]+(.+)$/);
+  if (!m) return null;
+  return { order: parseInt(m[1], 10), title: m[2].replace(/_+/g, " ").replace(/\s+/g, " ").trim() };
+}
+
+const newestAudio = (files) => {
+  let best = null;
+  for (const f of files) if (f[".tag"] === "file" && AUDIO_RE.test(f.name) && (!best || f.server_modified > best.server_modified)) best = f;
+  return best;
+};
+
+// All songs for an album: order + title from the project folder, newest Bounces file for preview.
+async function albumData(input, prefix) {
+  const tok = await accessToken();
+  const path = await resolveFolderPath(input, tok);
+  const children = await listChildren(path, tok);
+  const projects = children
+    .filter((e) => e[".tag"] === "folder")
+    .map((e) => ({ e, p: parseProject(e.name, prefix || "") }))
+    .filter((x) => x.p);
+  const items = [];
+  for (const { e, p } of projects) {
+    let file = null;
+    try { file = newestAudio(await listChildren(e.path_lower + "/Bounces", tok)); } catch (_) {}
+    items.push({ order: p.order, title: p.title, folder: e.name, file: file ? { path_lower: file.path_lower, name: file.name, server_modified: file.server_modified } : null });
+  }
+  items.sort((a, b) => a.order - b.order);
+  return { tok, items };
+}
+
+// Every bounce for one song's project folder (version history), newest first.
+async function projectVersions(input, prefix, order) {
+  const tok = await accessToken();
+  const path = await resolveFolderPath(input, tok);
+  const children = await listChildren(path, tok);
+  const match = children
+    .filter((e) => e[".tag"] === "folder")
+    .map((e) => ({ e, p: parseProject(e.name, prefix || "") }))
+    .find((x) => x.p && x.p.order === Number(order));
+  if (!match) return { tok, files: [] };
+  let files = [];
+  try { files = (await listChildren(match.e.path_lower + "/Bounces", tok)).filter((f) => f[".tag"] === "file" && AUDIO_RE.test(f.name)); } catch (_) {}
+  files.sort((a, b) => (a.server_modified < b.server_modified ? 1 : -1));
+  return { tok, files };
+}
+
+// Create any missing "PREFIX_NN_Name/Bounces" project folders for the given tracks.
+// tracks: [{ order, title }]. Requires the Dropbox token to have files.content.write.
+async function makeAlbumFolders(input, prefix, tracks) {
+  const tok = await accessToken();
+  const path = await resolveFolderPath(input, tok);
+  const existing = new Set(
+    (await listChildren(path, tok))
+      .filter((e) => e[".tag"] === "folder")
+      .map((e) => parseProject(e.name, prefix || ""))
+      .filter(Boolean)
+      .map((p) => p.order)
+  );
+  const created = [];
+  for (const t of tracks) {
+    if (t.order == null || existing.has(t.order)) continue;
+    const nn = String(t.order).padStart(2, "0");
+    const safeTitle = String(t.title || "Untitled").replace(/[\/\\]/g, "-").trim();
+    const folderName = `${prefix ? prefix + "_" : ""}${nn}_${safeTitle}`;
+    const base = `${path}/${folderName}`;
+    try { await dbx("files/create_folder_v2", { path: base, autorename: false }, tok); }
+    catch (e) { if (!/conflict/i.test(String(e.message))) throw e; }
+    try { await dbx("files/create_folder_v2", { path: base + "/Bounces", autorename: false }, tok); }
+    catch (e) { if (!/conflict/i.test(String(e.message))) throw e; }
+    created.push(folderName);
+  }
+  return { created };
+}
+
+module.exports = { newestByOrder, allFiles, tempLink, parseOrder, albumData, projectVersions, makeAlbumFolders };
