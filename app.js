@@ -499,6 +499,7 @@ function openDrawer(id) {
       </div>
       <div class="field"><label>Timestamped feedback</label><div id="dFeedback"></div></div>
       <div class="field"><label>Versions (from Dropbox)</label><div id="dVersions"><button class="fb-mini" id="dVerLoad">Show version history</button></div></div>
+      <div class="field"><label>Dropbox project folder</label><button class="add-btn ghost" id="dMakeFolder">&#128193; Create this song's folder</button></div>
       <div class="drawer-actions">
         <button class="danger-btn" id="dDelete">Delete track</button>
       </div>
@@ -545,6 +546,12 @@ function openDrawer(id) {
   $("#dLyricsEdit").onclick = () => openLyricsEditor(id);
   $("#dTele").onclick = () => openTeleprompter(id);
   $("#dVerLoad").onclick = () => loadVersions(t);
+  $("#dMakeFolder").onclick = async () => {
+    if (!confirm(`Create the Dropbox project folder (with a Bounces subfolder) for "${t.title}"?`)) return;
+    toast("Creating folder…");
+    const r = await post("/api/makefolders", { trackId: id });
+    if (r.ok) { toast(r.created && r.created.length ? "Folder created" : "Folder already exists"); await refresh(false); await fetchPlaylist(); openDrawer(id); }
+  };
   renderFeedback(t);
 
   $("#dDelete").addEventListener("click", async () => {
@@ -574,7 +581,6 @@ function openAlbumDrawer(id) {
       </div>
       <div class="field"><label>Dropbox album folder</label><input id="aFolder" type="text" value="${esc(a.dropboxFolder)}" placeholder="/Your/Folder/Path  or  https://…share link" /><div class="gate-note ok" style="color:var(--muted)">A folder path works with your current scopes; a share link needs Dropbox 'sharing.read'.</div></div>
       <div class="field"><label>Project folder prefix</label><input id="aPrefix" type="text" value="${esc(a.trackPrefix)}" placeholder="e.g. The Belmonts" /><div class="gate-note ok" style="color:var(--muted)">Reads folders named PREFIX_##_Song, pulling audio from each song's “Bounces”.</div></div>
-      <div class="field"><button class="add-btn ghost" id="aMakeFolders">&#128193; Create missing song folders</button></div>
       <div class="field"><label>Concept / Notes</label><textarea id="aNotes" style="min-height:200px">${esc(a.notes)}</textarea></div>
       <div class="drawer-actions"><button class="danger-btn" id="aDelete">Delete album</button></div>
     </div>`);
@@ -595,12 +601,6 @@ function openAlbumDrawer(id) {
   });
   saveFolder("#aFolder", "dropboxFolder");
   saveFolder("#aPrefix", "trackPrefix");
-  $("#aMakeFolders").onclick = async () => {
-    if (!confirm("Create a Dropbox project folder (with a Bounces subfolder) for every track that doesn't already have one?")) return;
-    toast("Creating folders…");
-    const r = await post("/api/makefolders", { albumId: id });
-    if (r.ok) { toast(`Created ${r.created ? r.created.length : 0} folder(s)`); await refresh(false); await fetchPlaylist(); render(); }
-  };
   $("#aDelete").addEventListener("click", async () => {
     if (!confirm(`Delete album "${a.title}"? (Only works if it has no tracks.)`)) return;
     const r = await deleteEntity("album", id);
