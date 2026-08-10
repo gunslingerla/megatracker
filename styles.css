@@ -643,6 +643,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 @media (max-width: 1080px) {
   .topbar { flex-wrap: wrap; }
   .spacer { display: none; }
+  .menu-btn { margin-left: auto; }   /* keep the actions caret pinned to the right */
   .tabs { order: 3; width: 100%; margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
   .tab { white-space: nowrap; }
 }
