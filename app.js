@@ -1349,32 +1349,63 @@ function openTeleprompter(id, secsOverride) {
   function popOut() {
     const w = window.open("", "tp_" + id, "width=900,height=1000");
     if (!w) { toast("Allow pop-ups to use Pop-Out", true); return; }
-    const body = secs.map((s) => `<div class="s">${s.label ? `<div class="l">${esc(s.label)}</div>` : ""}<div class="x">${esc(s.text)}</div></div>`).join("") || `<div class="s"><div class="x">No lyrics yet.</div></div>`;
     w.document.open();
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(t.title)} — Teleprompter</title><style>
       :root{color-scheme:dark}*{box-sizing:border-box}
       body{margin:0;background:#0a0a0e;color:#ede8f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-      .bar{position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;padding:10px 14px;background:rgba(20,18,28,.95);border-bottom:1px solid #2a2733}
+      .bar{position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:rgba(20,18,28,.95);border-bottom:1px solid #2a2733}
       .bar .ttl{font-weight:800}
-      .bar button{background:#1d1a26;color:#ede8f5;border:1px solid #34303f;border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:600}
+      .bar button{background:#1d1a26;color:#ede8f5;border:1px solid #34303f;border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:600;font-size:13px}
+      .bar button:hover{border-color:#e5399f}
       .bar input{accent-color:#e5399f}
-      .sc{padding:8vh 8vw 60vh;font-size:46px;font-weight:700;line-height:1.32;scroll-behavior:smooth;height:100vh;overflow:auto}
-      .s{margin:0 auto 1.1em;max-width:1100px}
+      .jump{display:flex;gap:6px;flex-wrap:wrap}
+      .jump button{padding:4px 9px;font-size:12px;color:#c9c2d6}
+      .sc{padding:8vh 3vw 60vh;font-size:46px;font-weight:700;line-height:1.32;scroll-behavior:smooth;height:100vh;overflow:auto}
+      .s{margin:0 0 1.1em;max-width:none}
       .l{color:#e5399f;text-transform:uppercase;letter-spacing:.12em;font-size:.42em;margin-bottom:.25em}
       .x{white-space:pre-wrap}
+      .edwrap{display:none;position:fixed;inset:0;z-index:5;background:#0a0a0e;flex-direction:column;padding:3vh 5vw 14px}
+      .edwrap textarea{flex:1;width:100%;background:rgba(255,255,255,.03);color:#ede8f5;border:1px solid #34303f;border-radius:12px;padding:16px 18px;font-size:18px;line-height:1.5;resize:none;font-family:ui-monospace,Menlo,Consolas,monospace}
+      .edbar{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
     </style></head><body>
-      <div class="bar"><span class="ttl">${esc(t.title)}</span><span style="flex:1"></span>
+      <div class="bar">
+        <span class="ttl">${esc(t.title)}</span>
+        <div class="jump" id="jump"></div>
+        <span style="flex:1"></span>
         <button onclick="fz(-4)">A&minus;</button><button onclick="fz(4)">A+</button>
         <button id="au" onclick="tg()">Auto</button>
         <input id="sp" type="range" min="10" max="140" value="40" title="Scroll speed">
+        <button onclick="edit()">Edit</button>
+        <button onclick="fs()">Fullscreen</button>
       </div>
-      <div class="sc" id="sc">${body}</div>
+      <div class="sc" id="sc"></div>
+      <div class="edwrap" id="edwrap">
+        <textarea id="ta" spellcheck="false" placeholder="[Verse 1]&#10;First line…"></textarea>
+        <div class="edbar"><button onclick="save()">Save</button><button onclick="cancelEd()">Cancel</button></div>
+      </div>
       <script>
+        var TID=${JSON.stringify(id)}, secs=parse(${JSON.stringify(flattenSections(secs))});
         var font=46,auto=false,raf=null,last=0,speed=40,sc=document.getElementById('sc');
+        function esc(s){return String(s).replace(/[&<>]/g,function(c){return c==='&'?'&amp;':c==='<'?'&lt;':'&gt;';});}
+        function parse(raw){var lines=String(raw).replace(/\\r/g,'').split('\\n'),out=[],cur=null;for(var i=0;i<lines.length;i++){var m=lines[i].match(/^\\s*\\[(.+?)\\]\\s*$/);if(m){cur={label:m[1].trim(),text:''};out.push(cur);}else{if(!cur){cur={label:'',text:''};out.push(cur);}cur.text+=(cur.text?'\\n':'')+lines[i];}}for(var j=0;j<out.length;j++){out[j].text=out[j].text.replace(/^\\n+|\\n+$/g,'');}return out.filter(function(s){return s.label||s.text.trim();});}
+        function flat(a){return a.map(function(s){return (s.label?'['+s.label+']\\n':'')+s.text;}).join('\\n\\n');}
+        function render(){
+          document.getElementById('jump').innerHTML=secs.map(function(s,i){return s.label?'<button onclick="jump('+i+')">'+esc(s.label)+'</button>':'';}).join('');
+          sc.innerHTML=secs.map(function(s){return '<div class="s">'+(s.label?'<div class="l">'+esc(s.label)+'</div>':'')+'<div class="x">'+esc(s.text)+'</div></div>';}).join('')||'<div class="s"><div class="x">No lyrics yet.</div></div>';
+        }
+        function jump(i){var el=sc.querySelectorAll('.s')[i];if(el)sc.scrollTo({top:el.offsetTop-40,behavior:'smooth'});}
         function fz(d){font=Math.max(20,Math.min(160,font+d));sc.style.fontSize=font+'px';}
         function loop(now){if(!auto)return;if(!last)last=now;sc.scrollTop+=speed*(now-last)/1000;last=now;raf=requestAnimationFrame(loop);}
         function tg(){auto=!auto;document.getElementById('au').textContent=auto?'Pause':'Auto';last=0;if(auto)raf=requestAnimationFrame(loop);else cancelAnimationFrame(raf);}
+        function fs(){var e=document.documentElement;if(!document.fullscreenElement){(e.requestFullscreen||e.webkitRequestFullscreen||function(){}).call(e);}else{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}}
+        function edit(){document.getElementById('ta').value=flat(secs);document.getElementById('edwrap').style.display='flex';}
+        function cancelEd(){document.getElementById('edwrap').style.display='none';}
+        function save(){var raw=document.getElementById('ta').value;secs=parse(raw);
+          fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entity:'track',id:TID,fields:{lyrics:raw.trim(),lyricsData:JSON.stringify(secs)}})})
+          .then(function(r){return r.json();}).then(function(j){if(j&&j.ok){render();cancelEd();try{if(window.opener&&!window.opener.closed&&window.opener.__tpRefresh)window.opener.__tpRefresh();}catch(e){}}else{alert((j&&j.error)||'Save failed');}}).catch(function(){alert('Save failed');});
+        }
         document.getElementById('sp').oninput=function(e){speed=+e.target.value;};
+        render();
       <\/script>
     </body></html>`);
     w.document.close();
@@ -1515,6 +1546,8 @@ function toast(msg, bad = false) {
 
 /* ---- Boot ------------------------------------------------------------------*/
 function wireChrome() {
+  // Lets a popped-out teleprompter window trigger a data refresh after saving edits.
+  window.__tpRefresh = () => refresh(false);
   document.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => { state.view = t.dataset.view; render(); }));
   // Close any open album switcher menu when clicking outside of it.

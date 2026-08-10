@@ -571,7 +571,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .tp-bar button:hover { border-color: var(--accent); }
 .tp-jump { display: flex; gap: 6px; flex-wrap: wrap; }
 .tp-jump button { padding: 5px 10px; font-size: 12px; }
-.tp-scroll { flex: 1; overflow: auto; scroll-behavior: smooth; padding: 8vh 8vw 60vh; }
+.tp-scroll { flex: 1; overflow: auto; scroll-behavior: smooth; padding: 8vh 3vw 60vh; }
 .tp-editwrap { flex: 1; display: flex; padding: 3vh 5vw; overflow: auto; }
 .tp-editarea {
   flex: 1; width: 100%; background: rgba(255,255,255,0.03); color: #f6f2fa;
@@ -580,7 +580,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 .tp-editarea:focus { outline: none; border-color: var(--accent); }
-.tp-section { margin: 0 auto 1.1em; max-width: 1100px; }
+.tp-section { margin: 0 0 1.1em; max-width: none; }
 .tp-section .tp-lbl { color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.42em; margin-bottom: 0.25em; }
 .tp-section .tp-txt { white-space: pre-wrap; line-height: 1.32; font-weight: 700; }
 
@@ -632,7 +632,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   .player .pwarn { flex-basis: 100%; }
 
   .tp-bar { gap: 8px; padding: 10px 12px; }
-  .tp-scroll { padding: 6vh 6vw 70vh; }
+  .tp-scroll { padding: 6vh 4vw 70vh; }
 }
 
 /* Bigger tap targets on touch devices */
