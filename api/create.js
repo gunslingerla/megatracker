@@ -44,6 +44,7 @@ module.exports = async (req, res) => {
     if (entity === "member") {
       const rec = await create(T.members, [{ fields: {
         [F.member.name]: fields.name || "New member",
+        [F.member.nickname]: fields.nickname || "",
         [F.member.role]: fields.role || "",
         [F.member.email]: fields.email || "",
       } }]);

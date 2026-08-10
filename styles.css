@@ -247,6 +247,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .phase-row2 .powner { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
 .phase-row2.done { border-color: rgba(70,219,160,0.35); background: rgba(70,219,160,0.06); }
 .phase-row2.done .pname2 { color: var(--muted); text-decoration: line-through; }
+.roster-bar { padding: 14px 22px 0; }
+.mcard .field { margin-top: 8px; }
 .mcard.me { border-color: var(--accent); }
 .mcard.me .mname::after { content: " (you)"; color: var(--accent-2); font-weight: 600; }
 .gate-note { font-size: 12px; color: var(--danger); margin-top: 6px; }

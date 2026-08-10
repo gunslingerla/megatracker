@@ -155,6 +155,7 @@ function render() {
   else if (state.view === "members") main.innerHTML = membersHTML();
   else if (state.view === "calendar") main.innerHTML = calendarHTML();
   else if (state.view === "hold") main.innerHTML = holdHTML();
+  else if (state.view === "roster") main.innerHTML = rosterHTML();
   wireBoard();
   $("#albumStrip").style.display = (state.view === "tracks") ? "" : "none";
   $("#newTrack").style.display = (state.view === "tracks") ? "" : "none";
@@ -308,14 +309,29 @@ function membersHTML() {
     return `
       <div class="mcard${meCls}">
         <div class="mhead">
-          <div class="avatar" title="${esc(member.name)}">${esc(initials(member.name))}</div>
-          <div><div class="mname">${esc(member.name)}</div><div class="mrole">${esc(member.role)}</div></div>
+          <div class="avatar" title="${esc(member.display)}">${esc(initials(member.display))}</div>
+          <div><div class="mname">${esc(member.display)}</div><div class="mrole">${esc(member.role)}</div></div>
           <div style="margin-left:auto;color:var(--muted);font-weight:700">${count}</div>
         </div>
         ${songCards}
       </div>`;
   }).join("");
   return `<div class="members">${cards}</div>`;
+}
+
+/* ---- Band (member info) ----------------------------------------------------*/
+function rosterHTML() {
+  const cards = state.data.members.map((m) => `
+    <div class="mcard" data-member="${m.id}">
+      <div class="mhead">
+        <div class="avatar" title="${esc(m.display)}">${esc(initials(m.display || m.name || "?"))}</div>
+        <div style="flex:1"><input class="title-edit" data-mf="name" value="${esc(m.name)}" placeholder="Name" /></div>
+      </div>
+      <div class="field"><label>Nickname (used everywhere if set)</label><input data-mf="nickname" value="${esc(m.nickname)}" placeholder="e.g. Church" /></div>
+      <div class="field"><label>Role / Instrument</label><input data-mf="role" value="${esc(m.role)}" placeholder="e.g. Drums" /></div>
+      <div class="field"><label>Email</label><input data-mf="email" type="email" value="${esc(m.email)}" placeholder="name@email.com" /></div>
+    </div>`).join("");
+  return `<div class="roster-bar"><button class="add-btn" id="rosterAdd">+ Add member</button></div><div class="members">${cards}</div>`;
 }
 
 /* ---- Calendar --------------------------------------------------------------*/
@@ -375,6 +391,16 @@ function wireBoard() {
       const r = await update("phase", l.dataset.phase, { status: e.target.checked ? "Done" : "Not started" });
       if (r.ok) { toast("Updated"); refresh(); } else { e.target.checked = !e.target.checked; }
     }));
+
+  document.querySelectorAll(".mcard[data-member]").forEach((card) => {
+    const id = card.dataset.member;
+    card.querySelectorAll("[data-mf]").forEach((inp) => inp.addEventListener("change", async () => {
+      const r = await update("member", id, { [inp.dataset.mf]: inp.value.trim() });
+      if (r.ok) { toast("Saved"); refresh(false); }
+    }));
+  });
+  const rAdd = document.getElementById("rosterAdd");
+  if (rAdd) rAdd.onclick = async () => { const r = await createEntity("member", { name: "New member" }); if (r.ok) { toast("Member added"); refresh(false); } };
 
   document.querySelectorAll(".col[data-stage]").forEach((col) => {
     col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });
@@ -876,11 +902,11 @@ function pickIdentity() {
       <div class="mhd"><h2>Who are you?</h2><button class="icon-btn close" id="mClose">&times;</button></div>
       <div class="mbd">
         <p style="color:var(--muted);margin:0">Pick your name — saved on this device so your feedback is tagged to you.</p>
-        <div class="owner-picker" id="idPick">${members.map((m) => `<label class="owner-chip"><input type="radio" name="idp" value="${m.id}"/> ${esc(m.name)}</label>`).join("")}</div>
+        <div class="owner-picker" id="idPick">${members.map((m) => `<label class="owner-chip"><input type="radio" name="idp" value="${m.id}"/> ${esc(m.display)}</label>`).join("")}</div>
       </div>`);
     $("#mClose").onclick = () => { closeModal(); resolve(getMe()); };
     document.querySelectorAll("#idPick input").forEach((i) =>
-      i.addEventListener("change", () => { const m = members.find((x) => x.id === i.value); setMe({ id: m.id, name: m.name }); closeModal(); resolve(getMe()); }));
+      i.addEventListener("change", () => { const m = members.find((x) => x.id === i.value); setMe({ id: m.id, name: m.display }); closeModal(); resolve(getMe()); }));
   });
 }
 async function ensureMe() { return getMe() || (await pickIdentity()); }

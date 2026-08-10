@@ -18,13 +18,13 @@ module.exports = async (req, res) => {
     const arr = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
     const att = (v) => (Array.isArray(v) ? v.map((a) => ({ url: a.url, thumb: a.thumbnails?.large?.url || a.url })) : []);
 
-    const members = membersR.map((r) => ({
-      id: r.id,
-      name: r.fields[F.member.name] || "",
-      role: r.fields[F.member.role] || "",
-      email: r.fields[F.member.email] || "",
-    }));
-    const memberName = Object.fromEntries(members.map((m) => [m.id, m.name]));
+    const members = membersR.map((r) => {
+      const name = r.fields[F.member.name] || "";
+      const nickname = r.fields[F.member.nickname] || "";
+      return { id: r.id, name, nickname, display: nickname || name, role: r.fields[F.member.role] || "", email: r.fields[F.member.email] || "" };
+    });
+    // Use the nickname (falling back to name) everywhere owners/authors are shown.
+    const memberName = Object.fromEntries(members.map((m) => [m.id, m.display]));
 
     const phases = phasesR.map((r) => ({
       id: r.id,

@@ -20,6 +20,11 @@ const MAP = {
     fields: { status: F.feedback.status, comment: F.feedback.comment, ownerIds: F.feedback.author },
     links: ["ownerIds"],
   },
+  member: {
+    table: T.members,
+    fields: { name: F.member.name, nickname: F.member.nickname, role: F.member.role, email: F.member.email },
+    links: [],
+  },
   phase: {
     table: T.phases,
     fields: { status: F.phase.status, ownerIds: F.phase.owner },

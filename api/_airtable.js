@@ -77,6 +77,7 @@ const F = {
     name: "fldLdKtbqycPlKp2k",
     role: "fldiUoQtGn9Aohw3R",
     email: "fldWg3Ns8qMCCmxYr",
+    nickname: "fldlqmdVveUp6Ndto",
   },
 };
 
