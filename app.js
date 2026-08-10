@@ -110,6 +110,7 @@ function render() {
   else if (state.view === "albums") main.innerHTML = albumsBoardHTML();
   else if (state.view === "members") main.innerHTML = membersHTML();
   else if (state.view === "calendar") main.innerHTML = calendarHTML();
+  else if (state.view === "hold") main.innerHTML = holdHTML();
   wireBoard();
   $("#albumStrip").style.display = (state.view === "tracks") ? "" : "none";
   $("#newTrack").style.display = (state.view === "tracks") ? "" : "none";
@@ -172,7 +173,6 @@ function cardHTML(t) {
 function boardHTML(tracks) {
   const stages = state.data.stages;
   const active = tracks.filter((t) => !t.onHold);
-  const held = tracks.filter((t) => t.onHold);
   const cols = stages.map((s) => {
     const inCol = active.filter((t) => t.stage === s);
     const locked = stages.indexOf(s) > PROD_IDX;
@@ -182,12 +182,17 @@ function boardHTML(tracks) {
         <div class="cards">${inCol.map(cardHTML).join("")}</div>
       </div>`;
   }).join("");
-  const holdCol = `
-      <div class="col hold-col" data-hold="1">
-        <h3><span class="dot" style="background:var(--muted-2)"></span>On Hold<span class="count">${held.length}</span></h3>
-        <div class="cards">${held.map(cardHTML).join("")}</div>
-      </div>`;
-  return `<div class="board">${cols}${holdCol}</div>`;
+  return `<div class="board">${cols}</div>`;
+}
+
+// Dedicated On Hold tab — held tracks live only here, hidden from every other view.
+function holdHTML() {
+  const held = state.data.tracks.filter((t) => t.onHold).sort((a, b) => a.order - b.order);
+  if (!held.length) return `<div class="loading">Nothing on hold. Put a track on hold from its detail panel.</div>`;
+  return `<div class="preview"><div class="palbum">
+    <div class="phead"><div class="cover">&#9208;</div><div><h1>On Hold</h1><div class="sub">${held.length} track(s) parked — open one and untick “On hold” to bring it back</div></div></div>
+    ${held.map(trackRowHTML).join("")}
+  </div></div>`;
 }
 
 /* ---- Albums board ----------------------------------------------------------*/
@@ -257,7 +262,7 @@ function membersHTML() {
 let calMonth = new Date();
 function calendarHTML() {
   const alb = currentAlbum();
-  const tracks = state.data.tracks.filter((t) => t.dueDate && (!alb || t.albumId === alb.id));
+  const tracks = state.data.tracks.filter((t) => t.dueDate && !t.onHold && (!alb || t.albumId === alb.id));
   const y = calMonth.getFullYear(), m = calMonth.getMonth();
   const first = new Date(y, m, 1), start = new Date(first);
   start.setDate(1 - ((first.getDay() + 6) % 7));
@@ -389,7 +394,7 @@ function openDrawer(id) {
   }).join("");
 
   const links = [];
-  if (t.songLink) links.push(`<a class="chip" href="${esc(t.songLink)}" target="_blank" rel="noopener">&#9836; Song</a>`);
+  if (t.songLink) links.push(`<a class="chip" href="${esc(t.songLink)}" target="_blank" rel="noopener">&#9836; Original</a>`);
   if (t.projectFile) links.push(`<a class="chip" href="${esc(t.projectFile)}" target="_blank" rel="noopener">&#128193; Project file</a>`);
 
   openShell(`
@@ -414,7 +419,7 @@ function openDrawer(id) {
       </div>
       <div class="field"><label>Due date</label><input id="dDue" type="date" value="${t.dueDate || ""}" /></div>
       <div class="row2">
-        <div class="field"><label>Song link</label><input id="dSong" type="text" value="${esc(t.songLink)}" placeholder="https://…" /></div>
+        <div class="field"><label>Original song link</label><input id="dSong" type="text" value="${esc(t.songLink)}" placeholder="https://…" /></div>
         <div class="field"><label>Project file</label><input id="dProj" type="text" value="${esc(t.projectFile)}" placeholder="https://…" /></div>
       </div>
       ${links.length ? `<div class="field"><label>Open</label><div class="chip-links">${links.join("")}</div></div>` : ""}
@@ -551,7 +556,7 @@ function openCreateTrack() {
       <div class="field"><label>Inspired by (game / IP)</label><input id="cIP" list="ipList" placeholder="e.g. Castlevania 1" />${ipDatalist()}</div>
       <div class="field"><label>Reference (stage / theme)</label><input id="cRef" type="text" placeholder="e.g. Stage 1" /></div>
       <div class="row2">
-        <div class="field"><label>Song link</label><input id="cSong" type="text" placeholder="https://…" /></div>
+        <div class="field"><label>Original song link</label><input id="cSong" type="text" placeholder="https://…" /></div>
         <div class="field"><label>Project file</label><input id="cProj" type="text" placeholder="https://…" /></div>
       </div>
       <div class="field"><label>Notes</label><textarea id="cNotes"></textarea></div>
@@ -808,11 +813,9 @@ function albumPreviewSection(alb) {
 function previewHTML() {
   const albums = state.data.albums;
   const unassigned = state.data.tracks.filter((t) => !t.albumId && !t.onHold).sort((a, b) => a.order - b.order);
-  const held = state.data.tracks.filter((t) => t.onHold).sort((a, b) => a.order - b.order);
-  if (!albums.length && !unassigned.length && !held.length) return `<div class="loading">No albums yet — use “+ Album”.</div>`;
+  if (!albums.length && !unassigned.length) return `<div class="loading">No albums yet — use “+ Album”.</div>`;
   let html = albums.map(albumPreviewSection).join("");
   if (unassigned.length) html += `<div class="palbum"><div class="phead"><div class="cover">&#9834;</div><div><h1>Unassigned</h1><div class="sub">${unassigned.length} track(s) not on an album</div></div></div>${unassigned.map(trackRowHTML).join("")}</div>`;
-  if (held.length) html += `<div class="palbum"><div class="phead"><div class="cover">&#9208;</div><div><h1>On Hold</h1><div class="sub">${held.length} track(s) paused</div></div></div>${held.map(trackRowHTML).join("")}</div>`;
   return `<div class="preview">${html}</div>`;
 }
 
@@ -861,7 +864,8 @@ function guessSections(raw) {
 function sectionHTML(s, i, secs) {
   const inList = LYRIC_LABELS.includes(s.label);
   const opts = LYRIC_LABELS.map((l) => `<option ${l === s.label ? "selected" : ""}>${esc(l)}</option>`).join("");
-  const moveOpts = secs.map((o, j) => (j === i ? "" : `<option value="${j}">${esc(o.label)}</option>`)).join("");
+  const existingOpts = secs.map((o, j) => (j === i ? "" : `<option value="i:${j}">${esc(o.label)}</option>`)).join("");
+  const newOpts = LYRIC_LABELS.map((l) => `<option value="n:${esc(l)}">${esc(l)}</option>`).join("");
   return `
     <div class="sec" data-i="${i}">
       <div class="sechd">
@@ -875,7 +879,11 @@ function sectionHTML(s, i, secs) {
       </div>
       <textarea class="autogrow" data-s="text" placeholder="Lyrics for this section…">${esc(s.text)}</textarea>
       <div class="sec-move">
-        <select data-s="move"><option value="">Move highlighted text to…</option>${moveOpts}<option value="__new">+ New section…</option></select>
+        <select data-s="move">
+          <option value="">Move highlighted text to…</option>
+          ${existingOpts ? `<optgroup label="Existing sections">${existingOpts}</optgroup>` : ""}
+          <optgroup label="New section">${newOpts}<option value="n:__custom">Custom…</option></optgroup>
+        </select>
       </div>
     </div>`;
 }
@@ -919,16 +927,20 @@ function openLyricsEditor(id) {
       const ta = el.querySelector('[data-s="text"]');
       autoGrow(ta);
       ta.addEventListener("input", () => autoGrow(ta));
+      // Remember the highlighted range, because clicking the dropdown blurs the textarea.
+      let lastSel = { start: 0, end: 0 };
+      const remember = () => { lastSel = { start: ta.selectionStart, end: ta.selectionEnd }; };
+      ["select", "keyup", "mouseup", "blur"].forEach((ev) => ta.addEventListener(ev, remember));
       el.querySelector('[data-s="move"]').addEventListener("change", (e) => {
-        const target = e.target.value;
-        if (!target) return;
-        const start = ta.selectionStart, end = ta.selectionEnd;
-        if (start === end) { toast("Highlight some lyrics in this section first", true); e.target.value = ""; return; }
+        const val = e.target.value; e.target.value = "";
+        if (!val) return;
+        const { start, end } = lastSel;
+        const sel = secs.length ? String(ta.value).slice(start, end).trim() : "";
+        if (start === end || !sel) { toast("Highlight some lyrics in this section first", true); return; }
         collect();
-        const sel = secs[i].text.slice(start, end).trim();
         secs[i].text = (secs[i].text.slice(0, start) + secs[i].text.slice(end)).replace(/\n{3,}/g, "\n\n").trim();
-        if (target === "__new") { const label = prompt("New section label:", "Verse"); if (label === null) { draw(); return; } secs.push({ label: label || "Section", text: sel }); }
-        else { const ti = Number(target); secs[ti].text = (secs[ti].text ? secs[ti].text + "\n\n" : "") + sel; }
+        if (val.startsWith("i:")) { const ti = Number(val.slice(2)); secs[ti].text = (secs[ti].text ? secs[ti].text + "\n\n" : "") + sel; }
+        else { let label = val.slice(2); if (label === "__custom") { const p = prompt("New section label:", "Verse"); if (p === null) { draw(); return; } label = p || "Section"; } secs.push({ label, text: sel }); }
         draw();
       });
     });

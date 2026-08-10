@@ -276,7 +276,12 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .mtask .badge { margin-left: auto; font-size: 10.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--stroke-strong); color: var(--muted); }
 .mtask .badge.prog { color: var(--warn); border-color: var(--warn); }
 .empty { color: var(--muted-2); font-size: 13px; padding: 8px 0; }
-.song-card { border: 1px solid var(--stroke); border-radius: 9px; padding: 8px 10px; margin-top: 8px; background: var(--panel-2); }
+.song-card {
+  border: 1px solid transparent; border-radius: 9px; padding: 8px 10px; margin-top: 8px;
+  background:
+    linear-gradient(var(--panel-2), var(--panel-2)) padding-box,
+    var(--card-stroke-gradient) border-box;
+}
 .song-card .song-title { font-weight: 700; font-size: 12.5px; margin-bottom: 4px; }
 .song-task { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 0; cursor: pointer; }
 .song-task input { width: 16px; height: 16px; accent-color: var(--good); flex: none; }
@@ -439,8 +444,9 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   .album-strip .albprog { margin-left: 0; width: 100%; text-align: left; }
   .album-strip .albprog .bar { max-width: 100%; }
 
-  .board { grid-auto-columns: 86vw; gap: 10px; padding: 14px; scroll-snap-type: x mandatory; }
-  .col { scroll-snap-align: start; }
+  .board { display: flex; flex-direction: column; gap: 12px; padding: 14px; overflow: visible; }
+  .col { width: 100%; }
+  .col .cards { min-height: 0; }
 
   .drawer { width: 100vw; }
   .row2 { grid-template-columns: 1fr; }
