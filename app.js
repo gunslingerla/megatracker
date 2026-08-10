@@ -291,11 +291,18 @@ function boardHTML(tracks) {
   const active = holdView ? tracks.slice() : tracks.filter((t) => !t.onHold && t.stage !== "Released");
   const shown = stages.filter((s) => active.some((t) => t.stage === s));
   if (!shown.length) return `<div class="loading">No tracks here yet.</div>`;
-  const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
+  // Distribute cards row-major across sub-columns of up to 5, so track order reads
+  // left-to-right across the columns first, then down.
+  const spread = (arr) => {
+    const n = Math.max(1, Math.ceil(arr.length / 5));
+    const out = Array.from({ length: n }, () => []);
+    arr.forEach((item, i) => out[i % n].push(item));
+    return out;
+  };
   const cols = shown.map((s) => {
     const inCol = active.filter((t) => t.stage === s).sort((a, b) => effOrder(a) - effOrder(b));
     const locked = stages.indexOf(s) > PROD_IDX;
-    const groups = chunk(inCol, 5); // wrap into extra columns of 5 so nothing scrolls off the bottom
+    const groups = spread(inCol); // extra columns of ~5, filled left-to-right by track number
     const cards = `<div class="cards${groups.length > 1 ? " multi" : ""}">${groups.map((g) => `<div class="cardcol">${g.map(cardHTML).join("")}</div>`).join("")}</div>`;
     return `
       <div class="col${locked ? " locked-target" : ""}" data-stage="${esc(s)}">

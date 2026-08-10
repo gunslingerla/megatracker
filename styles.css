@@ -256,7 +256,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .col h3 .dot { width: 9px; height: 9px; border-radius: 50%; }
 .col h3 .count { margin-left: auto; color: var(--muted-2); font-weight: 700; }
 .col .cards { padding: 10px; display: flex; align-items: flex-start; gap: 10px; min-height: 40px; }
-.cardcol { display: flex; flex-direction: column; gap: 10px; width: clamp(236px, 21vw, 272px); }
+.cardcol { display: flex; flex-direction: column; gap: 10px; width: 272px; }
 
 /* ---- Track card (signature tracker treatment) -----------------------------*/
 .card {
