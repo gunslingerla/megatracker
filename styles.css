@@ -142,10 +142,11 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 
 /* ---- Board -----------------------------------------------------------------*/
 .board {
-  display: grid; grid-auto-flow: column; grid-auto-columns: 300px; gap: 14px;
-  padding: 16px 22px 40px; overflow-x: auto; align-items: start;
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 16px 22px 40px; overflow-x: auto;
 }
 .col {
+  flex: 0 0 auto; align-self: flex-start;
   border: 1px solid transparent; border-radius: var(--radius); min-height: 120px;
   background:
     linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0) 40%) padding-box,
@@ -160,7 +161,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 }
 .col h3 .dot { width: 9px; height: 9px; border-radius: 50%; }
 .col h3 .count { margin-left: auto; color: var(--muted-2); font-weight: 700; }
-.col .cards { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 40px; }
+.col .cards { padding: 10px; display: flex; align-items: flex-start; gap: 10px; min-height: 40px; }
+.cardcol { display: flex; flex-direction: column; gap: 10px; width: 272px; }
 
 /* ---- Track card (signature tracker treatment) -----------------------------*/
 .card {
@@ -273,7 +275,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .cal-nav h2 { margin: 0; font-size: 18px; }
 
 /* ---- Member (Who's Up Next) view ------------------------------------------*/
-.members { padding: 16px 22px 40px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.members { padding: 16px 22px 40px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
 .mcard {
   border: 1px solid transparent; border-radius: var(--radius); padding: 16px;
   background: var(--card-fill);
@@ -466,7 +468,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 
   .board { display: flex; flex-direction: column; gap: 12px; padding: 14px; overflow: visible; }
   .col { width: 100%; }
-  .col .cards { min-height: 0; }
+  .col .cards { min-height: 0; flex-direction: column; }
+  .cardcol { width: 100%; }
 
   .drawer { width: 100vw; }
   .row2 { grid-template-columns: 1fr; }

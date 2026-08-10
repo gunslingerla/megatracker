@@ -230,13 +230,16 @@ function boardHTML(tracks) {
   const active = tracks.filter((t) => !t.onHold);
   const shown = stages.filter((s) => active.some((t) => t.stage === s));
   if (!shown.length) return `<div class="loading">No tracks here yet.</div>`;
+  const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
   const cols = shown.map((s) => {
     const inCol = active.filter((t) => t.stage === s).sort((a, b) => effOrder(a) - effOrder(b));
     const locked = stages.indexOf(s) > PROD_IDX;
+    const groups = chunk(inCol, 5); // wrap into extra columns of 5 so nothing scrolls off the bottom
+    const cards = `<div class="cards${groups.length > 1 ? " multi" : ""}">${groups.map((g) => `<div class="cardcol">${g.map(cardHTML).join("")}</div>`).join("")}</div>`;
     return `
       <div class="col${locked ? " locked-target" : ""}" data-stage="${esc(s)}">
         <h3><span class="dot" style="background:${STAGE_COLOR[s]}"></span>${esc(s)}<span class="count">${inCol.length}</span></h3>
-        <div class="cards">${inCol.map(cardHTML).join("")}</div>
+        ${cards}
       </div>`;
   }).join("");
   return `<div class="board">${cols}</div>`;
