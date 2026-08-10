@@ -99,10 +99,12 @@ button { font-family: inherit; }
 
 .spacer { flex: 1; }
 .filters { display: flex; align-items: center; gap: 8px; }
-select, input[type="text"], input[type="date"], input[type="number"], textarea {
+select, textarea, input:not([type]), input[type="text"], input[type="email"], input[type="url"],
+input[type="search"], input[type="password"], input[type="date"], input[type="number"] {
   background: var(--panel-2); color: var(--text);
   border: 1px solid var(--stroke-strong); border-radius: 9px; padding: 8px 10px; font-size: 13px; outline: none;
 }
+input::placeholder, textarea::placeholder { color: var(--muted-2); }
 select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .icon-btn {
   background: var(--panel-2); color: var(--muted); border: 1px solid var(--stroke-strong);
@@ -132,10 +134,17 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   display: grid; place-items: center; color: var(--muted-2); font-size: 22px;
 }
 .album-strip h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+.album-strip .album-meta { flex: 1; min-width: 0; }
 .album-strip .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
-.album-strip .albprog { margin-left: auto; text-align: right; min-width: 180px; }
-.album-strip .albprog .pct { font-size: 24px; font-weight: 800; }
-.album-strip .albprog .bar { margin-top: 6px; }
+.album-strip .albprog2 { display: flex; align-items: center; gap: 10px; margin-top: 8px; max-width: 420px; }
+.album-strip .albprog2 .bar { flex: 1; }
+.album-strip .albprog2 .pct2 { font-size: 13px; font-weight: 700; color: var(--muted); min-width: 34px; }
+
+/* Albums row at the bottom of the Dashboard */
+.albums-section { margin: 26px 6px 8px; }
+.albums-head { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 0 6px 12px; }
+.albums-row { display: flex; flex-wrap: wrap; gap: 14px; }
+.albums-row .card { width: 260px; cursor: pointer; }
 
 .bar { height: 7px; border-radius: 999px; background: var(--panel-3); overflow: hidden; }
 .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
@@ -249,6 +258,10 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .phase-row2.done .pname2 { color: var(--muted); text-decoration: line-through; }
 .roster-bar { padding: 14px 22px 0; }
 .mcard .field { margin-top: 8px; }
+.mmeta { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+.swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--panel); cursor: pointer; padding: 0; }
+.swatch.sel { outline: 2px solid var(--text); outline-offset: 1px; }
 .mcard.me { border-color: var(--accent); }
 .mcard.me .mname::after { content: " (you)"; color: var(--accent-2); font-weight: 600; }
 .gate-note { font-size: 12px; color: var(--danger); margin-top: 6px; }
@@ -465,8 +478,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   .brand { flex: 1; }
 
   .album-strip { flex-wrap: wrap; padding: 14px 14px 4px; }
-  .album-strip .albprog { margin-left: 0; width: 100%; text-align: left; }
-  .album-strip .albprog .bar { max-width: 100%; }
+  .album-strip .albprog2 { max-width: 100%; }
+  .albums-row .card { width: 100%; }
 
   .board { display: flex; flex-direction: column; gap: 12px; padding: 14px; overflow: visible; }
   .col { width: 100%; }

@@ -21,7 +21,7 @@ module.exports = async (req, res) => {
     const members = membersR.map((r) => {
       const name = r.fields[F.member.name] || "";
       const nickname = r.fields[F.member.nickname] || "";
-      return { id: r.id, name, nickname, display: nickname || name, role: r.fields[F.member.role] || "", email: r.fields[F.member.email] || "" };
+      return { id: r.id, name, nickname, display: nickname || name, role: r.fields[F.member.role] || "", email: r.fields[F.member.email] || "", color: r.fields[F.member.color] || "" };
     });
     // Use the nickname (falling back to name) everywhere owners/authors are shown.
     const memberName = Object.fromEntries(members.map((m) => [m.id, m.display]));

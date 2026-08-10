@@ -15,6 +15,9 @@ const state = {
   audio: { byTrack: {}, order: {}, currentId: null, playing: false, configured: false, queue: [] },
 };
 const CANT_PLAY_EXT = ["aif", "aiff"]; // browsers (esp. Chrome) usually can't play AIFF
+const editingMembers = new Set(); // Band cards in edit mode
+const PALETTE = ["#6cb6ff", "#46dba0", "#ffab4a", "#f0654f", "#b58cff", "#4fd0e0", "#f078c0", "#e5c94a", "#8a9bff", "#5fd08a"];
+const memberById = (id) => (state.data && state.data.members ? state.data.members.find((m) => m.id === id) : null);
 // Normalize a title (or filename) for matching Dropbox audio to a track.
 const normTitle = (s) => String(s || "").toLowerCase().replace(/\.[a-z0-9]+$/, "").replace(/^\s*\d+[_\-.\s]+/, "").replace(/_v\d+.*$/i, "").replace(/[^a-z0-9]+/g, "");
 const trackById = (id) => state.data.tracks.find((t) => t.id === id);
@@ -106,14 +109,16 @@ async function refresh(keepDrawer = true) {
 
 /* ---- Helpers over state ----------------------------------------------------*/
 function currentAlbum() {
-  const { albums } = state.data;
-  if (state.filters.albumId === "__unassigned") return null;
-  return albums.find((a) => a.id === state.filters.albumId) || albums[0] || null;
+  const id = state.filters.albumId;
+  if (!id || id === "__all" || id === "__unassigned") return null;
+  return state.data.albums.find((a) => a.id === id) || null;
 }
 function visibleTracks() {
   let t = state.data.tracks.slice();
-  if (state.filters.albumId === "__unassigned") t = t.filter((x) => !x.albumId);
-  else { const alb = currentAlbum(); if (alb) t = t.filter((x) => x.albumId === alb.id); }
+  const id = state.filters.albumId;
+  if (id === "__unassigned") t = t.filter((x) => !x.albumId);
+  else if (id && id !== "__all") t = t.filter((x) => x.albumId === id);
+  // "__all" (or unset) shows every album's tracks plus unassigned
   if (state.filters.ip) t = t.filter((x) => x.inspiredBy === state.filters.ip);
   if (state.filters.memberId) {
     const mid = state.filters.memberId;
@@ -127,12 +132,10 @@ function ipOptions() { return [...new Set(state.data.tracks.map((t) => t.inspire
 function syncFilters() {
   const { albums, members } = state.data;
   const fa = $("#filterAlbum");
-  fa.innerHTML = albums.map((a) => `<option value="${a.id}">${esc(a.title)}</option>`).join("") + `<option value="__unassigned">Unassigned</option>`;
-  const isSentinel = state.filters.albumId === "__unassigned";
-  if (!isSentinel) {
-    if (!state.filters.albumId && albums[0]) state.filters.albumId = albums[0].id;
-    if (!albums.find((a) => a.id === state.filters.albumId) && albums[0]) state.filters.albumId = albums[0].id;
-  }
+  fa.innerHTML = `<option value="__all">All albums</option>` + albums.map((a) => `<option value="${a.id}">${esc(a.title)}</option>`).join("") + `<option value="__unassigned">Unassigned</option>`;
+  if (!state.filters.albumId) state.filters.albumId = "__all";
+  const valid = state.filters.albumId === "__all" || state.filters.albumId === "__unassigned" || albums.some((a) => a.id === state.filters.albumId);
+  if (!valid) state.filters.albumId = "__all";
   fa.value = state.filters.albumId;
 
   $("#filterIP").innerHTML = `<option value="">All inspirations</option>` +
@@ -149,9 +152,8 @@ function render() {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === state.view));
   renderAlbumStrip();
   const main = $("#main");
-  if (state.view === "tracks") main.innerHTML = boardHTML(visibleTracks());
+  if (state.view === "tracks") main.innerHTML = boardHTML(visibleTracks()) + albumsSectionHTML();
   else if (state.view === "preview") main.innerHTML = previewHTML();
-  else if (state.view === "albums") main.innerHTML = albumsBoardHTML();
   else if (state.view === "members") main.innerHTML = membersHTML();
   else if (state.view === "calendar") main.innerHTML = calendarHTML();
   else if (state.view === "hold") main.innerHTML = holdHTML();
@@ -168,14 +170,11 @@ function renderAlbumStrip() {
   const cover = alb.cover[0] ? `style="background-image:url('${alb.cover[0].thumb}')"` : "";
   el.innerHTML = `
     <div class="album-strip">
-      <div class="cover" ${cover}>${alb.cover[0] ? "" : ""}</div>
-      <div>
+      <div class="cover" ${cover}></div>
+      <div class="album-meta">
         <h1>${esc(alb.title)}</h1>
-        <div class="sub">${esc(alb.artist)} &middot; ${alb.trackCount} tracks &middot; ${esc(alb.stage)}${alb.playlist ? ` &middot; <a href="${esc(alb.playlist)}" target="_blank" rel="noopener">Playlist</a>` : ""} &middot; <a href="#" id="editAlbumLink">Edit album</a></div>
-      </div>
-      <div class="albprog">
-        <div class="pct">${alb.progress}%</div>
-        <div class="bar"><i style="width:${alb.progress}%"></i></div>
+        <div class="sub">${esc(alb.artist)} &middot; ${alb.trackCount} tracks &middot; ${esc(alb.stage)} &middot; <a href="#" id="editAlbumLink">Edit album</a></div>
+        <div class="albprog2"><div class="bar"><i style="width:${alb.progress}%"></i></div><span class="pct2">${alb.progress}%</span></div>
       </div>
     </div>`;
   const link = $("#editAlbumLink");
@@ -186,12 +185,22 @@ function renderAlbumStrip() {
 function segClass(status) { return status === "Done" ? "done" : status === "In progress" ? "prog" : ""; }
 
 function cardHTML(t) {
-  const segs = t.phases.map((p) => `<div class="seg ${segClass(p.status)}" title="${esc(p.phase)}: ${esc(p.status)}"></div>`).join("");
-  const ownerSet = new Map();
-  t.phases.filter((p) => p.status !== "Done").forEach((p) => p.owners.forEach((o) => ownerSet.set(o, p.phase)));
-  if (ownerSet.size === 0) t.owners.forEach((o) => ownerSet.set(o, ""));
-  const avatars = [...ownerSet.entries()].slice(0, 5)
-    .map(([name, role]) => `<div class="avatar" data-role="${esc(role)}" title="${esc(name)}${role ? " — " + esc(role) : ""}">${esc(initials(name))}</div>`).join("");
+  // Each phase pill is tinted by its owner's color; filled by status.
+  const segs = t.phases.map((p) => {
+    const m = memberById(p.ownerIds[0]);
+    const col = m && m.color ? m.color : "var(--idle)";
+    const op = p.status === "Done" ? 1 : p.status === "In progress" ? 0.6 : 0.28;
+    const who = m ? m.display : "unassigned";
+    return `<div class="seg" style="background:${col};opacity:${op}" title="${esc(p.phase)} (${esc(who)}): ${esc(p.status)}"></div>`;
+  }).join("");
+  // Avatars for the members whose parts aren't done yet (dedup), colored by member.
+  const ownerIdSet = new Map();
+  t.phases.filter((p) => p.status !== "Done").forEach((p) => p.ownerIds.forEach((oid) => { if (!ownerIdSet.has(oid)) ownerIdSet.set(oid, p.phase); }));
+  if (ownerIdSet.size === 0) t.ownerIds.forEach((oid) => ownerIdSet.set(oid, ""));
+  const avatars = [...ownerIdSet.entries()].slice(0, 6).map(([oid, role]) => {
+    const m = memberById(oid); const nm = m ? m.display : "?"; const col = m && m.color ? m.color : "#4a4258";
+    return `<div class="avatar" style="background:${col};color:#0c0b10" title="${esc(nm)}${role ? " — " + esc(role) : ""}">${esc(initials(nm))}</div>`;
+  }).join("");
   const gated = t.stage === "Production" && !t.productionComplete;
   // "Waiting on X" — when every remaining production part belongs to a single member.
   let waitingName = "";
@@ -228,7 +237,7 @@ function cardHTML(t) {
 
 function boardHTML(tracks) {
   const stages = state.data.stages;
-  const active = tracks.filter((t) => !t.onHold);
+  const active = tracks.filter((t) => !t.onHold && t.stage !== "Released");
   const shown = stages.filter((s) => active.some((t) => t.stage === s));
   if (!shown.length) return `<div class="loading">No tracks here yet.</div>`;
   const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
@@ -279,6 +288,16 @@ function albumCardHTML(a) {
     </div>`;
 }
 
+// Albums live at the bottom of the Dashboard instead of a standalone page.
+function albumsSectionHTML() {
+  const albums = state.data.albums;
+  if (!albums.length) return "";
+  return `<div class="albums-section">
+    <div class="albums-head">Albums</div>
+    <div class="albums-row">${albums.map(albumCardHTML).join("")}</div>
+  </div>`;
+}
+
 /* ---- Members: Who's Up Next ------------------------------------------------*/
 function membersHTML() {
   const alb = currentAlbum();
@@ -309,7 +328,7 @@ function membersHTML() {
     return `
       <div class="mcard${meCls}">
         <div class="mhead">
-          <div class="avatar" title="${esc(member.display)}">${esc(initials(member.display))}</div>
+          <div class="avatar" style="${member.color ? `background:${member.color};color:#0c0b10` : ""}" title="${esc(member.display)}">${esc(initials(member.display))}</div>
           <div><div class="mname">${esc(member.display)}</div><div class="mrole">${esc(member.role)}</div></div>
           <div style="margin-left:auto;color:var(--muted);font-weight:700">${count}</div>
         </div>
@@ -321,16 +340,25 @@ function membersHTML() {
 
 /* ---- Band (member info) ----------------------------------------------------*/
 function rosterHTML() {
-  const cards = state.data.members.map((m) => `
-    <div class="mcard" data-member="${m.id}">
-      <div class="mhead">
-        <div class="avatar" title="${esc(m.display)}">${esc(initials(m.display || m.name || "?"))}</div>
-        <div style="flex:1"><input class="title-edit" data-mf="name" value="${esc(m.name)}" placeholder="Name" /></div>
-      </div>
-      <div class="field"><label>Nickname (used everywhere if set)</label><input data-mf="nickname" value="${esc(m.nickname)}" placeholder="e.g. Church" /></div>
-      <div class="field"><label>Role / Instrument</label><input data-mf="role" value="${esc(m.role)}" placeholder="e.g. Drums" /></div>
-      <div class="field"><label>Email</label><input data-mf="email" type="email" value="${esc(m.email)}" placeholder="name@email.com" /></div>
-    </div>`).join("");
+  const cards = state.data.members.map((m) => {
+    const av = `<div class="avatar" style="${m.color ? `background:${m.color};color:#0c0b10` : ""}" title="${esc(m.display)}">${esc(initials(m.display || m.name || "?"))}</div>`;
+    if (editingMembers.has(m.id)) {
+      return `
+      <div class="mcard editing" data-member="${m.id}">
+        <div class="mhead">${av}<div style="flex:1"><input class="title-edit" data-mf="name" value="${esc(m.name)}" placeholder="Name" /></div><button class="fb-mini" data-medone="${m.id}">Done</button></div>
+        <div class="field"><label>Nickname (used everywhere if set)</label><input data-mf="nickname" value="${esc(m.nickname)}" placeholder="e.g. Church" /></div>
+        <div class="field"><label>Role / Instrument</label><input data-mf="role" value="${esc(m.role)}" placeholder="e.g. Drums" /></div>
+        <div class="field"><label>Email</label><input data-mf="email" type="email" value="${esc(m.email)}" placeholder="name@email.com" /></div>
+        <div class="field"><label>Color</label><div class="swatches">${PALETTE.map((c) => `<button class="swatch${(m.color || "").toLowerCase() === c ? " sel" : ""}" data-mcolor="${m.id}:${c}" style="background:${c}" title="${c}"></button>`).join("")}</div></div>
+      </div>`;
+    }
+    return `
+      <div class="mcard" data-member="${m.id}">
+        <div class="mhead">${av}<div style="flex:1"><div class="mname">${esc(m.display || m.name || "—")}</div><div class="mrole">${esc(m.role || "")}</div></div><button class="fb-mini" data-medit="${m.id}">Edit</button></div>
+        ${m.nickname ? `<div class="mmeta">Name: ${esc(m.name)}</div>` : ""}
+        ${m.email ? `<div class="mmeta">${esc(m.email)}</div>` : ""}
+      </div>`;
+  }).join("");
   return `<div class="roster-bar"><button class="add-btn" id="rosterAdd">+ Add member</button></div><div class="members">${cards}</div>`;
 }
 
@@ -401,6 +429,13 @@ function wireBoard() {
   });
   const rAdd = document.getElementById("rosterAdd");
   if (rAdd) rAdd.onclick = async () => { const r = await createEntity("member", { name: "New member" }); if (r.ok) { toast("Member added"); refresh(false); } };
+  document.querySelectorAll("[data-medit]").forEach((b) => b.onclick = () => { editingMembers.add(b.dataset.medit); render(); });
+  document.querySelectorAll("[data-medone]").forEach((b) => b.onclick = () => { editingMembers.delete(b.dataset.medone); render(); });
+  document.querySelectorAll("[data-mcolor]").forEach((b) => b.onclick = async () => {
+    const [id, c] = b.dataset.mcolor.split(":");
+    const r = await update("member", id, { color: c });
+    if (r.ok) { toast("Color set"); refresh(false); }
+  });
 
   document.querySelectorAll(".col[data-stage]").forEach((col) => {
     col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });

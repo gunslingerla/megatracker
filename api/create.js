@@ -42,11 +42,13 @@ module.exports = async (req, res) => {
     }
 
     if (entity === "member") {
+      const palette = ["#6cb6ff", "#46dba0", "#ffab4a", "#f0654f", "#b58cff", "#4fd0e0", "#f078c0", "#e5c94a", "#8a9bff", "#5fd08a"];
       const rec = await create(T.members, [{ fields: {
         [F.member.name]: fields.name || "New member",
         [F.member.nickname]: fields.nickname || "",
         [F.member.role]: fields.role || "",
         [F.member.email]: fields.email || "",
+        [F.member.color]: fields.color || palette[Math.floor(Math.random() * palette.length)],
       } }]);
       return res.status(200).json({ ok: true, id: rec[0].id });
     }

@@ -22,7 +22,7 @@ const MAP = {
   },
   member: {
     table: T.members,
-    fields: { name: F.member.name, nickname: F.member.nickname, role: F.member.role, email: F.member.email },
+    fields: { name: F.member.name, nickname: F.member.nickname, role: F.member.role, email: F.member.email, color: F.member.color },
     links: [],
   },
   phase: {

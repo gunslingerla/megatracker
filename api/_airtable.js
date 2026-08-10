@@ -78,6 +78,7 @@ const F = {
     role: "fldiUoQtGn9Aohw3R",
     email: "fldWg3Ns8qMCCmxYr",
     nickname: "fldlqmdVveUp6Ndto",
+    color: "fldjGoImeca6pSVMA",
   },
 };
 
