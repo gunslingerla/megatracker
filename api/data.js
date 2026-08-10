@@ -6,11 +6,12 @@ const { requireAuth } = require("./_auth");
 module.exports = async (req, res) => {
   if (!requireAuth(req, res)) return;
   try {
-    const [albumsR, tracksR, phasesR, membersR] = await Promise.all([
+    const [albumsR, tracksR, phasesR, membersR, feedbackR] = await Promise.all([
       listAll(T.albums),
       listAll(T.tracks),
       listAll(T.phases),
       listAll(T.members),
+      listAll(T.feedback),
     ]);
 
     const first = (v) => (Array.isArray(v) ? v[0] : v);
@@ -43,6 +44,23 @@ module.exports = async (req, res) => {
       list.sort((a, b) => PHASE_NAMES.indexOf(a.phase) - PHASE_NAMES.indexOf(b.phase))
     );
 
+    const feedback = feedbackR.map((r) => {
+      const f = r.fields;
+      return {
+        id: r.id,
+        trackId: first(f[F.feedback.track]) || null,
+        timestamp: f[F.feedback.timestamp] ?? 0,
+        comment: f[F.feedback.comment] || "",
+        status: f[F.feedback.status] || "Open",
+        authorId: first(f[F.feedback.author]) || null,
+        author: (arr(f[F.feedback.author]).map((id) => memberName[id] || "?"))[0] || "",
+        createdTime: r.createdTime,
+      };
+    });
+    const feedbackByTrack = {};
+    feedback.forEach((fb) => { (feedbackByTrack[fb.trackId] = feedbackByTrack[fb.trackId] || []).push(fb); });
+    Object.values(feedbackByTrack).forEach((l) => l.sort((a, b) => a.timestamp - b.timestamp));
+
     const tracks = tracksR.map((r) => {
       const f = r.fields;
       const tp = phasesByTrack[r.id] || [];
@@ -59,6 +77,7 @@ module.exports = async (req, res) => {
         projectFile: f[F.track.projectFile] || "",
         notes: f[F.track.notes] || "",
         lyrics: f[F.track.lyrics] || "",
+        lyricsData: f[F.track.lyricsData] || "",
         dueDate: f[F.track.dueDate] || null,
         order: f[F.track.order] ?? 999,
         albumId: first(f[F.track.album]) || null,
@@ -69,6 +88,8 @@ module.exports = async (req, res) => {
         phasesTotal: tp.length,
         productionComplete: tp.length > 0 && done === tp.length,
         phases: tp,
+        feedback: feedbackByTrack[r.id] || [],
+        openFeedback: (feedbackByTrack[r.id] || []).filter((x) => x.status === "Open").length,
       };
     });
     tracks.sort((a, b) => a.order - b.order);
@@ -94,7 +115,7 @@ module.exports = async (req, res) => {
     });
 
     res.setHeader("Cache-Control", "no-store");
-    res.status(200).json({ albums, tracks, phases, members, stages: STAGES, phaseNames: PHASE_NAMES });
+    res.status(200).json({ albums, tracks, phases, members, feedback, stages: STAGES, phaseNames: PHASE_NAMES });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

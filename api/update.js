@@ -9,9 +9,14 @@ const MAP = {
       title: F.track.title, stage: F.track.stage, inspiredBy: F.track.inspiredBy,
       reference: F.track.reference, bpm: F.track.bpm, key: F.track.key,
       songLink: F.track.songLink, projectFile: F.track.projectFile, notes: F.track.notes,
-      lyrics: F.track.lyrics, dueDate: F.track.dueDate, order: F.track.order,
-      ownerIds: F.track.owner,
+      lyrics: F.track.lyrics, lyricsData: F.track.lyricsData, dueDate: F.track.dueDate,
+      order: F.track.order, ownerIds: F.track.owner,
     },
+    links: ["ownerIds"],
+  },
+  feedback: {
+    table: T.feedback,
+    fields: { status: F.feedback.status, comment: F.feedback.comment, ownerIds: F.feedback.author },
     links: ["ownerIds"],
   },
   phase: {
@@ -69,7 +74,7 @@ module.exports = async (req, res) => {
       airFields[fid] = spec.links.includes(k) ? (Array.isArray(v) ? v : v ? [v] : []) : v;
     }
 
-    const updated = await patch(spec.table, [{ id, fields: airFields }]);
+    const updated = await patch(spec.table, [{ id, fields: airFields }], true);
     res.status(200).json({ ok: true, record: updated[0] });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });

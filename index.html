@@ -18,6 +18,7 @@
     </div>
     <div class="tabs" id="tabs">
       <button class="tab active" data-view="tracks">Tracks</button>
+      <button class="tab" data-view="preview">Preview Album</button>
       <button class="tab" data-view="albums">Albums</button>
       <button class="tab" data-view="members">Who's Up Next</button>
       <button class="tab" data-view="calendar">Calendar</button>
@@ -27,6 +28,9 @@
       <select id="filterAlbum"></select>
       <select id="filterIP"><option value="">All inspirations</option></select>
       <select id="filterMember"><option value="">All members</option></select>
+      <button class="add-btn" id="newTrack" title="Add a track">+ Track</button>
+      <button class="add-btn ghost" id="newAlbum" title="Add an album">+ Album</button>
+      <button class="icon-btn" id="whoami" title="Set your name">&#128100;</button>
       <button class="icon-btn" id="refresh" title="Refresh">&#8635;</button>
       <button class="icon-btn" id="logout" title="Sign out">&#9099;</button>
     </div>
@@ -38,6 +42,11 @@
   <div class="scrim" id="scrim"></div>
   <div class="drawer" id="drawer"></div>
   <div class="toast" id="toast"></div>
+  <div class="player hidden" id="player"></div>
+  <audio id="audio" preload="none"></audio>
+  <div class="modal-scrim" id="mscrim"></div>
+  <div class="modal" id="modal"></div>
+  <div class="teleprompter" id="teleprompter"></div>
 
   <script src="/app.js"></script>
 </body>

@@ -18,6 +18,20 @@ shared band password, and sees live data.
 - **Detail drawer** — click a track to edit stage, BPM, key, due date, notes, and each phase's
   status + owner; view links and lyrics.
 - **Inspired By** — the game/IP each song draws from, shown on every card.
+- **Preview Album** — an ordered tracklist with a Play-All that runs through the whole album.
+- **Timestamped feedback** — pin notes to a moment in a song (Frame.io-style), tagged to the member
+  (set once via the person icon, saved on the device), toggled Open → Resolved. Click a timestamp to
+  seek there. Open-note counts show on cards.
+- **Version history** — reads the live Dropbox folder; the top-level file is the current bounce,
+  older ones (in `PREVIOUS VERSIONS`) are listed per track with play links.
+- **Lyrics editor + teleprompter** — structured sections (Verse/Chorus/Pre-Chorus/Breakdown/VO/…,
+  add/reorder/rename), plus a full-screen teleprompter with adjustable font, auto-scroll speed, and
+  section jumps for tracking vocals.
+
+**Reusing the Project Tracker's Dropbox credentials:** the same `DROPBOX_APP_KEY` /
+`DROPBOX_APP_SECRET` / `DROPBOX_REFRESH_TOKEN` work here. The songs folder path is built in as a
+fallback, so you don't even need `DROPBOX_SHARED_LINK` unless the folder moves. Required scopes:
+`files.metadata.read` + `files.content.read` (the tracker already has these).
 
 ## Environment variables (set these in Vercel)
 
@@ -27,6 +41,36 @@ shared band password, and sees live data.
 | `AIRTABLE_BASE`  | no       | Defaults to `app8R88gFzgjBftgo` (The Megas). |
 | `APP_PASSWORD`   | yes      | The shared password band members type to sign in. If left blank, the site is open. |
 | `AUTH_SECRET`    | yes      | Any long random string — signs the login cookie. |
+| `DROPBOX_SHARED_LINK` | for playlist | The shared link to the "Songs in Progress" folder. |
+| `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `DROPBOX_REFRESH_TOKEN` | for playlist | Permanent Dropbox access (see Playlist setup). |
+| `DROPBOX_TOKEN`  | optional | A short-lived Dropbox token for quick testing instead of the refresh-token trio (expires ~4h). |
+
+## Playlist (Dropbox) setup
+
+The player reads the shared folder **live** at play time, matches each file to a track by its
+leading number (`02_Vampire Killer_v01.aif` → track 2), and always uses the **newest** version.
+The `PREVIOUS VERSIONS` subfolder is ignored.
+
+To let the deployed app read Dropbox, create an app + refresh token once:
+1. dropbox.com/developers/apps → **Create app** → Scoped access → **Full Dropbox** (or the app folder
+   that contains the songs) → name it. Copy the **App key** and **App secret**.
+2. In the app's **Permissions** tab, enable: `files.metadata.read`, `files.content.read`,
+   `sharing.read`. Submit.
+3. Get a refresh token (one-time). In a browser, visit:
+   `https://www.dropbox.com/oauth2/authorize?client_id=YOUR_APP_KEY&response_type=code&token_access_type=offline`
+   Approve, copy the code, then exchange it (run in a terminal):
+   ```bash
+   curl https://api.dropbox.com/oauth2/token \
+     -d code=PASTE_CODE -d grant_type=authorization_code \
+     -u YOUR_APP_KEY:YOUR_APP_SECRET
+   ```
+   Copy the `refresh_token` from the response.
+4. In Vercel, set `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, and
+   `DROPBOX_SHARED_LINK` (the folder link). Redeploy.
+
+**Format note:** MP3 and WAV play in all browsers. **AIFF (`.aif`) does not play in Chrome** (it
+works in Safari). For cross-browser playback, drop MP3 bounces into the folder — the app will pick
+them up automatically. Tracks with no audio file simply show no play button.
 
 ### Create the Airtable token
 
@@ -74,8 +118,13 @@ album-tracker/
     _auth.js      # shared-password cookie gate
     data.js       # GET  /api/data  → whole board as JSON
     update.js     # POST /api/update → edit track/phase/album (enforces the gate)
+    create.js     # POST /api/create → new album / track (+ auto 5 phases) / member
+    delete.js     # POST /api/delete → remove a track (+ phases) or empty album
     login.js      # POST /api/login, GET status
     logout.js     # POST /api/logout
+    _dropbox.js   # Dropbox access (live folder read, newest version per track)
+    playlist.js   # GET  /api/playlist → fresh streaming URLs matched to tracks
+    versions.js   # GET  /api/versions?order=N → all versions of a track (current + previous)
   vercel.json
   package.json
 ```

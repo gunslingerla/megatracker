@@ -10,6 +10,7 @@ const T = {
   tracks: "tbl6cHXtPvV92UiZM",
   phases: "tbleJ6Qb48oHzO94M",
   members: "tblwgBJzoEHAmfISz",
+  feedback: "tblPqaEXRjvC5JLNv",
 };
 
 const F = {
@@ -48,6 +49,16 @@ const F = {
     phasesTotal: "fldn3ZsFUwNhlpuiu",
     productionComplete: "fld2bxQxzaR3dWZGK",
     progress: "fld890Pju1apupjHC",
+    lyricsData: "fldT7D6xs1JgQW7JF",
+    feedback: "fldzqpxcV9hlsxRMY",
+  },
+  feedback: {
+    name: "fldtengI4Ng7UGxKL",
+    timestamp: "fldQpNmJkk8Sm7ck1",
+    comment: "fld4YnET22K9HZ5EL",
+    status: "fldZr8ROpMgbAmrry",
+    track: "fldNAQ2fPgNBobOQ3",
+    author: "fldjtnnsl8PhwxePj",
   },
   phase: {
     name: "fld1LCOJADedeOh8e",
@@ -73,6 +84,27 @@ function authHeaders() {
   return { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// fetch wrapper with automatic retry on rate-limit (429) and transient 5xx errors.
+// Airtable allows ~5 requests/sec per base, so bursts of edits can hit 429 — this smooths that out.
+async function air(url, opts = {}, tries = 5) {
+  let lastText = "";
+  for (let attempt = 0; attempt < tries; attempt++) {
+    const r = await fetch(url, { ...opts, headers: authHeaders() });
+    if (r.ok) return r;
+    if (r.status === 429 || r.status >= 500) {
+      const retryAfter = Number(r.headers.get("retry-after"));
+      const wait = retryAfter ? retryAfter * 1000 : Math.min(200 * 2 ** attempt, 2000);
+      lastText = await r.text().catch(() => "");
+      await sleep(wait + Math.random() * 120);
+      continue;
+    }
+    throw new Error(`Airtable ${r.status}: ${await r.text()}`);
+  }
+  throw new Error(`Airtable retries exhausted: ${lastText}`);
+}
+
 // Fetch every record in a table (handles pagination), returning fields keyed by field ID.
 async function listAll(tableId) {
   const out = [];
@@ -82,9 +114,7 @@ async function listAll(tableId) {
     url.searchParams.set("pageSize", "100");
     url.searchParams.set("returnFieldsByFieldId", "true");
     if (offset) url.searchParams.set("offset", offset);
-    const r = await fetch(url, { headers: authHeaders() });
-    if (!r.ok) throw new Error(`Airtable list ${tableId} failed: ${r.status} ${await r.text()}`);
-    const data = await r.json();
+    const data = await (await air(url)).json();
     out.push(...data.records);
     offset = data.offset;
   } while (offset);
@@ -95,21 +125,37 @@ async function listAll(tableId) {
 async function getRecord(tableId, id) {
   const url = new URL(`https://api.airtable.com/v0/${BASE}/${tableId}/${id}`);
   url.searchParams.set("returnFieldsByFieldId", "true");
-  const r = await fetch(url, { headers: authHeaders() });
-  if (!r.ok) throw new Error(`Airtable get ${tableId}/${id} failed: ${r.status} ${await r.text()}`);
-  return r.json();
+  return (await air(url)).json();
 }
 
 // Update records. `records` = [{ id, fields: { [fieldId]: value } }].
-async function patch(tableId, records) {
+async function patch(tableId, records, typecast = false) {
   const url = `https://api.airtable.com/v0/${BASE}/${tableId}`;
-  const r = await fetch(url, {
+  const r = await air(url, {
     method: "PATCH",
-    headers: authHeaders(),
-    body: JSON.stringify({ records, returnFieldsByFieldId: true }),
+    body: JSON.stringify({ records, typecast, returnFieldsByFieldId: true }),
   });
-  if (!r.ok) throw new Error(`Airtable patch ${tableId} failed: ${r.status} ${await r.text()}`);
   return (await r.json()).records;
 }
 
-module.exports = { BASE, T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch };
+// Create records. `records` = [{ fields: { [fieldId]: value } }].
+async function create(tableId, records, typecast = true) {
+  const url = `https://api.airtable.com/v0/${BASE}/${tableId}`;
+  const r = await air(url, {
+    method: "POST",
+    body: JSON.stringify({ records, typecast, returnFieldsByFieldId: true }),
+  });
+  return (await r.json()).records;
+}
+
+// Delete records by ID (chunks of 10, Airtable's per-request limit).
+async function del(tableId, ids) {
+  for (let i = 0; i < ids.length; i += 10) {
+    const chunk = ids.slice(i, i + 10);
+    const url = new URL(`https://api.airtable.com/v0/${BASE}/${tableId}`);
+    chunk.forEach((id) => url.searchParams.append("records[]", id));
+    await air(url, { method: "DELETE" });
+  }
+}
+
+module.exports = { BASE, T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch, create, del };
