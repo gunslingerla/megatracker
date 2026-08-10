@@ -449,7 +449,6 @@ function openDrawer(id) {
       </div>
       ${links.length ? `<div class="field"><label>Open</label><div class="chip-links">${links.join("")}</div></div>` : ""}
       ${audioFor(t) ? `<div class="field"><label>Latest bounce</label><button class="add-btn" id="dPlay">&#9654; Play &middot; ${esc(audioFor(t).name)}</button></div>` : ""}
-      <div class="field"><label>Track owner / next up</label>${memberChecks(members, t.ownerIds)}</div>
       <div class="field">
         <label>Production phases</label>
         ${phaseRows}
@@ -487,12 +486,6 @@ function openDrawer(id) {
   save("#dSong", "songLink", (v) => v.trim(), true);
   save("#dProj", "projectFile", (v) => v.trim(), true);
   save("#dNotes", "notes");
-
-  $(".owner-picker").addEventListener("change", async () => {
-    const ids = selectedOwnerIds($("#drawer"));
-    const r = await update("track", id, { ownerIds: ids });
-    if (r.ok) { toast("Owner updated"); refresh(); }
-  });
 
   document.querySelectorAll(".phase-row2").forEach((row) => {
     row.querySelector('[data-pf="done"]').addEventListener("change", async (e) => {
@@ -541,7 +534,6 @@ function openAlbumDrawer(id) {
         <div class="field"><label>Genre</label><input id="aGenre" type="text" value="${esc(a.genre)}" /></div>
         <div class="field"><label>Release date</label><input id="aRelease" type="date" value="${a.releaseDate || ""}" /></div>
       </div>
-      <div class="field"><label>Playlist link</label><input id="aPlaylist" type="text" value="${esc(a.playlist)}" placeholder="https://…" /></div>
       <div class="field"><label>Dropbox album folder</label><input id="aFolder" type="text" value="${esc(a.dropboxFolder)}" placeholder="/Your/Folder/Path  or  https://…share link" /><div class="gate-note ok" style="color:var(--muted)">A folder path works with your current scopes; a share link needs Dropbox 'sharing.read'.</div></div>
       <div class="field"><label>Project folder prefix</label><input id="aPrefix" type="text" value="${esc(a.trackPrefix)}" placeholder="e.g. The Belmonts" /><div class="gate-note ok" style="color:var(--muted)">Reads folders named PREFIX_##_Song, pulling audio from each song's “Bounces”.</div></div>
       <div class="field"><button class="add-btn ghost" id="aMakeFolders">&#128193; Create missing song folders</button></div>
@@ -558,7 +550,6 @@ function openAlbumDrawer(id) {
   save("#aStage", "stage", (v) => v, true);
   save("#aGenre", "genre");
   save("#aRelease", "releaseDate", (v) => v || null);
-  save("#aPlaylist", "playlist", (v) => v.trim(), true);
   save("#aNotes", "notes");
   const saveFolder = (sel, key) => $(sel).addEventListener("change", async (e) => {
     const r = await update("album", id, { [key]: e.target.value.trim() });

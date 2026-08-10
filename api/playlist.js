@@ -1,4 +1,4 @@
-const { albumData, tempLink } = require("./_dropbox");
+const { albumData, tempLink, mapLimit } = require("./_dropbox");
 const { requireAuth } = require("./_auth");
 
 // Streaming URLs for one album's songs. Pass ?folder=<album folder link/path>&prefix=<project prefix>.
@@ -9,7 +9,7 @@ module.exports = async (req, res) => {
   const prefix = req.query.prefix || "";
   try {
     const { tok, items } = await albumData(folder, prefix);
-    const out = await Promise.all(items.map(async (it) => {
+    const out = await mapLimit(items, 5, async (it) => {
       let url = null, ext = null, modified = null, name = it.folder;
       if (it.file) {
         url = await tempLink(it.file.path_lower, tok);
@@ -18,7 +18,7 @@ module.exports = async (req, res) => {
         modified = it.file.server_modified;
       }
       return { order: it.order, title: it.title, folder: it.folder, name, ext, modified, url };
-    }));
+    });
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json({ items: out, configured: true });
   } catch (e) {

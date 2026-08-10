@@ -35,14 +35,38 @@ async function accessToken() {
   return cachedTok;
 }
 
-async function dbx(endpoint, arg, tok) {
-  const r = await fetch("https://api.dropboxapi.com/2/" + endpoint, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-    body: JSON.stringify(arg),
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Dropbox call with retry/backoff on 429 (rate limit) and transient 5xx, honoring Retry-After.
+async function dbx(endpoint, arg, tok, tries = 6) {
+  let lastText = "";
+  for (let i = 0; i < tries; i++) {
+    const r = await fetch("https://api.dropboxapi.com/2/" + endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify(arg),
+    });
+    if (r.ok) return r.json();
+    if (r.status === 429 || r.status >= 500) {
+      const ra = Number(r.headers.get("retry-after"));
+      lastText = await r.text().catch(() => "");
+      await sleep((ra ? ra * 1000 : Math.min(300 * 2 ** i, 4000)) + Math.random() * 250);
+      continue;
+    }
+    throw new Error(`Dropbox ${endpoint} ${r.status}: ${await r.text()}`);
+  }
+  throw new Error(`Dropbox ${endpoint} rate-limited: ${lastText}`);
+}
+
+// Run async fn over arr with limited concurrency (avoids Dropbox rate-limit bursts).
+async function mapLimit(arr, limit, fn) {
+  const out = new Array(arr.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, arr.length) }, async () => {
+    while (i < arr.length) { const idx = i++; out[idx] = await fn(arr[idx], idx); }
   });
-  if (!r.ok) throw new Error(`Dropbox ${endpoint} ${r.status}: ${await r.text()}`);
-  return r.json();
+  await Promise.all(workers);
+  return out;
 }
 
 async function folderPath(tok) {
@@ -156,12 +180,12 @@ async function albumData(input, prefix) {
     .filter((e) => e[".tag"] === "folder")
     .map((e) => ({ e, p: parseProject(e.name, prefix || "") }))
     .filter((x) => x.p);
-  // List each song's Bounces in parallel — much faster than sequential for a full album.
-  const items = await Promise.all(projects.map(async ({ e, p }) => {
+  // List each song's Bounces with limited concurrency — fast, but avoids rate-limit bursts.
+  const items = await mapLimit(projects, 5, async ({ e, p }) => {
     let file = null;
     try { file = newestAudio(await listChildren(e.path_lower + "/Bounces", tok)); } catch (_) {}
     return { order: p.order, title: p.title, folder: e.name, file: file ? { path_lower: file.path_lower, name: file.name, server_modified: file.server_modified } : null };
-  }));
+  });
   items.sort((a, b) => a.order - b.order);
   return { tok, items };
 }
@@ -210,4 +234,4 @@ async function makeAlbumFolders(input, prefix, tracks) {
   return { created };
 }
 
-module.exports = { newestByOrder, allFiles, tempLink, parseOrder, albumData, projectVersions, makeAlbumFolders };
+module.exports = { newestByOrder, allFiles, tempLink, parseOrder, albumData, projectVersions, makeAlbumFolders, mapLimit };
