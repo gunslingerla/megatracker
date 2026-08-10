@@ -79,6 +79,7 @@ module.exports = async (req, res) => {
         notes: f[F.track.notes] || "",
         lyrics: f[F.track.lyrics] || "",
         lyricsData: f[F.track.lyricsData] || "",
+        cover: att(f[F.track.art]),
         dueDate: f[F.track.dueDate] || null,
         order: f[F.track.order] ?? 999,
         albumId: first(f[F.track.album]) || null,

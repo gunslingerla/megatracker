@@ -54,6 +54,7 @@ const F = {
     lyricsData: "fldT7D6xs1JgQW7JF",
     feedback: "fldzqpxcV9hlsxRMY",
     onHold: "fldpiE7ps65IYglWH",
+    art: "fldxcUo4xqXzmkcCr",
   },
   feedback: {
     name: "fldtengI4Ng7UGxKL",
@@ -152,6 +153,18 @@ async function create(tableId, records, typecast = true) {
   return (await r.json()).records;
 }
 
+// Upload an image straight into an attachment field (base64), no external hosting needed.
+async function uploadAttachment(recordId, fieldId, { filename, contentType, base64 }) {
+  const url = `https://content.airtable.com/v0/${BASE}/${recordId}/${fieldId}/uploadAttachment`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ contentType, filename, file: base64 }),
+  });
+  if (!r.ok) throw new Error(`Airtable upload failed: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+
 // Delete records by ID (chunks of 10, Airtable's per-request limit).
 async function del(tableId, ids) {
   for (let i = 0; i < ids.length; i += 10) {
@@ -162,4 +175,4 @@ async function del(tableId, ids) {
   }
 }
 
-module.exports = { BASE, T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch, create, del };
+module.exports = { BASE, T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch, create, del, uploadAttachment };

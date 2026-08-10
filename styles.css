@@ -171,6 +171,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .card:hover { box-shadow: var(--shadow); filter: brightness(1.04); }
 .card:active { cursor: grabbing; transform: scale(0.998); }
 .card .top { display: flex; align-items: flex-start; gap: 8px; }
+.card-art { width: 40px; height: 40px; border-radius: 8px; background: var(--panel-2) center/cover no-repeat; border: 1px solid var(--stroke-strong); flex: none; }
 .card .title { font-weight: 700; font-size: 14.5px; line-height: 1.2; }
 .card .ip {
   font-size: 10.5px; color: var(--accent-2); background: var(--accent-soft);
@@ -217,6 +218,9 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .title-edit { width: 100%; font-size: 19px; font-weight: 700; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 4px 6px; }
 .title-edit:hover { border-color: var(--stroke-strong); }
 .title-edit:focus { outline: none; border-color: var(--accent); background: var(--panel-2); }
+.art-row { display: flex; align-items: center; gap: 12px; }
+.art-thumb { width: 64px; height: 64px; border-radius: 10px; border: 1px solid var(--stroke-strong); background: var(--panel-2) center/cover no-repeat; display: grid; place-items: center; color: var(--muted-2); font-size: 22px; flex: none; }
+.art-upload { cursor: pointer; }
 .drawer .dbody { padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
 .field label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--label); margin-bottom: 6px; }
 .field input, .field textarea, .field select { width: 100%; }

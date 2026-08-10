@@ -54,6 +54,40 @@ const update = (entity, id, fields) => post("/api/update", { entity, id, fields 
 const createEntity = (entity, fields) => post("/api/create", { entity, fields });
 const deleteEntity = (entity, id) => post("/api/delete", { entity, id });
 
+/* ---- Art upload ------------------------------------------------------------*/
+async function uploadArt(entity, id, file) {
+  if (file.size > 4 * 1024 * 1024) { toast("Image too large (max ~4MB)", true); return { ok: false }; }
+  const b64 = await new Promise((resolve, reject) => {
+    const fr = new FileReader(); fr.onload = () => resolve(String(fr.result).split(",")[1]); fr.onerror = reject; fr.readAsDataURL(file);
+  });
+  return post("/api/upload", { entity, id, filename: file.name, contentType: file.type || "image/png", dataBase64: b64 });
+}
+function artFieldHTML(entity, id, cover) {
+  const has = cover && cover[0];
+  return `
+    <div class="field"><label>${entity === "album" ? "Cover art" : "Track art"}</label>
+      <div class="art-row">
+        <div class="art-thumb" ${has ? `style="background-image:url('${has.thumb}')"` : ""}>${has ? "" : "&#9835;"}</div>
+        <label class="add-btn ghost art-upload">&#128247; Upload / change<input type="file" accept="image/*" data-artupload="${entity}:${id}" hidden /></label>
+        ${has ? `<button class="fb-mini" data-artremove="${entity}:${id}">Remove</button>` : ""}
+      </div>
+    </div>`;
+}
+function wireArt() {
+  document.querySelectorAll("[data-artupload]").forEach((inp) => inp.addEventListener("change", async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const [entity, id] = inp.dataset.artupload.split(":");
+    toast("Uploading art…");
+    const r = await uploadArt(entity, id, f);
+    if (r.ok) { toast("Art updated"); await refresh(false); (entity === "album" ? openAlbumDrawer : openDrawer)(id); }
+  }));
+  document.querySelectorAll("[data-artremove]").forEach((b) => b.addEventListener("click", async () => {
+    const [entity, id] = b.dataset.artremove.split(":");
+    const r = await update(entity, id, { [entity === "album" ? "cover" : "art"]: [] });
+    if (r.ok) { toast("Art removed"); await refresh(false); (entity === "album" ? openAlbumDrawer : openDrawer)(id); }
+  }));
+}
+
 let refreshing = false, refreshQueued = false;
 async function refresh(keepDrawer = true) {
   if (refreshing) { refreshQueued = true; return; }
@@ -175,6 +209,7 @@ function cardHTML(t) {
   return `
     <div class="card" draggable="true" data-id="${t.id}">
       <div class="top">
+        ${t.cover && t.cover[0] ? `<div class="card-art" style="background-image:url('${t.cover[0].thumb}')"></div>` : ""}
         <div class="title-wrap">${playBtn}${num !== "" ? `<span class="tnum">${num}</span>` : ""}<div class="title">${esc(t.title)}</div></div>
         ${t.inspiredBy ? `<div class="ip">${esc(t.inspiredBy)}</div>` : ""}
       </div>
@@ -233,7 +268,7 @@ function albumsBoardHTML() {
 function albumCardHTML(a) {
   return `
     <div class="card" data-album="${a.id}">
-      <div class="top"><div class="title">${esc(a.title)}</div></div>
+      <div class="top">${a.cover && a.cover[0] ? `<div class="card-art" style="background-image:url('${a.cover[0].thumb}')"></div>` : ""}<div class="title">${esc(a.title)}</div></div>
       <div class="ref">${esc(a.artist)} &middot; ${a.trackCount} tracks</div>
       <div class="meter"><div class="bar" style="flex:1"><i style="width:${a.progress}%"></i></div></div>
       <div class="footer"><span class="prog-num">${a.progress}% complete</span></div>
@@ -428,6 +463,7 @@ function openDrawer(id) {
       <button class="icon-btn close" id="closeDrawer">&times;</button>
     </div>
     <div class="dbody">
+      ${artFieldHTML("track", t.id, t.cover)}
       <div class="row2">
         <div class="field"><label>Stage</label>${stageSelect("dStage", t.stage, stages)}</div>
         <div class="field"><label>Inspired by (game / IP)</label><input id="dIP" list="ipList" value="${esc(t.inspiredBy)}" />${ipDatalist()}</div>
@@ -516,6 +552,7 @@ function openDrawer(id) {
     const r = await deleteEntity("track", id);
     if (r.ok) { toast("Track deleted"); closeDrawer(); refresh(false); }
   });
+  wireArt();
 }
 
 /* ---- Drawer: album (edit) --------------------------------------------------*/
@@ -526,6 +563,7 @@ function openAlbumDrawer(id) {
   openShell(`
     <div class="dhead"><div style="flex:1"><input id="aTitle" type="text" value="${esc(a.title)}" class="title-edit" title="Click to rename" /></div><button class="icon-btn close" id="closeDrawer">&times;</button></div>
     <div class="dbody">
+      ${artFieldHTML("album", a.id, a.cover)}
       <div class="row2">
         <div class="field"><label>Artist</label><input id="aArtist" type="text" value="${esc(a.artist)}" /></div>
         <div class="field"><label>Stage</label>${stageSelect("aStage", a.stage, stages)}</div>
@@ -568,6 +606,7 @@ function openAlbumDrawer(id) {
     const r = await deleteEntity("album", id);
     if (r.ok) { toast("Album deleted"); closeDrawer(); state.filters.albumId = ""; refresh(false); }
   });
+  wireArt();
 }
 
 /* ---- Drawer: create --------------------------------------------------------*/
