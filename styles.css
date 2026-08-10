@@ -543,5 +543,6 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 
 /* Bigger tap targets on touch devices */
 @media (hover: none) {
-  .fb-mini, .play-btn, .icon-btn { min-height: 32px; }
+  .fb-mini, .icon-btn { min-height: 32px; }
+  .play-btn { width: 32px; height: 32px; min-height: 0; } /* keep it a circle, not a squished oval */
 }
