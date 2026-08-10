@@ -272,12 +272,21 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .pchip.done { font-weight: 600; text-decoration: line-through; opacity: 0.85; }
 .pchip.prog { box-shadow: 0 0 0 1.5px rgba(255,255,255,0.14) inset; }
 
-.card .footer { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.card .prog-num { font-size: 11px; color: var(--muted); }
+.card .footer { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-top: 10px; }
+.card .prog-num { font-size: 11px; color: var(--muted); margin-right: auto; }
 .lyr-btn { background: var(--panel-2); border: 1px solid var(--stroke-strong); color: var(--muted); border-radius: 7px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; cursor: pointer; }
 .lyr-btn:hover { color: var(--text); border-color: var(--accent); }
 .card .lock { font-size: 11px; color: var(--danger); display: inline-flex; align-items: center; gap: 4px; }
 .card .waiting { font-size: 10.5px; color: var(--info); display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+/* Full-width "waiting on" banner, tinted by the member's color (--wcol). */
+.wait-banner {
+  margin: 10px -12px -12px; padding: 7px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--wcol) 45%, transparent);
+  border-bottom-left-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--wcol) 20%, transparent);
+  color: color-mix(in srgb, var(--wcol) 70%, #ffffff);
+  font-size: 11px; font-weight: 800; letter-spacing: 0.02em; text-align: center;
+}
 .avatars { display: flex; margin-left: auto; }
 .avatar {
   width: 24px; height: 24px; border-radius: 50%; margin-left: -7px; border: 2px solid var(--panel);

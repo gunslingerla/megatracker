@@ -248,23 +248,19 @@ function cardHTML(t) {
       : `background:${col};border-color:${col};color:#0c0b10`;
     return `<span class="pchip${done ? " done" : ""}${prog ? " prog" : ""}" style="${style}" title="${esc(p.phase)} (${esc(who)}): ${esc(p.status)}">${esc(p.phase)}</span>`;
   }).join("");
-  // Avatars for the members whose parts aren't done yet (dedup), colored by member.
-  const ownerIdSet = new Map();
-  t.phases.filter((p) => p.status !== "Done").forEach((p) => p.ownerIds.forEach((oid) => { if (!ownerIdSet.has(oid)) ownerIdSet.set(oid, p.phase); }));
-  if (ownerIdSet.size === 0) t.ownerIds.forEach((oid) => ownerIdSet.set(oid, ""));
-  const avatars = [...ownerIdSet.entries()].slice(0, 6).map(([oid, role]) => {
-    const m = memberById(oid); const nm = m ? m.display : "?"; const col = m && m.color ? m.color : "#4a4258";
-    return `<div class="avatar" style="background:${col};color:#0c0b10" title="${esc(nm)}${role ? " — " + esc(role) : ""}">${esc(initials(nm))}</div>`;
-  }).join("");
-  const gated = t.stage === "Production" && !t.productionComplete;
   // "Waiting on X" — when every remaining production part belongs to a single member.
-  let waitingName = "";
+  let waitingName = "", waitingId = "";
   {
     const notDone = t.phases.filter((p) => p.status !== "Done");
     const rem = new Set(); const nameById = {};
     notDone.forEach((p) => p.ownerIds.forEach((oid, idx) => { rem.add(oid); nameById[oid] = p.owners[idx] || nameById[oid]; }));
-    if (t.stage === "Production" && !t.productionComplete && notDone.length > 0 && rem.size === 1) waitingName = nameById[[...rem][0]] || "";
+    if (t.stage === "Production" && !t.productionComplete && notDone.length > 0 && rem.size === 1) { waitingId = [...rem][0]; waitingName = nameById[waitingId] || ""; }
   }
+  const waitM = waitingId ? memberById(waitingId) : null;
+  const waitCol = waitM && waitM.color ? waitM.color : "#6a6478";
+  const waitBanner = waitingName
+    ? `<div class="wait-banner" style="--wcol:${waitCol}" title="Only ${esc(waitingName)}'s part is left">Waiting on ${esc(waitingName)}</div>`
+    : "";
   const audio = audioFor(t);
   const playingThis = state.audio.currentId === t.id && state.audio.playing;
   const playBtn = audio
@@ -284,9 +280,8 @@ function cardHTML(t) {
         <span class="prog-num">${t.phasesDone}/${t.phasesTotal} phases</span>
         <button class="lyr-btn" data-lyr="${t.id}" title="Edit lyrics">Lyrics</button>
         <button class="lyr-btn" data-fb="${t.id}" title="Timestamped feedback">Feedback${openFbCount(t) ? ` (${openFbCount(t)})` : ""}</button>
-        ${waitingName ? `<span class="waiting" title="Only ${esc(waitingName)}'s part is left">Waiting on ${esc(waitingName)}</span>` : ""}
-        <div class="avatars">${avatars}</div>
       </div>
+      ${waitBanner}
     </div>`;
 }
 
