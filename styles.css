@@ -594,7 +594,11 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .tp-jump { display: flex; gap: 6px; flex-wrap: wrap; }
 .tp-jump button { padding: 5px 10px; font-size: 12px; }
 .tp-scroll { flex: 1; overflow: auto; scroll-behavior: smooth; padding: 8vh 3vw 60vh; }
-.tp-editwrap { flex: 1; display: flex; padding: 3vh 5vw; overflow: auto; }
+.tp-edithd { display: flex; align-items: center; gap: 12px; padding: 3vh 5vw 12px; }
+.tp-edithd .tp-title { font-weight: 700; }
+.tp-edithd button { background: rgba(255,255,255,0.06); color: #f6f2fa; border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 13px; }
+.tp-edithd button:hover { border-color: var(--accent); }
+.tp-editwrap { flex: 1; display: flex; padding: 0 5vw 14px; overflow: auto; }
 .tp-editarea {
   flex: 1; width: 100%; background: rgba(255,255,255,0.03); color: #f6f2fa;
   border: 1px solid rgba(255,255,255,0.16); border-radius: 12px; padding: 18px 20px;

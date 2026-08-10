@@ -1317,7 +1317,7 @@ function openTeleprompter(id, secsOverride) {
   }
   function drawEdit() {
     tp.innerHTML = `
-      <div class="tp-bar">
+      <div class="tp-edithd">
         <span class="tp-title">Editing &middot; ${esc(t.title)}</span>
         <span class="spacer" style="flex:1"></span>
         <button id="tpEsave">Save</button>
