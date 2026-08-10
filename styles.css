@@ -482,6 +482,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .preview .phead { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
 .preview .phead .cover { width: 88px; height: 88px; border-radius: 14px; border: 1px solid var(--stroke-strong); background: var(--panel-2) center/cover no-repeat; display: grid; place-items: center; color: var(--muted-2); font-size: 30px; }
 .preview .phead h1 { margin: 0; font-size: 26px; }
+.preview .phead .asw-btn { font-size: 26px; margin-left: -2px; }
 .preview .phead .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .preview .playall { margin-top: 10px; }
 .trow { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; }

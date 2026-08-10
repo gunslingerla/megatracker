@@ -153,26 +153,46 @@ function render() {
   else if (state.view === "hold") main.innerHTML = holdHTML();
   else if (state.view === "roster") main.innerHTML = rosterHTML();
   wireBoard();
-  // The album switcher (in the strip) shows on every album-scoped view.
-  const showStrip = ["tracks", "preview", "members", "calendar"].includes(state.view);
+  wireSwitchers();
+  // The header strip switcher shows on album-scoped views; on Preview each section
+  // header is its own switcher, so the strip is hidden there.
+  const showStrip = ["tracks", "members", "calendar"].includes(state.view);
   $("#albumStrip").style.display = showStrip ? "" : "none";
 }
 
-// Album filter lives in the header now: the title is a click-to-switch control.
-function albumSwitcherHTML() {
-  const id = state.filters.albumId;
-  const cur = currentAlbum();
-  const label = cur ? cur.title : (id === "__unassigned" ? "Unassigned" : "All albums");
+// Album filter lives in the header (and each preview title): the title is a
+// click-to-switch control. `selValue` = the value this instance should display;
+// defaults to the active filter.
+function albumSwitcherHTML(selValue) {
+  const albums = state.data.albums;
+  const sel = selValue != null ? selValue : state.filters.albumId;
+  const label = sel === "__unassigned" ? "Unassigned"
+    : (!sel || sel === "__all") ? "All albums"
+    : ((albums.find((a) => a.id === sel) || {}).title || "All albums");
   const opts = [{ v: "__all", t: "All albums" }]
-    .concat(state.data.albums.map((a) => ({ v: a.id, t: a.title, current: a.current })))
+    .concat(albums.map((a) => ({ v: a.id, t: a.title, current: a.current })))
     .concat([{ v: "__unassigned", t: "Unassigned" }]);
   const menu = opts.map((o) =>
-    `<button class="asw-opt${o.v === id ? " sel" : ""}" data-albsel="${o.v}">${esc(o.t)}${o.current ? ` <span class="cur-tag">Current</span>` : ""}</button>`
+    `<button class="asw-opt${o.v === sel ? " sel" : ""}" data-albsel="${o.v}">${esc(o.t)}${o.current ? ` <span class="cur-tag">Current</span>` : ""}</button>`
   ).join("");
   return `<div class="asw-wrap">
-    <button class="asw-btn" id="albSwitch" title="Switch album">${esc(label)} <span class="asw-caret">&#9662;</span></button>
-    <div class="asw-menu" id="albMenu">${menu}</div>
+    <button class="asw-btn" title="Switch album">${esc(label)} <span class="asw-caret">&#9662;</span></button>
+    <div class="asw-menu">${menu}</div>
   </div>`;
+}
+// Wire every album switcher currently in the DOM (header strip + preview titles).
+function wireSwitchers() {
+  document.querySelectorAll(".asw-wrap").forEach((w) => {
+    const btn = w.querySelector(".asw-btn"), menu = w.querySelector(".asw-menu");
+    if (!btn || !menu) return;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.querySelectorAll(".asw-menu.open").forEach((m) => { if (m !== menu) m.classList.remove("open"); });
+      menu.classList.toggle("open");
+    });
+    menu.querySelectorAll("[data-albsel]").forEach((o) =>
+      o.addEventListener("click", () => { state.filters.albumId = o.dataset.albsel; render(); }));
+  });
 }
 
 function renderAlbumStrip() {
@@ -195,12 +215,6 @@ function renderAlbumStrip() {
   }
   const link = $("#editAlbumLink");
   if (link && alb) link.addEventListener("click", (e) => { e.preventDefault(); openAlbumDrawer(alb.id); });
-  const btn = $("#albSwitch"), menu = $("#albMenu");
-  if (btn && menu) {
-    btn.addEventListener("click", (e) => { e.stopPropagation(); menu.classList.toggle("open"); });
-    menu.querySelectorAll("[data-albsel]").forEach((o) =>
-      o.addEventListener("click", () => { state.filters.albumId = o.dataset.albsel; render(); }));
-  }
 }
 
 /* ---- Track board -----------------------------------------------------------*/
@@ -1067,7 +1081,7 @@ function albumPreviewSection(alb) {
       <div class="phead">
         <div class="cover" ${cover}>${alb.cover[0] ? "" : ""}</div>
         <div>
-          <h1>${esc(alb.title)}</h1>
+          ${albumSwitcherHTML(alb.id)}
           <div class="sub">${esc(alb.artist)} &middot; ${tracks.length} tracks &middot; ${alb.progress}% complete</div>
           <div class="playall">${anyAudio ? `<button class="add-btn" data-playalbum="${alb.id}">&#9654;&#xFE0E; Play album</button>` : `<span class="empty">No audio yet</span>`}</div>
         </div>
@@ -1085,7 +1099,7 @@ function previewHTML() {
   const unassigned = showUnassigned ? state.data.tracks.filter((t) => !t.albumId && !t.onHold).sort((a, b) => effOrder(a) - effOrder(b)) : [];
   if (!albums.length && !unassigned.length) return `<div class="loading">Nothing to preview for this filter.</div>`;
   let html = albums.map(albumPreviewSection).join("");
-  if (unassigned.length) html += `<div class="palbum"><div class="phead"><div class="cover"></div><div><h1>Unassigned</h1><div class="sub">${unassigned.length} track(s) not on an album</div></div></div>${unassigned.map(trackRowHTML).join("")}</div>`;
+  if (unassigned.length) html += `<div class="palbum"><div class="phead"><div class="cover"></div><div>${albumSwitcherHTML("__unassigned")}<div class="sub">${unassigned.length} track(s) not on an album</div></div></div>${unassigned.map(trackRowHTML).join("")}</div>`;
   return `<div class="preview">${html}</div>`;
 }
 
@@ -1409,10 +1423,9 @@ function toast(msg, bad = false) {
 function wireChrome() {
   document.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => { state.view = t.dataset.view; render(); }));
-  // Close the album switcher menu when clicking anywhere outside it.
+  // Close any open album switcher menu when clicking outside of it.
   document.addEventListener("click", (e) => {
-    const m = document.getElementById("albMenu");
-    if (m && m.classList.contains("open") && !e.target.closest(".asw-wrap")) m.classList.remove("open");
+    if (!e.target.closest(".asw-wrap")) document.querySelectorAll(".asw-menu.open").forEach((m) => m.classList.remove("open"));
   });
   // Right slide-out menu
   const openMenu = () => { $("#sidemenu").classList.add("open"); $("#menuScrim").classList.add("open"); };
