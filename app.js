@@ -128,28 +128,17 @@ function visibleTracks() {
 }
 function ipOptions() { return [...new Set(state.data.tracks.map((t) => t.inspiredBy).filter(Boolean))].sort(); }
 
-/* ---- Filters UI ------------------------------------------------------------*/
+/* ---- Filters ---------------------------------------------------------------*/
+// The only filter is the album scope, chosen from the header switcher. Here we just
+// pick the default on a fresh load and keep the value valid after data changes.
 function syncFilters() {
-  const { albums, members } = state.data;
-  const fa = $("#filterAlbum");
-  fa.innerHTML = `<option value="__all">All albums</option>` + albums.map((a) => `<option value="${a.id}">${esc(a.title)}</option>`).join("") + `<option value="__unassigned">Unassigned</option>`;
-  // On a fresh load, default to the album marked "Current" (if any); once the user
-  // changes the filter this stays put for the rest of the session.
+  const { albums } = state.data;
   if (!state.filters.albumId) {
     const cur = albums.find((a) => a.current);
     state.filters.albumId = cur ? cur.id : "__all";
   }
   const valid = state.filters.albumId === "__all" || state.filters.albumId === "__unassigned" || albums.some((a) => a.id === state.filters.albumId);
   if (!valid) state.filters.albumId = "__all";
-  fa.value = state.filters.albumId;
-
-  $("#filterIP").innerHTML = `<option value="">All inspirations</option>` +
-    ipOptions().map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
-  $("#filterIP").value = state.filters.ip;
-
-  $("#filterMember").innerHTML = `<option value="">All members</option>` +
-    members.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join("");
-  $("#filterMember").value = state.filters.memberId;
 }
 
 /* ---- Render dispatch -------------------------------------------------------*/
@@ -164,34 +153,69 @@ function render() {
   else if (state.view === "hold") main.innerHTML = holdHTML();
   else if (state.view === "roster") main.innerHTML = rosterHTML();
   wireBoard();
-  $("#albumStrip").style.display = (state.view === "tracks") ? "" : "none";
-  // Filter bar: album filter on any album-scoped view; inspiration/member only on the board.
-  const showFilters = ["tracks", "preview", "members", "calendar"].includes(state.view);
-  $("#filterbar").classList.toggle("hidden", !showFilters);
-  $("#filterIP").style.display = (state.view === "tracks") ? "" : "none";
-  $("#filterMember").style.display = (state.view === "tracks") ? "" : "none";
+  // The album switcher (in the strip) shows on every album-scoped view.
+  const showStrip = ["tracks", "preview", "members", "calendar"].includes(state.view);
+  $("#albumStrip").style.display = showStrip ? "" : "none";
+}
+
+// Album filter lives in the header now: the title is a click-to-switch control.
+function albumSwitcherHTML() {
+  const id = state.filters.albumId;
+  const cur = currentAlbum();
+  const label = cur ? cur.title : (id === "__unassigned" ? "Unassigned" : "All albums");
+  const opts = [{ v: "__all", t: "All albums" }]
+    .concat(state.data.albums.map((a) => ({ v: a.id, t: a.title, current: a.current })))
+    .concat([{ v: "__unassigned", t: "Unassigned" }]);
+  const menu = opts.map((o) =>
+    `<button class="asw-opt${o.v === id ? " sel" : ""}" data-albsel="${o.v}">${esc(o.t)}${o.current ? ` <span class="cur-tag">Current</span>` : ""}</button>`
+  ).join("");
+  return `<div class="asw-wrap">
+    <button class="asw-btn" id="albSwitch" title="Switch album">${esc(label)} <span class="asw-caret">&#9662;</span></button>
+    <div class="asw-menu" id="albMenu">${menu}</div>
+  </div>`;
 }
 
 function renderAlbumStrip() {
-  const alb = currentAlbum();
   const el = $("#albumStrip");
-  if (!alb) { el.innerHTML = ""; return; }
-  const cover = alb.cover[0] ? `style="background-image:url('${alb.cover[0].thumb}')"` : "";
-  el.innerHTML = `
-    <div class="album-strip">
-      <div class="cover" ${cover}></div>
-      <div class="album-meta">
-        <h1>${esc(alb.title)}</h1>
-        <div class="sub">${esc(alb.artist)} &middot; ${alb.trackCount} tracks &middot; ${esc(alb.stage)} &middot; <a href="#" id="editAlbumLink">Edit album</a></div>
-        <div class="albprog2"><div class="bar"><i style="width:${alb.progress}%"></i></div><span class="pct2">${alb.progress}%</span></div>
-      </div>
-    </div>`;
+  const alb = currentAlbum();
+  const full = state.view === "tracks" && !!alb; // cover + progress only on the dashboard
+  if (full) {
+    const cover = alb.cover[0] ? `style="background-image:url('${alb.cover[0].thumb}')"` : "";
+    el.innerHTML = `
+      <div class="album-strip">
+        <div class="cover" ${cover}></div>
+        <div class="album-meta">
+          ${albumSwitcherHTML()}
+          <div class="sub">${esc(alb.artist)} &middot; ${alb.trackCount} tracks &middot; ${esc(alb.stage)} &middot; <a href="#" id="editAlbumLink">Edit album</a></div>
+          <div class="albprog2"><div class="bar"><i style="width:${alb.progress}%"></i></div><span class="pct2">${alb.progress}%</span></div>
+        </div>
+      </div>`;
+  } else {
+    el.innerHTML = `<div class="album-strip compact"><div class="album-meta">${albumSwitcherHTML()}</div></div>`;
+  }
   const link = $("#editAlbumLink");
-  if (link) link.addEventListener("click", (e) => { e.preventDefault(); openAlbumDrawer(alb.id); });
+  if (link && alb) link.addEventListener("click", (e) => { e.preventDefault(); openAlbumDrawer(alb.id); });
+  const btn = $("#albSwitch"), menu = $("#albMenu");
+  if (btn && menu) {
+    btn.addEventListener("click", (e) => { e.stopPropagation(); menu.classList.toggle("open"); });
+    menu.querySelectorAll("[data-albsel]").forEach((o) =>
+      o.addEventListener("click", () => { state.filters.albumId = o.dataset.albsel; render(); }));
+  }
 }
 
 /* ---- Track board -----------------------------------------------------------*/
 function segClass(status) { return status === "Done" ? "done" : status === "In progress" ? "prog" : ""; }
+
+// Inspiration tag with a hover popover listing the other songs drawing on the same IP.
+function ipTagHTML(t) {
+  const related = state.data.tracks
+    .filter((x) => x.id !== t.id && x.inspiredBy && x.inspiredBy === t.inspiredBy && !x.onHold)
+    .sort((a, b) => effOrder(a) - effOrder(b));
+  const list = related.length
+    ? `<ul>${related.map((x) => `<li>${dispNum(x) !== "" ? `<span class="tnum">${dispNum(x)}</span>` : ""}${esc(x.title)}</li>`).join("")}</ul>`
+    : `<div class="empty">No other songs yet.</div>`;
+  return `<div class="ip" tabindex="0">${esc(t.inspiredBy)}<div class="ip-pop"><div class="ip-pop-h">Also inspired by ${esc(t.inspiredBy)}</div>${list}</div></div>`;
+}
 
 function cardHTML(t) {
   // Small phase chips tinted by the owner's color: bright while open/in-progress,
@@ -235,7 +259,7 @@ function cardHTML(t) {
       <div class="top">
         ${t.cover && t.cover[0] ? `<div class="card-art" style="background-image:url('${t.cover[0].thumb}')"></div>` : ""}
         <div class="title-wrap">${playBtn}${num !== "" ? `<span class="tnum">${num}</span>` : ""}<div class="title">${esc(t.title)}</div></div>
-        ${t.inspiredBy ? `<div class="ip">${esc(t.inspiredBy)}</div>` : ""}
+        ${t.inspiredBy ? ipTagHTML(t) : ""}
       </div>
       ${t.reference ? `<div class="ref">${esc(t.reference)}</div>` : ""}
       <div class="meter">${segs}</div>
@@ -1385,9 +1409,11 @@ function toast(msg, bad = false) {
 function wireChrome() {
   document.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => { state.view = t.dataset.view; render(); }));
-  $("#filterAlbum").addEventListener("change", (e) => { state.filters.albumId = e.target.value; render(); });
-  $("#filterIP").addEventListener("change", (e) => { state.filters.ip = e.target.value; render(); });
-  $("#filterMember").addEventListener("change", (e) => { state.filters.memberId = e.target.value; render(); });
+  // Close the album switcher menu when clicking anywhere outside it.
+  document.addEventListener("click", (e) => {
+    const m = document.getElementById("albMenu");
+    if (m && m.classList.contains("open") && !e.target.closest(".asw-wrap")) m.classList.remove("open");
+  });
   // Right slide-out menu
   const openMenu = () => { $("#sidemenu").classList.add("open"); $("#menuScrim").classList.add("open"); };
   const closeMenu = () => { $("#sidemenu").classList.remove("open"); $("#menuScrim").classList.remove("open"); };

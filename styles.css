@@ -166,6 +166,31 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 }
 .album-strip h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
 .album-strip .album-meta { flex: 1; min-width: 0; }
+.album-strip.compact { padding-top: 12px; padding-bottom: 10px; }
+
+/* Album switcher (the title is a click-to-switch control) */
+.asw-wrap { position: relative; display: inline-block; }
+.asw-btn {
+  background: transparent; border: 1px solid transparent; color: var(--text); cursor: pointer;
+  font-size: 22px; font-weight: 700; letter-spacing: -0.01em; padding: 2px 8px 2px 2px; border-radius: 9px;
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
+}
+.asw-btn:hover { background: var(--panel-2); border-color: var(--stroke-strong); }
+.asw-caret { color: var(--muted); font-size: 14px; }
+.asw-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 35; min-width: 220px; max-width: 320px;
+  background: var(--bg-1); border: 1px solid var(--stroke-strong); border-radius: 12px; box-shadow: var(--shadow);
+  padding: 6px; display: none; max-height: 60vh; overflow-y: auto;
+}
+.asw-menu.open { display: block; }
+.asw-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: transparent; border: none; color: var(--text); cursor: pointer;
+  padding: 8px 10px; border-radius: 8px; font-size: 14px; font-weight: 600;
+}
+.asw-opt:hover { background: var(--panel-2); }
+.asw-opt.sel { background: var(--panel-3); }
+.asw-opt .cur-tag { margin-left: auto; }
 .album-strip .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
 .album-strip .albprog2 { display: flex; align-items: center; gap: 10px; margin-top: 8px; max-width: 420px; }
 .album-strip .albprog2 .bar { flex: 1; }
@@ -212,15 +237,29 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   background: var(--card-fill);
   padding: 12px; cursor: grab; transition: transform .06s, box-shadow .14s, filter .14s;
 }
-.card:hover { box-shadow: var(--shadow); filter: brightness(1.04); }
+.card:hover { box-shadow: var(--shadow); filter: brightness(1.04); position: relative; z-index: 3; }
 .card:active { cursor: grabbing; transform: scale(0.998); }
 .card .top { display: flex; align-items: flex-start; gap: 8px; }
 .card-art { width: 40px; height: 40px; border-radius: 8px; background: var(--panel-2) center/cover no-repeat; border: 1px solid var(--stroke-strong); flex: none; }
 .card .title { font-weight: 700; font-size: 14.5px; line-height: 1.2; }
 .card .ip {
-  font-size: 10.5px; color: var(--accent-2); background: var(--accent-soft);
+  position: relative; font-size: 10.5px; color: var(--accent-2); background: var(--accent-soft);
   border: 1px solid var(--accent-soft); padding: 2px 7px; border-radius: 999px; white-space: nowrap; margin-left: auto;
+  cursor: help; outline: none;
 }
+/* Hover popover: other songs drawing on the same inspiration */
+.ip-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; min-width: 180px; max-width: 240px;
+  background: var(--bg-1); border: 1px solid var(--stroke-strong); border-radius: 10px; box-shadow: var(--shadow);
+  padding: 8px 10px; opacity: 0; pointer-events: none; transform: translateY(-4px);
+  transition: opacity .12s ease, transform .12s ease; white-space: normal; text-align: left;
+}
+.card .ip:hover .ip-pop, .card .ip:focus .ip-pop, .card .ip:focus-within .ip-pop { opacity: 1; transform: none; pointer-events: auto; }
+.ip-pop .ip-pop-h { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; font-weight: 700; }
+.ip-pop ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.ip-pop li { font-size: 12px; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.ip-pop li .tnum { color: var(--accent-2); margin-right: 5px; }
+.ip-pop .empty { font-size: 12px; color: var(--muted); }
 .card .ref { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
 
 .meter { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
