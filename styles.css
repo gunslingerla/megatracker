@@ -420,8 +420,15 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .cal-cell.out { opacity: 0.4; }
 .cal-cell .d { font-size: 12px; color: var(--muted); }
 .cal-ev { font-size: 11.5px; background: var(--accent-soft); border: 1px solid var(--accent-soft); color: var(--accent-2); border-radius: 6px; padding: 3px 6px; margin-top: 5px; cursor: pointer; }
-.cal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.cal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .cal-nav h2 { margin: 0; font-size: 18px; }
+.cal-sync { margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--stroke-strong); border-radius: 12px; background: var(--panel-2); max-width: 720px; }
+.cal-sync-h { font-weight: 700; margin-bottom: 10px; }
+.cal-sync-row { display: flex; gap: 8px; }
+.cal-sync-row input { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; }
+.cal-sync-steps { margin: 12px 0 8px; padding-left: 20px; color: var(--muted); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.cal-sync-steps b { color: var(--text); }
+.cal-sync-note { color: var(--muted-2); font-size: 12px; }
 
 /* ---- Member (Who's Up Next) view ------------------------------------------*/
 .members { padding: 16px var(--gutter) 40px; display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(260px, 26vw, 320px), 1fr)); gap: 14px; align-items: start; }

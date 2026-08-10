@@ -468,9 +468,40 @@ function calendarHTML() {
         <h2>${monthName}</h2>
         <button class="icon-btn" data-cal="1">&#8250;</button>
         <span style="color:var(--muted);font-size:13px;margin-left:8px">Track due dates</span>
+        <span class="spacer" style="flex:1"></span>
+        <button class="add-btn ghost" id="calSubBtn">Sync to Google Calendar</button>
       </div>
+      <div id="calSubBody"></div>
       <div class="cal-grid">${heads}${cells}</div>
     </div>`;
+}
+function openCalSync() {
+  const body = $("#calSubBody");
+  if (!body) return;
+  body.innerHTML = `<div class="cal-sync"><div class="loading" style="padding:8px 0">Getting your feed link…</div></div>`;
+  fetch("/api/calfeed").then((r) => r.json()).then((j) => {
+    if (!j || !j.url) { body.innerHTML = `<div class="cal-sync">Couldn't build the feed link.</div>`; return; }
+    body.innerHTML = `
+      <div class="cal-sync">
+        <div class="cal-sync-h">Subscribe in Google Calendar</div>
+        <div class="cal-sync-row">
+          <input id="calFeedUrl" type="text" readonly value="${esc(j.url)}" />
+          <button class="add-btn" id="calCopy">Copy</button>
+        </div>
+        <ol class="cal-sync-steps">
+          <li>Open Google Calendar on the web.</li>
+          <li>Left sidebar → <b>Other calendars</b> → <b>+</b> → <b>From URL</b>.</li>
+          <li>Paste this link and click <b>Add calendar</b>.</li>
+        </ol>
+        <div class="cal-sync-note">Your due dates appear as a separate calendar and refresh automatically (Google polls every few hours). It's read-only — edit due dates here in the app.${j.secured ? "" : " Tip: set a CAL_FEED_KEY env var in Vercel to keep this link private."}</div>
+      </div>`;
+    const copy = $("#calCopy");
+    copy.onclick = async () => {
+      const inp = $("#calFeedUrl");
+      try { await navigator.clipboard.writeText(inp.value); toast("Feed link copied"); }
+      catch { inp.select(); document.execCommand("copy"); toast("Feed link copied"); }
+    };
+  }).catch(() => { body.innerHTML = `<div class="cal-sync">Couldn't build the feed link.</div>`; });
 }
 
 /* ---- Wiring ----------------------------------------------------------------*/
@@ -580,6 +611,7 @@ function wireBoard() {
 
   document.querySelectorAll("[data-cal]").forEach((b) =>
     b.addEventListener("click", () => { calMonth.setMonth(calMonth.getMonth() + Number(b.dataset.cal)); render(); }));
+  { const cs = document.getElementById("calSubBtn"); if (cs) cs.onclick = openCalSync; }
   document.querySelectorAll("[data-open]").forEach((b) =>
     b.addEventListener("click", () => openDrawer(b.dataset.open)));
 }

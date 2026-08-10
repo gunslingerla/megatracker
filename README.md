@@ -44,6 +44,11 @@ fallback, so you don't even need `DROPBOX_SHARED_LINK` unless the folder moves. 
 | `DROPBOX_SHARED_LINK` | for playlist | The shared link to the "Songs in Progress" folder. |
 | `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `DROPBOX_REFRESH_TOKEN` | for playlist | Permanent Dropbox access (see Playlist setup). |
 | `DROPBOX_TOKEN`  | optional | A short-lived Dropbox token for quick testing instead of the refresh-token trio (expires ~4h). |
+| `CAL_FEED_KEY`   | optional | Secret for the Google Calendar feed. If set, the `.ics` feed only responds to `…/api/calendar.ics?key=THISVALUE`, keeping due dates private. If unset, the feed is publicly reachable by URL. |
+
+### Google Calendar sync (one-way)
+
+The Calendar tab has a **Sync to Google Calendar** button that shows a subscribe URL (`/api/calendar.ics`). In Google Calendar: **Other calendars → + → From URL**, paste it, Add calendar. Track due dates then appear as their own calendar and refresh automatically (Google polls every few hours). It's read-only — add/change due dates in the app. Set `CAL_FEED_KEY` to keep the link private.
 
 ## Playlist (Dropbox) setup
 
