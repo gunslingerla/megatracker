@@ -10,9 +10,10 @@ const MAP = {
       reference: F.track.reference, bpm: F.track.bpm, key: F.track.key,
       songLink: F.track.songLink, projectFile: F.track.projectFile, notes: F.track.notes,
       lyrics: F.track.lyrics, lyricsData: F.track.lyricsData, dueDate: F.track.dueDate,
-      order: F.track.order, ownerIds: F.track.owner,
+      order: F.track.order, ownerIds: F.track.owner, onHold: F.track.onHold,
+      albumId: F.track.album,
     },
-    links: ["ownerIds"],
+    links: ["ownerIds", "albumId"],
   },
   feedback: {
     table: T.feedback,

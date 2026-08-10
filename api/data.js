@@ -81,6 +81,7 @@ module.exports = async (req, res) => {
         dueDate: f[F.track.dueDate] || null,
         order: f[F.track.order] ?? 999,
         albumId: first(f[F.track.album]) || null,
+        onHold: !!f[F.track.onHold],
         ownerIds: arr(f[F.track.owner]),
         owners: arr(f[F.track.owner]).map((id) => memberName[id] || "?"),
         progress: f[F.track.progress] ?? 0,

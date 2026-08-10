@@ -1,15 +1,22 @@
 const { T, F, PHASE_NAMES, listAll, create } = require("./_airtable");
 const { requireAuth } = require("./_auth");
 
-// Which roster roles own which production phase (matched by the member's Role / Instrument text).
+// Default owner(s) for each production phase.
 function ownersForPhase(phaseName, members) {
-  const has = (m, kw) => (m.role || "").toLowerCase().includes(kw);
-  if (phaseName === "Drums") return members.filter((m) => has(m, "drum"));
-  if (phaseName === "Bass") return members.filter((m) => has(m, "bass"));
-  if (phaseName === "Guitars") return members.filter((m) => has(m, "guitar"));
-  if (phaseName === "Vocals") return members.filter((m) => has(m, "vocal"));
-  if (phaseName === "Synth & Sound Design") return members.filter((m) => has(m, "synth") || has(m, "sound"));
-  return [];
+  const role = (kw) => members.filter((m) => (m.role || "").toLowerCase().includes(kw));
+  const name = (kw) => members.filter((m) => (m.name || "").toLowerCase().includes(kw));
+  const MAP = {
+    "Drums": role("drum"),
+    "Bass": role("bass"),
+    "Eric Guitar": name("eric"),
+    "Josh Guitar": name("josh"),
+    "Eric Vocals": name("eric"),
+    "Josh Vocals": name("josh"),
+    "Backing Vocals": name("eric"),
+    "Synth": name("brian").length ? name("brian") : role("synth"),
+    "Sound Design": name("eric"),
+  };
+  return MAP[phaseName] || [];
 }
 
 module.exports = async (req, res) => {
@@ -59,10 +66,8 @@ module.exports = async (req, res) => {
     }
 
     if (entity === "track") {
-      if (!fields.albumId) return res.status(400).json({ error: "albumId required" });
       const tf = {
         [F.track.title]: fields.title || "New track",
-        [F.track.album]: [fields.albumId],
         [F.track.stage]: fields.stage || "Idea",
         [F.track.inspiredBy]: fields.inspiredBy || undefined,
         [F.track.reference]: fields.reference || undefined,
@@ -74,6 +79,7 @@ module.exports = async (req, res) => {
         [F.track.lyrics]: fields.lyrics || undefined,
         [F.track.order]: fields.order != null ? Number(fields.order) : undefined,
       };
+      if (fields.albumId) tf[F.track.album] = [fields.albumId];
       Object.keys(tf).forEach((k) => tf[k] === undefined && delete tf[k]);
       const trackRec = await create(T.tracks, [{ fields: tf }]);
       const trackId = trackRec[0].id;

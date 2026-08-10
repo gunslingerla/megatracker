@@ -228,6 +228,15 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .phase-row + .phase-row { margin-top: 8px; }
 .phase-row .pname { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .phase-row .pname .pdot { width: 9px; height: 9px; border-radius: 50%; }
+.phase-row2 { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid var(--stroke); border-radius: 10px; cursor: pointer; }
+.phase-row2 + .phase-row2 { margin-top: 7px; }
+.phase-row2 input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--good); flex: none; cursor: pointer; }
+.phase-row2 .pname2 { font-weight: 600; font-size: 13.5px; }
+.phase-row2 .powner { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
+.phase-row2.done { border-color: rgba(70,219,160,0.35); background: rgba(70,219,160,0.06); }
+.phase-row2.done .pname2 { color: var(--muted); text-decoration: line-through; }
+.mcard.me { border-color: var(--accent); }
+.mcard.me .mname::after { content: " (you)"; color: var(--accent-2); font-weight: 600; }
 .gate-note { font-size: 12px; color: var(--danger); margin-top: 6px; }
 .gate-note.ok { color: var(--good); }
 
@@ -267,6 +276,14 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .mtask .badge { margin-left: auto; font-size: 10.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--stroke-strong); color: var(--muted); }
 .mtask .badge.prog { color: var(--warn); border-color: var(--warn); }
 .empty { color: var(--muted-2); font-size: 13px; padding: 8px 0; }
+.song-card { border: 1px solid var(--stroke); border-radius: 9px; padding: 8px 10px; margin-top: 8px; background: var(--panel-2); }
+.song-card .song-title { font-weight: 700; font-size: 12.5px; margin-bottom: 4px; }
+.song-task { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 0; cursor: pointer; }
+.song-task input { width: 16px; height: 16px; accent-color: var(--good); flex: none; }
+.song-task .stp { font-weight: 600; }
+.song-task .badge.prog { margin-left: auto; color: var(--warn); border-color: var(--warn); }
+.palbum { margin-bottom: 28px; }
+.hold-col h3 { color: var(--muted-2); }
 
 /* ---- Login -----------------------------------------------------------------*/
 .login-wrap { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
@@ -386,7 +403,10 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .sec .sechd select, .sec .sechd input { padding: 5px 8px; font-size: 12.5px; }
 .sec .sechd .lbl { font-weight: 700; font-size: 13px; }
 .sec .sechd .sgrip { color: var(--muted-2); }
-.sec textarea { width: 100%; min-height: 70px; }
+.sec textarea { width: 100%; min-height: 60px; }
+.sec textarea.autogrow { overflow: hidden; resize: none; }
+.sec-move { margin-top: 6px; }
+.sec-move select { font-size: 12px; padding: 5px 8px; }
 .sec-actions { margin-left: auto; display: flex; gap: 6px; }
 .addsec { display: flex; gap: 8px; align-items: center; }
 
@@ -404,3 +424,44 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .tp-section { margin: 0 auto 1.1em; max-width: 1100px; }
 .tp-section .tp-lbl { color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.42em; margin-bottom: 0.25em; }
 .tp-section .tp-txt { white-space: pre-wrap; line-height: 1.32; font-weight: 700; }
+
+/* ---- Mobile / responsive ---------------------------------------------------*/
+@media (max-width: 760px) {
+  .topbar { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
+  .topbar .spacer { display: none; }
+  .tabs { order: 3; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .tab { white-space: nowrap; }
+  .filters { order: 2; flex-wrap: wrap; width: 100%; }
+  .filters select { flex: 1; min-width: 120px; }
+  .brand { flex: 1; }
+
+  .album-strip { flex-wrap: wrap; padding: 14px 14px 4px; }
+  .album-strip .albprog { margin-left: 0; width: 100%; text-align: left; }
+  .album-strip .albprog .bar { max-width: 100%; }
+
+  .board { grid-auto-columns: 86vw; gap: 10px; padding: 14px; scroll-snap-type: x mandatory; }
+  .col { scroll-snap-align: start; }
+
+  .drawer { width: 100vw; }
+  .row2 { grid-template-columns: 1fr; }
+  .members { grid-template-columns: 1fr; padding: 14px; }
+  .preview { padding: 12px 14px 120px; }
+  .phase-row2 .powner { font-size: 11px; }
+
+  .modal { width: 96vw; max-height: 92vh; }
+
+  .player { flex-wrap: wrap; gap: 8px; padding: 8px 12px 10px; }
+  .player .pinfo { order: -1; min-width: 0; max-width: 60vw; }
+  .player .pctrl { order: -1; }
+  .player .pseek { flex-basis: 100%; order: 3; }
+  .player .ptime { min-width: 0; }
+  .player .pwarn { flex-basis: 100%; }
+
+  .tp-bar { gap: 8px; padding: 10px 12px; }
+  .tp-scroll { padding: 6vh 6vw 70vh; }
+}
+
+/* Bigger tap targets on touch devices */
+@media (hover: none) {
+  .fb-mini, .play-btn, .icon-btn { min-height: 32px; }
+}

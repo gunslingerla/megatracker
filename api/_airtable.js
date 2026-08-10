@@ -51,6 +51,7 @@ const F = {
     progress: "fld890Pju1apupjHC",
     lyricsData: "fldT7D6xs1JgQW7JF",
     feedback: "fldzqpxcV9hlsxRMY",
+    onHold: "fldpiE7ps65IYglWH",
   },
   feedback: {
     name: "fldtengI4Ng7UGxKL",
@@ -77,7 +78,7 @@ const F = {
 
 // The production pipeline, in order. Index used for the progress meter + gate logic.
 const STAGES = ["Idea", "Writing", "Demo", "Production", "Mixing", "Mastering", "Released"];
-const PHASE_NAMES = ["Drums", "Bass", "Guitars", "Vocals", "Synth & Sound Design"];
+const PHASE_NAMES = ["Drums", "Bass", "Eric Guitar", "Josh Guitar", "Eric Vocals", "Josh Vocals", "Backing Vocals", "Synth", "Sound Design"];
 
 function authHeaders() {
   if (!TOKEN) throw new Error("AIRTABLE_TOKEN is not set");

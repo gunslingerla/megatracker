@@ -1,6 +1,6 @@
 # The Megas — Album Tracker
 
-A TRACKIT-style board for the band's albums, backed by the **The Megas** Airtable base
+A visual production board for the band's albums, backed by the **The Megas** Airtable base
 (`app8R88gFzgjBftgo`). Deploys to Vercel; any band member opens the URL, signs in with the
 shared band password, and sees live data.
 

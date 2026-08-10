@@ -12,7 +12,7 @@ const state = {
   view: "tracks",
   filters: { albumId: "", ip: "", memberId: "" },
   openTrackId: null,
-  audio: { map: {}, currentOrder: null, playing: false, configured: false },
+  audio: { map: {}, currentOrder: null, playing: false, configured: false, queue: [] },
 };
 const CANT_PLAY_EXT = ["aif", "aiff"]; // browsers (esp. Chrome) usually can't play AIFF
 
@@ -63,12 +63,13 @@ async function refresh(keepDrawer = true) {
 /* ---- Helpers over state ----------------------------------------------------*/
 function currentAlbum() {
   const { albums } = state.data;
+  if (state.filters.albumId === "__unassigned") return null;
   return albums.find((a) => a.id === state.filters.albumId) || albums[0] || null;
 }
 function visibleTracks() {
   let t = state.data.tracks.slice();
-  const alb = currentAlbum();
-  if (alb) t = t.filter((x) => x.albumId === alb.id);
+  if (state.filters.albumId === "__unassigned") t = t.filter((x) => !x.albumId);
+  else { const alb = currentAlbum(); if (alb) t = t.filter((x) => x.albumId === alb.id); }
   if (state.filters.ip) t = t.filter((x) => x.inspiredBy === state.filters.ip);
   if (state.filters.memberId) {
     const mid = state.filters.memberId;
@@ -82,9 +83,12 @@ function ipOptions() { return [...new Set(state.data.tracks.map((t) => t.inspire
 function syncFilters() {
   const { albums, members } = state.data;
   const fa = $("#filterAlbum");
-  fa.innerHTML = albums.map((a) => `<option value="${a.id}">${esc(a.title)}</option>`).join("");
-  if (!state.filters.albumId && albums[0]) state.filters.albumId = albums[0].id;
-  if (!albums.find((a) => a.id === state.filters.albumId) && albums[0]) state.filters.albumId = albums[0].id;
+  fa.innerHTML = albums.map((a) => `<option value="${a.id}">${esc(a.title)}</option>`).join("") + `<option value="__unassigned">Unassigned</option>`;
+  const isSentinel = state.filters.albumId === "__unassigned";
+  if (!isSentinel) {
+    if (!state.filters.albumId && albums[0]) state.filters.albumId = albums[0].id;
+    if (!albums.find((a) => a.id === state.filters.albumId) && albums[0]) state.filters.albumId = albums[0].id;
+  }
   fa.value = state.filters.albumId;
 
   $("#filterIP").innerHTML = `<option value="">All inspirations</option>` +
@@ -167,8 +171,10 @@ function cardHTML(t) {
 
 function boardHTML(tracks) {
   const stages = state.data.stages;
+  const active = tracks.filter((t) => !t.onHold);
+  const held = tracks.filter((t) => t.onHold);
   const cols = stages.map((s) => {
-    const inCol = tracks.filter((t) => t.stage === s);
+    const inCol = active.filter((t) => t.stage === s);
     const locked = stages.indexOf(s) > PROD_IDX;
     return `
       <div class="col${locked ? " locked-target" : ""}" data-stage="${esc(s)}">
@@ -176,7 +182,12 @@ function boardHTML(tracks) {
         <div class="cards">${inCol.map(cardHTML).join("")}</div>
       </div>`;
   }).join("");
-  return `<div class="board">${cols}</div>`;
+  const holdCol = `
+      <div class="col hold-col" data-hold="1">
+        <h3><span class="dot" style="background:var(--muted-2)"></span>On Hold<span class="count">${held.length}</span></h3>
+        <div class="cards">${held.map(cardHTML).join("")}</div>
+      </div>`;
+  return `<div class="board">${cols}${holdCol}</div>`;
 }
 
 /* ---- Albums board ----------------------------------------------------------*/
@@ -205,28 +216,38 @@ function albumCardHTML(a) {
 /* ---- Members: Who's Up Next ------------------------------------------------*/
 function membersHTML() {
   const alb = currentAlbum();
-  const tracks = state.data.tracks.filter((t) => !alb || t.albumId === alb.id);
+  const tracks = state.data.tracks.filter((t) => (!alb || t.albumId === alb.id) && !t.onHold);
+  const me = getMe();
   const byMember = {};
-  state.data.members.forEach((m) => (byMember[m.id] = { member: m, tasks: [] }));
+  state.data.members.forEach((m) => (byMember[m.id] = { member: m, songs: {}, count: 0 }));
   tracks.forEach((t) => {
     t.phases.filter((p) => p.status !== "Done").forEach((p) => {
       p.ownerIds.forEach((oid) => {
-        if (byMember[oid]) byMember[oid].tasks.push({ track: t.title, phase: p.phase, status: p.status });
+        const rec = byMember[oid]; if (!rec) return;
+        (rec.songs[t.id] = rec.songs[t.id] || { title: t.title, items: [] }).items.push({ phaseId: p.id, phase: p.phase, status: p.status });
+        rec.count++;
       });
     });
   });
-  const cards = Object.values(byMember).map(({ member, tasks }) => {
-    const rows = tasks.length
-      ? tasks.map((t) => `<div class="mtask"><span class="tt">${esc(t.track)}</span> <span style="color:var(--muted)">${esc(t.phase)}</span> <span class="badge ${t.status === "In progress" ? "prog" : ""}">${esc(t.status)}</span></div>`).join("")
-      : `<div class="empty">All caught up &#10003;</div>`;
+  const entries = Object.values(byMember).sort((a, b) => {
+    if (me) { if (a.member.id === me.id) return -1; if (b.member.id === me.id) return 1; }
+    return b.count - a.count;
+  });
+  const cards = entries.map(({ member, songs, count }) => {
+    const songCards = Object.values(songs).map((s) => `
+      <div class="song-card">
+        <div class="song-title">${esc(s.title)}</div>
+        ${s.items.map((it) => `<label class="song-task" data-phase="${it.phaseId}"><input type="checkbox" /> <span class="stp">${esc(it.phase)}</span>${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}</label>`).join("")}
+      </div>`).join("") || `<div class="empty">All caught up &#10003;</div>`;
+    const meCls = me && member.id === me.id ? " me" : "";
     return `
-      <div class="mcard">
+      <div class="mcard${meCls}">
         <div class="mhead">
           <div class="avatar" title="${esc(member.name)}">${esc(initials(member.name))}</div>
           <div><div class="mname">${esc(member.name)}</div><div class="mrole">${esc(member.role)}</div></div>
-          <div style="margin-left:auto;color:var(--muted);font-weight:700">${tasks.length}</div>
+          <div style="margin-left:auto;color:var(--muted);font-weight:700">${count}</div>
         </div>
-        ${rows}
+        ${songCards}
       </div>`;
   }).join("");
   return `<div class="members">${cards}</div>`;
@@ -277,10 +298,15 @@ function wireBoard() {
   document.querySelectorAll(".play-btn[data-play]").forEach((b) =>
     b.addEventListener("click", (e) => { e.stopPropagation(); playOrder(Number(b.dataset.play)); }));
 
-  const pa = document.getElementById("playAll");
-  if (pa) pa.onclick = () => { const q = playQueue(); if (q.length) playOrder(q[0]); };
-  document.querySelectorAll(".trow[data-prow]").forEach((r) =>
-    r.addEventListener("click", () => { const t = state.data.tracks.find((x) => x.order === Number(r.dataset.prow)); if (t) openDrawer(t.id); }));
+  document.querySelectorAll("[data-playalbum]").forEach((b) => b.onclick = () => playAlbum(b.dataset.playalbum));
+  document.querySelectorAll(".trow[data-tid]").forEach((r) =>
+    r.addEventListener("click", () => { const t = state.data.tracks.find((x) => x.id === r.dataset.tid); if (t) openDrawer(t.id); }));
+
+  document.querySelectorAll(".song-task[data-phase]").forEach((l) =>
+    l.querySelector("input").addEventListener("change", async (e) => {
+      const r = await update("phase", l.dataset.phase, { status: e.target.checked ? "Done" : "Not started" });
+      if (r.ok) { toast("Updated"); refresh(); } else { e.target.checked = !e.target.checked; }
+    }));
 
   document.querySelectorAll(".col[data-stage]").forEach((col) => {
     col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });
@@ -291,8 +317,21 @@ function wireBoard() {
       const stage = col.dataset.stage;
       const entity = col.dataset.entity === "album" ? "album" : "track";
       if (!id) return;
-      const r = await update(entity, id, { stage });
+      const fields = entity === "track" ? { stage, onHold: false } : { stage };
+      const r = await update(entity, id, fields);
       if (r.ok) { toast(`Moved to ${stage}`); refresh(false); }
+    });
+  });
+
+  document.querySelectorAll(".col[data-hold]").forEach((col) => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });
+    col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
+    col.addEventListener("drop", async (e) => {
+      e.preventDefault(); col.classList.remove("drag-over");
+      const id = e.dataTransfer.getData("text/id");
+      if (!id) return;
+      const r = await update("track", id, { onHold: true });
+      if (r.ok) { toast("Put on hold"); refresh(false); }
     });
   });
 
@@ -331,6 +370,7 @@ function openDrawer(id) {
   if (!t) return;
   state.openTrackId = id;
   const members = state.data.members;
+  const albums = state.data.albums;
   const stages = state.data.stages;
 
   const gateNote = t.phasesTotal
@@ -338,14 +378,14 @@ function openDrawer(id) {
     : "";
 
   const phaseRows = t.phases.map((p) => {
-    const statusOpts = ["Not started", "In progress", "Done"].map((s) => `<option ${s === p.status ? "selected" : ""}>${esc(s)}</option>`).join("");
-    const ownerOpts = members.map((m) => `<option value="${m.id}" ${p.ownerIds.includes(m.id) ? "selected" : ""}>${esc(m.name)}</option>`).join("");
+    const done = p.status === "Done";
+    const owners = p.owners.join(", ") || "Unassigned";
     return `
-      <div class="phase-row" data-phase="${p.id}">
-        <div class="pname"><span class="pdot" style="background:${p.status === "Done" ? "var(--good)" : p.status === "In progress" ? "var(--warn)" : "var(--idle)"}"></span>${esc(p.phase)}</div>
-        <select data-pf="status">${statusOpts}</select>
-        <select data-pf="owner" multiple size="1">${ownerOpts}</select>
-      </div>`;
+      <label class="phase-row2 ${done ? "done" : ""}" data-phase="${p.id}">
+        <input type="checkbox" data-pf="done" ${done ? "checked" : ""} />
+        <span class="pname2">${esc(p.phase)}</span>
+        <span class="powner">${esc(owners)}</span>
+      </label>`;
   }).join("");
 
   const links = [];
@@ -363,6 +403,10 @@ function openDrawer(id) {
         <div class="field"><label>Inspired by (game / IP)</label><input id="dIP" list="ipList" value="${esc(t.inspiredBy)}" />${ipDatalist()}</div>
       </div>
       ${gateNote}
+      <div class="row2">
+        <div class="field"><label>Album</label><select id="dAlbum"><option value="">— Unassigned —</option>${albums.map((a) => `<option value="${a.id}" ${t.albumId === a.id ? "selected" : ""}>${esc(a.title)}</option>`).join("")}</select></div>
+        <div class="field"><label>Status</label><label class="owner-chip" style="margin-top:2px"><input type="checkbox" id="dHold" ${t.onHold ? "checked" : ""} /> On hold</label></div>
+      </div>
       <div class="field"><label>Reference (stage / theme)</label><input id="dRef" type="text" value="${esc(t.reference)}" /></div>
       <div class="row2">
         <div class="field"><label>BPM</label><input id="dBpm" type="number" value="${t.bpm ?? ""}" /></div>
@@ -420,17 +464,21 @@ function openDrawer(id) {
     if (r.ok) { toast("Owner updated"); refresh(); }
   });
 
-  document.querySelectorAll(".phase-row").forEach((row) => {
-    const pid = row.dataset.phase;
-    row.querySelector('[data-pf="status"]').addEventListener("change", async (e) => {
-      const r = await update("phase", pid, { status: e.target.value });
-      if (r.ok) { toast("Phase updated"); refresh(); }
+  document.querySelectorAll(".phase-row2").forEach((row) => {
+    row.querySelector('[data-pf="done"]').addEventListener("change", async (e) => {
+      const r = await update("phase", row.dataset.phase, { status: e.target.checked ? "Done" : "Not started" });
+      if (r.ok) { toast(e.target.checked ? "Marked done" : "Reopened"); refresh(); }
+      else { e.target.checked = !e.target.checked; }
     });
-    row.querySelector('[data-pf="owner"]').addEventListener("change", async (e) => {
-      const ids = [...e.target.selectedOptions].map((o) => o.value);
-      const r = await update("phase", pid, { ownerIds: ids });
-      if (r.ok) { toast("Owner updated"); refresh(); }
-    });
+  });
+
+  $("#dAlbum").addEventListener("change", async (e) => {
+    const r = await update("track", id, { albumId: e.target.value || "" });
+    if (r.ok) { toast("Album updated"); closeDrawer(); refresh(false); }
+  });
+  $("#dHold").addEventListener("change", async (e) => {
+    const r = await update("track", id, { onHold: e.target.checked });
+    if (r.ok) { toast(e.target.checked ? "Put on hold" : "Resumed"); refresh(); }
   });
 
   const dPlay = $("#dPlay");
@@ -488,29 +536,31 @@ function openAlbumDrawer(id) {
 
 /* ---- Drawer: create --------------------------------------------------------*/
 function openCreateTrack() {
-  const alb = currentAlbum();
-  if (!alb) { toast("Create an album first", true); return; }
   const stages = state.data.stages;
+  const albums = state.data.albums;
+  const cur = currentAlbum();
+  const defAlb = cur ? cur.id : "";
   openShell(`
-    <div class="dhead"><div><h2>New track</h2><div class="sub" style="color:var(--muted);font-size:13px;margin-top:4px">in ${esc(alb.title)}</div></div><button class="icon-btn close" id="closeDrawer">&times;</button></div>
+    <div class="dhead"><div><h2>New track</h2></div><button class="icon-btn close" id="closeDrawer">&times;</button></div>
     <div class="dbody">
       <div class="field"><label>Title</label><input id="cTitle" type="text" placeholder="Song title" autofocus /></div>
       <div class="row2">
+        <div class="field"><label>Album</label><select id="cAlbum"><option value="">— Unassigned —</option>${albums.map((a) => `<option value="${a.id}" ${a.id === defAlb ? "selected" : ""}>${esc(a.title)}</option>`).join("")}</select></div>
         <div class="field"><label>Stage</label>${stageSelect("cStage", "Idea", stages)}</div>
-        <div class="field"><label>Inspired by (game / IP)</label><input id="cIP" list="ipList" placeholder="e.g. Castlevania 1" />${ipDatalist()}</div>
       </div>
+      <div class="field"><label>Inspired by (game / IP)</label><input id="cIP" list="ipList" placeholder="e.g. Castlevania 1" />${ipDatalist()}</div>
       <div class="field"><label>Reference (stage / theme)</label><input id="cRef" type="text" placeholder="e.g. Stage 1" /></div>
       <div class="row2">
         <div class="field"><label>Song link</label><input id="cSong" type="text" placeholder="https://…" /></div>
         <div class="field"><label>Project file</label><input id="cProj" type="text" placeholder="https://…" /></div>
       </div>
       <div class="field"><label>Notes</label><textarea id="cNotes"></textarea></div>
-      <div class="field"><label>Lyrics</label><textarea id="cLyrics" style="min-height:140px"></textarea></div>
-      <div class="drawer-actions"><button class="add-btn" id="cCreate">Create track (+ 5 phases)</button></div>
+      <div class="drawer-actions"><button class="add-btn" id="cCreate">Create track (+ phases)</button></div>
     </div>`);
   $("#cCreate").addEventListener("click", async () => {
+    const albumId = $("#cAlbum").value;
     const fields = {
-      albumId: alb.id,
+      albumId: albumId || undefined,
       title: $("#cTitle").value.trim() || "New track",
       stage: $("#cStage").value,
       inspiredBy: $("#cIP").value.trim(),
@@ -518,11 +568,10 @@ function openCreateTrack() {
       songLink: $("#cSong").value.trim(),
       projectFile: $("#cProj").value.trim(),
       notes: $("#cNotes").value,
-      lyrics: $("#cLyrics").value,
-      order: (state.data.tracks.filter((t) => t.albumId === alb.id).length + 1),
+      order: (state.data.tracks.filter((t) => t.albumId === albumId).length + 1),
     };
     const r = await createEntity("track", fields);
-    if (r.ok) { toast("Track created"); await refresh(false); openDrawer(r.id); }
+    if (r.ok) { toast("Track created"); if (albumId) state.filters.albumId = albumId; await refresh(false); openDrawer(r.id); }
   });
 }
 
@@ -591,16 +640,23 @@ function playOrder(order) {
   const a = audioEl();
   if (state.audio.currentOrder === order) { a.paused ? a.play().catch(() => {}) : a.pause(); return; }
   state.audio.currentOrder = order;
+  if (!state.audio.queue || !state.audio.queue.includes(order)) state.audio.queue = playQueue();
   triedRelink = false;
   a.src = item.url;
   a.play().catch(() => {});
   renderPlayer();
 }
 function playNext(dir = 1) {
-  const q = playQueue();
+  const q = (state.audio.queue && state.audio.queue.length) ? state.audio.queue : playQueue();
   const i = q.indexOf(state.audio.currentOrder);
   const ni = i < 0 ? 0 : i + dir;
   if (ni >= 0 && ni < q.length) playOrder(q[ni]);
+}
+function playAlbum(albumId) {
+  const q = state.data.tracks.filter((t) => t.albumId === albumId && state.audio.map[t.order]).sort((a, b) => a.order - b.order).map((t) => t.order);
+  if (!q.length) { toast("No audio in this album yet", true); return; }
+  state.audio.queue = q;
+  playOrder(q[0]);
 }
 
 function updatePlayButtons() {
@@ -717,43 +773,51 @@ function openModal(html) { const m = $("#modal"); m.innerHTML = html; $("#mscrim
 function closeModal() { $("#mscrim").classList.remove("open"); $("#modal").classList.remove("open"); }
 
 /* ---- Preview album ---------------------------------------------------------*/
-function previewHTML() {
-  const alb = currentAlbum();
-  if (!alb) return `<div class="loading">No album selected.</div>`;
-  const tracks = state.data.tracks.filter((t) => t.albumId === alb.id).sort((a, b) => a.order - b.order);
+function trackRowHTML(t) {
+  const audio = state.audio.map[t.order];
+  const playing = state.audio.currentOrder === t.order && state.audio.playing;
+  const btn = audio
+    ? `<button class="play-btn ${playing ? "playing" : ""}" data-play="${t.order}">${playing ? "&#9208;" : "&#9654;"}</button>`
+    : `<span class="play-btn" style="visibility:hidden">&#9654;</span>`;
+  return `
+    <div class="trow ${playing ? "playing" : ""}" data-tid="${t.id}">
+      <div class="num">${t.order || ""}</div>${btn}
+      <div class="tp"><div class="tt">${esc(t.title)}</div><div class="ts">${esc(t.inspiredBy || "")}${t.reference ? " &middot; " + esc(t.reference) : ""}</div></div>
+      ${t.openFeedback ? `<span class="fb-badge">&#128172; ${t.openFeedback}</span>` : ""}
+      <span class="badge">${esc(t.stage)}</span>
+      ${audio ? "" : `<span class="noaudio">no audio</span>`}
+    </div>`;
+}
+function albumPreviewSection(alb) {
+  const tracks = state.data.tracks.filter((t) => t.albumId === alb.id && !t.onHold).sort((a, b) => a.order - b.order);
   const cover = alb.cover[0] ? `style="background-image:url('${alb.cover[0].thumb}')"` : "";
   const anyAudio = tracks.some((t) => state.audio.map[t.order]);
-  const rows = tracks.map((t) => {
-    const audio = state.audio.map[t.order];
-    const playing = state.audio.currentOrder === t.order && state.audio.playing;
-    const btn = audio
-      ? `<button class="play-btn ${playing ? "playing" : ""}" data-play="${t.order}">${playing ? "&#9208;" : "&#9654;"}</button>`
-      : `<span class="play-btn" style="visibility:hidden">&#9654;</span>`;
-    return `
-      <div class="trow ${playing ? "playing" : ""}" data-prow="${t.order}">
-        <div class="num">${t.order}</div>${btn}
-        <div class="tp"><div class="tt">${esc(t.title)}</div><div class="ts">${esc(t.inspiredBy || "")}${t.reference ? " &middot; " + esc(t.reference) : ""}</div></div>
-        ${t.openFeedback ? `<span class="fb-badge">&#128172; ${t.openFeedback}</span>` : ""}
-        <span class="badge">${esc(t.stage)}</span>
-        ${audio ? "" : `<span class="noaudio">no audio</span>`}
-      </div>`;
-  }).join("");
   return `
-    <div class="preview">
+    <div class="palbum">
       <div class="phead">
         <div class="cover" ${cover}>${alb.cover[0] ? "" : "&#9835;"}</div>
         <div>
           <h1>${esc(alb.title)}</h1>
           <div class="sub">${esc(alb.artist)} &middot; ${tracks.length} tracks &middot; ${alb.progress}% complete</div>
-          <div class="playall">${anyAudio ? `<button class="add-btn" id="playAll">&#9654; Play album</button>` : `<span class="empty">No audio files yet — add bounces to Dropbox.</span>`}</div>
+          <div class="playall">${anyAudio ? `<button class="add-btn" data-playalbum="${alb.id}">&#9654; Play album</button>` : `<span class="empty">No audio yet</span>`}</div>
         </div>
       </div>
-      ${rows}
+      ${tracks.map(trackRowHTML).join("") || `<div class="empty">No tracks yet.</div>`}
     </div>`;
+}
+function previewHTML() {
+  const albums = state.data.albums;
+  const unassigned = state.data.tracks.filter((t) => !t.albumId && !t.onHold).sort((a, b) => a.order - b.order);
+  const held = state.data.tracks.filter((t) => t.onHold).sort((a, b) => a.order - b.order);
+  if (!albums.length && !unassigned.length && !held.length) return `<div class="loading">No albums yet — use “+ Album”.</div>`;
+  let html = albums.map(albumPreviewSection).join("");
+  if (unassigned.length) html += `<div class="palbum"><div class="phead"><div class="cover">&#9834;</div><div><h1>Unassigned</h1><div class="sub">${unassigned.length} track(s) not on an album</div></div></div>${unassigned.map(trackRowHTML).join("")}</div>`;
+  if (held.length) html += `<div class="palbum"><div class="phead"><div class="cover">&#9208;</div><div><h1>On Hold</h1><div class="sub">${held.length} track(s) paused</div></div></div>${held.map(trackRowHTML).join("")}</div>`;
+  return `<div class="preview">${html}</div>`;
 }
 
 /* ---- Lyrics: sections ------------------------------------------------------*/
-const LYRIC_LABELS = ["Intro", "Verse 1", "Verse 2", "Verse 3", "Pre-Chorus", "Chorus", "Post-Chorus", "Bridge", "Breakdown", "Solo", "VO", "Outro"];
+const LYRIC_LABELS = ["Intro", "Verse 1", "Verse 2", "Verse 3", "Verse 4", "Pre-Chorus", "Chorus", "Post-Chorus", "Bridge", "Breakdown", "Solo", "VO", "Outro", "Bench"];
 function parseSections(t) {
   if (t.lyricsData) { try { const d = JSON.parse(t.lyricsData); if (Array.isArray(d) && d.length) return d; } catch {} }
   if (t.lyrics && t.lyrics.trim()) return [{ label: "Lyrics", text: t.lyrics }];
@@ -763,9 +827,41 @@ function flattenSections(secs) { return secs.map((s) => `[${s.label}]\n${s.text}
 async function saveSections(id, secs) {
   return update("track", id, { lyricsData: JSON.stringify(secs), lyrics: flattenSections(secs) });
 }
-function sectionHTML(s, i) {
+// Best-effort split of pasted lyrics into labeled sections; user adjusts before saving.
+function guessSections(raw) {
+  const KW = /^(intro|verses?|pre[-\s]?chorus|chorus|post[-\s]?chorus|bridge|break\s?down|hook|refrain|outro|solo|interlude|v\.?o\.?|drop|build|tag|vamp)\b/i;
+  const NAMEMAP = { intro: "Intro", verse: "Verse", verses: "Verse", "pre-chorus": "Pre-Chorus", prechorus: "Pre-Chorus", "pre chorus": "Pre-Chorus", chorus: "Chorus", "post-chorus": "Post-Chorus", postchorus: "Post-Chorus", "post chorus": "Post-Chorus", bridge: "Bridge", breakdown: "Breakdown", "break down": "Breakdown", hook: "Hook", refrain: "Refrain", outro: "Outro", solo: "Solo", interlude: "Interlude", vo: "VO", "v.o": "VO", drop: "Drop", build: "Build", tag: "Tag", vamp: "Vamp", bench: "Bench" };
+  const isHeader = (l) => {
+    const s = l.trim(); if (!s) return false;
+    if (/^\[.+\]$/.test(s)) return true;
+    const bare = s.replace(/[:\-–—\.]+$/, "").trim();
+    if (KW.test(bare) && bare.length <= 26) return true;
+    if (bare.length <= 24 && /[A-Za-z]/.test(bare) && bare === bare.toUpperCase() && !/[.!?,]$/.test(bare)) return true;
+    return false;
+  };
+  const norm = (l) => {
+    let s = l.trim().replace(/^\[|\]$/g, "").replace(/[:\-–—\.]+$/, "").trim();
+    const m = s.match(/^([A-Za-z][A-Za-z\.\s-]*?)\s*(\d+)?$/);
+    if (m) { const key = m[1].toLowerCase().trim(); if (NAMEMAP[key]) return NAMEMAP[key] + (m[2] ? " " + m[2] : ""); }
+    return s.replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+  const lines = String(raw).replace(/\r/g, "").split("\n");
+  const secs = []; let cur = null;
+  for (const line of lines) {
+    if (isHeader(line)) { cur = { label: norm(line), text: "" }; secs.push(cur); }
+    else { if (!cur) { if (!line.trim()) continue; cur = { label: "Verse 1", text: "" }; secs.push(cur); } cur.text += (cur.text ? "\n" : "") + line; }
+  }
+  secs.forEach((s) => (s.text = s.text.replace(/\n{3,}/g, "\n\n").trim()));
+  if (secs.length <= 1 && String(raw).trim()) {
+    const paras = String(raw).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    if (paras.length > 1) return paras.map((p, i) => ({ label: i === 0 ? "Verse 1" : `Section ${i + 1}`, text: p }));
+  }
+  return secs.length ? secs : [{ label: "Lyrics", text: String(raw).trim() }];
+}
+function sectionHTML(s, i, secs) {
   const inList = LYRIC_LABELS.includes(s.label);
   const opts = LYRIC_LABELS.map((l) => `<option ${l === s.label ? "selected" : ""}>${esc(l)}</option>`).join("");
+  const moveOpts = secs.map((o, j) => (j === i ? "" : `<option value="${j}">${esc(o.label)}</option>`)).join("");
   return `
     <div class="sec" data-i="${i}">
       <div class="sechd">
@@ -777,9 +873,13 @@ function sectionHTML(s, i) {
           <button class="fb-mini" data-s="del" title="Delete">&times;</button>
         </div>
       </div>
-      <textarea data-s="text" placeholder="Lyrics for this section…">${esc(s.text)}</textarea>
+      <textarea class="autogrow" data-s="text" placeholder="Lyrics for this section…">${esc(s.text)}</textarea>
+      <div class="sec-move">
+        <select data-s="move"><option value="">Move highlighted text to…</option>${moveOpts}<option value="__new">+ New section…</option></select>
+      </div>
     </div>`;
 }
+function autoGrow(el) { el.style.height = "auto"; el.style.height = Math.max(60, el.scrollHeight) + "px"; }
 function openLyricsEditor(id) {
   let secs = parseSections(state.data.tracks.find((x) => x.id === id));
   const t = state.data.tracks.find((x) => x.id === id);
@@ -794,16 +894,18 @@ function openLyricsEditor(id) {
     openModal(`
       <div class="mhd"><h2>Lyrics &middot; ${esc(t.title)}</h2><button class="icon-btn close" id="mClose">&times;</button></div>
       <div class="mbd">
-        ${secs.map((s, i) => sectionHTML(s, i)).join("") || `<p style="color:var(--muted-2)">No sections yet — add one below.</p>`}
+        ${secs.map((s, i) => sectionHTML(s, i, secs)).join("") || `<p style="color:var(--muted-2)">No sections yet — add one below.</p>`}
         <div class="addsec">
           <select id="newLabel">${LYRIC_LABELS.map((l) => `<option>${l}</option>`).join("")}</select>
           <button class="add-btn ghost" id="addSec">+ Add section</button>
+          <button class="add-btn ghost" id="importBtn">&#128203; Paste / import</button>
           <span class="spacer" style="flex:1"></span>
           <button class="add-btn" id="saveSecs">Save lyrics</button>
         </div>
       </div>`);
     $("#mClose").onclick = closeModal;
     $("#addSec").onclick = () => { collect(); secs.push({ label: $("#newLabel").value, text: "" }); draw(); };
+    $("#importBtn").onclick = () => { collect(); drawImport(); };
     $("#saveSecs").onclick = async () => { collect(); const r = await saveSections(id, secs); if (r.ok) { toast("Lyrics saved"); closeModal(); refresh(); } };
     document.querySelectorAll("#modal .sec").forEach((el) => {
       const i = Number(el.dataset.i);
@@ -814,7 +916,51 @@ function openLyricsEditor(id) {
       el.querySelector('[data-s="up"]').onclick = () => { if (i > 0) { collect(); [secs[i - 1], secs[i]] = [secs[i], secs[i - 1]]; draw(); } };
       el.querySelector('[data-s="down"]').onclick = () => { if (i < secs.length - 1) { collect(); [secs[i + 1], secs[i]] = [secs[i], secs[i + 1]]; draw(); } };
       el.querySelector('[data-s="del"]').onclick = () => { collect(); secs.splice(i, 1); draw(); };
+      const ta = el.querySelector('[data-s="text"]');
+      autoGrow(ta);
+      ta.addEventListener("input", () => autoGrow(ta));
+      el.querySelector('[data-s="move"]').addEventListener("change", (e) => {
+        const target = e.target.value;
+        if (!target) return;
+        const start = ta.selectionStart, end = ta.selectionEnd;
+        if (start === end) { toast("Highlight some lyrics in this section first", true); e.target.value = ""; return; }
+        collect();
+        const sel = secs[i].text.slice(start, end).trim();
+        secs[i].text = (secs[i].text.slice(0, start) + secs[i].text.slice(end)).replace(/\n{3,}/g, "\n\n").trim();
+        if (target === "__new") { const label = prompt("New section label:", "Verse"); if (label === null) { draw(); return; } secs.push({ label: label || "Section", text: sel }); }
+        else { const ti = Number(target); secs[ti].text = (secs[ti].text ? secs[ti].text + "\n\n" : "") + sel; }
+        draw();
+      });
     });
+  }
+  function drawImport() {
+    openModal(`
+      <div class="mhd"><h2>Import lyrics</h2><button class="icon-btn close" id="mClose">&times;</button></div>
+      <div class="mbd">
+        <div class="field"><label>Paste lyrics</label><textarea id="impText" style="min-height:200px" placeholder="Paste lyrics here — headers like [Chorus], VERSE 1, Pre-Chorus are detected automatically…"></textarea></div>
+        <div class="field"><label>…or a public Google Doc link</label><input id="impUrl" type="text" placeholder="https://docs.google.com/document/d/…" /></div>
+        <p style="color:var(--muted-2);font-size:12px;margin:0">I'll split it into sections you can rename, reorder, and edit before saving.</p>
+        <div class="addsec"><button class="add-btn ghost" id="impBack">&#8592; Back</button><span class="spacer" style="flex:1"></span><button class="add-btn" id="impGuess">Guess sections &#8594;</button></div>
+      </div>`);
+    $("#mClose").onclick = closeModal;
+    $("#impBack").onclick = draw;
+    $("#impGuess").onclick = async () => {
+      let text = $("#impText").value;
+      const url = $("#impUrl").value.trim();
+      if (!text.trim() && url) {
+        toast("Fetching doc…");
+        try {
+          const r = await fetch("/api/importdoc?url=" + encodeURIComponent(url));
+          const j = await r.json();
+          if (j.text) text = j.text; else { toast(j.error || "Couldn't fetch doc", true); return; }
+        } catch { toast("Couldn't fetch doc", true); return; }
+      }
+      if (!text.trim()) { toast("Paste lyrics or a link first", true); return; }
+      const guessed = guessSections(text);
+      secs.length = 0; guessed.forEach((s) => secs.push(s));
+      draw();
+      toast(`Found ${guessed.length} section${guessed.length === 1 ? "" : "s"} — adjust & save`);
+    };
   }
   draw();
 }
