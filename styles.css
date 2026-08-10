@@ -191,6 +191,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .asw-opt:hover { background: var(--panel-2); }
 .asw-opt.sel { background: var(--panel-3); }
 .asw-opt .cur-tag { margin-left: auto; }
+.asw-div { height: 1px; background: var(--stroke); margin: 6px 8px; }
 .album-strip .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
 .album-strip .albprog2 { display: flex; align-items: center; gap: 10px; margin-top: 8px; max-width: 420px; }
 .album-strip .albprog2 .bar { flex: 1; }

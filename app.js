@@ -110,13 +110,14 @@ async function refresh(keepDrawer = true) {
 /* ---- Helpers over state ----------------------------------------------------*/
 function currentAlbum() {
   const id = state.filters.albumId;
-  if (!id || id === "__all" || id === "__unassigned") return null;
+  if (!id || id === "__all" || id === "__unassigned" || id === "__hold") return null;
   return state.data.albums.find((a) => a.id === id) || null;
 }
 function visibleTracks() {
   let t = state.data.tracks.slice();
   const id = state.filters.albumId;
-  if (id === "__unassigned") t = t.filter((x) => !x.albumId);
+  if (id === "__hold") t = t.filter((x) => x.onHold);
+  else if (id === "__unassigned") t = t.filter((x) => !x.albumId);
   else if (id && id !== "__all") t = t.filter((x) => x.albumId === id);
   // "__all" (or unset) shows every album's tracks plus unassigned
   if (state.filters.ip) t = t.filter((x) => x.inspiredBy === state.filters.ip);
@@ -167,14 +168,16 @@ function albumSwitcherHTML(selValue) {
   const albums = state.data.albums;
   const sel = selValue != null ? selValue : state.filters.albumId;
   const label = sel === "__unassigned" ? "Unassigned"
+    : sel === "__hold" ? "On hold"
     : (!sel || sel === "__all") ? "All albums"
     : ((albums.find((a) => a.id === sel) || {}).title || "All albums");
-  const opts = [{ v: "__all", t: "All albums" }]
-    .concat(albums.map((a) => ({ v: a.id, t: a.title, current: a.current })))
-    .concat([{ v: "__unassigned", t: "Unassigned" }]);
-  const menu = opts.map((o) =>
-    `<button class="asw-opt${o.v === sel ? " sel" : ""}" data-albsel="${o.v}">${esc(o.t)}${o.current ? ` <span class="cur-tag">Current</span>` : ""}</button>`
-  ).join("");
+  const opt = (o) => `<button class="asw-opt${o.v === sel ? " sel" : ""}" data-albsel="${o.v}">${esc(o.t)}${o.current ? ` <span class="cur-tag">Current</span>` : ""}</button>`;
+  const cur = albums.find((a) => a.current);
+  // Current album pinned at the very top; the rest listed below (without duplicating it).
+  const pinned = cur ? opt({ v: cur.id, t: cur.title, current: true }) + `<div class="asw-div"></div>` : "";
+  const albumOpts = [{ v: "__all", t: "All albums" }].concat(albums.filter((a) => !a.current).map((a) => ({ v: a.id, t: a.title })));
+  const extraOpts = [{ v: "__unassigned", t: "Unassigned" }, { v: "__hold", t: "On hold" }];
+  const menu = pinned + albumOpts.map(opt).join("") + `<div class="asw-div"></div>` + extraOpts.map(opt).join("");
   return `<div class="asw-wrap">
     <button class="asw-btn" title="Switch album">${esc(label)} <span class="asw-caret">&#9662;</span></button>
     <div class="asw-menu">${menu}</div>
@@ -289,7 +292,8 @@ function cardHTML(t) {
 
 function boardHTML(tracks) {
   const stages = state.data.stages;
-  const active = tracks.filter((t) => !t.onHold && t.stage !== "Released");
+  const holdView = state.filters.albumId === "__hold";
+  const active = holdView ? tracks.slice() : tracks.filter((t) => !t.onHold && t.stage !== "Released");
   const shown = stages.filter((s) => active.some((t) => t.stage === s));
   if (!shown.length) return `<div class="loading">No tracks here yet.</div>`;
   const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
@@ -1091,6 +1095,12 @@ function albumPreviewSection(alb) {
 }
 function previewHTML() {
   const id = state.filters.albumId;
+  // On-hold acts like its own album scope.
+  if (id === "__hold") {
+    const held = state.data.tracks.filter((t) => t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
+    const body = held.length ? held.map(trackRowHTML).join("") : `<div class="empty">Nothing on hold.</div>`;
+    return `<div class="preview"><div class="palbum"><div class="phead"><div class="cover"></div><div>${albumSwitcherHTML("__hold")}<div class="sub">${held.length} track(s) on hold</div></div></div>${body}</div></div>`;
+  }
   // Current album floats to the top; the rest keep their existing order.
   let albums = state.data.albums.slice().sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0));
   if (id === "__unassigned") albums = [];
