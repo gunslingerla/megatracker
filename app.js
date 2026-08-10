@@ -479,7 +479,7 @@ function openCalSync() {
   const body = $("#calSubBody");
   if (!body) return;
   body.innerHTML = `<div class="cal-sync"><div class="loading" style="padding:8px 0">Getting your feed link…</div></div>`;
-  fetch("/api/calfeed").then((r) => r.json()).then((j) => {
+  Promise.resolve({ url: (state.data && state.data.feedUrl) || "", secured: !!(state.data && state.data.feedSecured) }).then((j) => {
     if (!j || !j.url) { body.innerHTML = `<div class="cal-sync">Couldn't build the feed link.</div>`; return; }
     body.innerHTML = `
       <div class="cal-sync">
@@ -574,7 +574,7 @@ function wireBoard() {
     if (!confirm("Update every existing track's phase owners to match these assignments? Any manual per-track owner tweaks will be overwritten.")) return;
     applyBtn.disabled = true; applyBtn.textContent = "Applying…";
     try {
-      const res = await fetch("/api/reassign", { method: "POST" });
+      const res = await fetch("/api/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "reassign" }) });
       const j = await res.json();
       if (res.ok && j.ok) { toast(`Updated ${j.changed} phase${j.changed === 1 ? "" : "s"}`); await refresh(false); }
       else toast(j.error || "Failed");

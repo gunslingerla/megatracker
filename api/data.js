@@ -120,8 +120,13 @@ module.exports = async (req, res) => {
       };
     });
 
+    const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
+    const host = req.headers["x-forwarded-host"] || req.headers.host;
+    const feedKey = process.env.CAL_FEED_KEY;
+    const feedUrl = `${proto}://${host}/api/calendar.ics${feedKey ? `?key=${encodeURIComponent(feedKey)}` : ""}`;
+
     res.setHeader("Cache-Control", "no-store");
-    res.status(200).json({ albums, tracks, phases, members, feedback, stages: STAGES, phaseNames: PHASE_NAMES });
+    res.status(200).json({ albums, tracks, phases, members, feedback, stages: STAGES, phaseNames: PHASE_NAMES, feedUrl, feedSecured: !!feedKey });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

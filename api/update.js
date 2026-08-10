@@ -1,5 +1,26 @@
-const { T, F, STAGES, getRecord, patch } = require("./_airtable");
+const { T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch } = require("./_airtable");
 const { requireAuth } = require("./_auth");
+
+// Recompute every phase record's owner(s) from the members' "Default Phases" mapping.
+// (Folded in from the old /api/reassign to stay under Vercel's function limit.)
+async function reassignPhases() {
+  const [membersRaw, phasesRaw] = await Promise.all([listAll(T.members), listAll(T.phases)]);
+  const ownersByPhase = {};
+  PHASE_NAMES.forEach((p) => (ownersByPhase[p] = []));
+  membersRaw.forEach((m) => {
+    const list = Array.isArray(m.fields[F.member.phases]) ? m.fields[F.member.phases] : [];
+    list.forEach((p) => { if (ownersByPhase[p]) ownersByPhase[p].push(m.id); });
+  });
+  const updates = [];
+  for (const rec of phasesRaw) {
+    const want = ownersByPhase[rec.fields[F.phase.phase] || ""] || [];
+    const have = Array.isArray(rec.fields[F.phase.owner]) ? rec.fields[F.phase.owner] : [];
+    const same = want.length === have.length && want.every((id) => have.includes(id));
+    if (!same) updates.push({ id: rec.id, fields: { [F.phase.owner]: want } });
+  }
+  for (let i = 0; i < updates.length; i += 10) await patch(T.phases, updates.slice(i, i + 10), true);
+  return updates.length;
+}
 
 // Maps friendly field names (sent by the frontend) to Airtable field IDs, per entity.
 const MAP = {
@@ -52,6 +73,12 @@ module.exports = async (req, res) => {
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
   const { entity, id, fields, force } = body || {};
+
+  // Bulk action: re-derive all phase owners from the member->phase mapping.
+  if (entity === "reassign") {
+    try { const changed = await reassignPhases(); return res.status(200).json({ ok: true, changed }); }
+    catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+  }
 
   const spec = MAP[entity];
   if (!spec || !id || !fields) return res.status(400).json({ error: "bad request" });
