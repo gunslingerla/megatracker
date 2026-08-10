@@ -190,8 +190,8 @@ function renderAlbumStrip() {
 function segClass(status) { return status === "Done" ? "done" : status === "In progress" ? "prog" : ""; }
 
 function cardHTML(t) {
-  // Each phase is a labeled chip tinted by its owner's color:
-  // bright while open/in-progress, dark + struck through once Done.
+  // Small phase chips tinted by the owner's color: bright while open/in-progress,
+  // dark + struck through once Done.
   const segs = t.phases.map((p) => {
     const m = memberById(p.ownerIds[0]);
     const col = m && m.color ? m.color : "#6a6478";
@@ -319,7 +319,7 @@ function membersHTML() {
     t.phases.filter((p) => p.status !== "Done").forEach((p) => {
       p.ownerIds.forEach((oid) => {
         const rec = byMember[oid]; if (!rec) return;
-        (rec.songs[t.id] = rec.songs[t.id] || { title: t.title, order: effOrder(t), num: dispNum(t), items: [] }).items.push({ phaseId: p.id, phase: p.phase, status: p.status });
+        (rec.songs[t.id] = rec.songs[t.id] || { id: t.id, title: t.title, order: effOrder(t), num: dispNum(t), items: [] }).items.push({ phaseId: p.id, phase: p.phase, status: p.status });
         rec.count++;
       });
     });
@@ -330,8 +330,8 @@ function membersHTML() {
   });
   const cards = entries.map(({ member, songs, count }) => {
     const songCards = Object.values(songs).sort((a, b) => a.order - b.order).map((s) => `
-      <div class="song-card">
-        <div class="song-title">${s.num !== "" ? `<span class="tnum">${s.num}</span> ` : ""}${esc(s.title)}</div>
+      <div class="song-card" data-song="${s.id}">
+        <div class="song-title" data-songopen="${s.id}">${s.num !== "" ? `<span class="tnum">${s.num}</span> ` : ""}${esc(s.title)}</div>
         ${s.items.map((it) => `<label class="song-task" data-phase="${it.phaseId}"><input type="checkbox" /> <span class="stp">${esc(it.phase)}</span>${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}</label>`).join("")}
       </div>`).join("") || `<div class="empty">All caught up</div>`;
     const meCls = me && member.id === me.id ? " me" : "";
@@ -436,6 +436,14 @@ function wireBoard() {
     l.querySelector("input").addEventListener("change", async (e) => {
       const r = await update("phase", l.dataset.phase, { status: e.target.checked ? "Done" : "Not started" });
       if (r.ok) { toast("Updated"); refresh(); } else { e.target.checked = !e.target.checked; }
+    }));
+
+  // Assignments page: clicking a song tile (or its title) opens the track drawer,
+  // except when the click lands on a phase checkbox.
+  document.querySelectorAll(".song-card[data-song]").forEach((card) =>
+    card.addEventListener("click", (e) => {
+      if (e.target.closest(".song-task")) return;
+      openDrawer(card.dataset.song);
     }));
 
   document.querySelectorAll(".mcard[data-member]").forEach((card) => {
@@ -552,8 +560,10 @@ function openDrawer(id) {
   const phaseRows = t.phases.map((p) => {
     const done = p.status === "Done";
     const owners = p.owners.join(", ") || "Unassigned";
+    const m = memberById(p.ownerIds[0]);
+    const col = m && m.color ? m.color : "#6a6478";
     return `
-      <label class="phase-row2 ${done ? "done" : ""}" data-phase="${p.id}">
+      <label class="phase-row2 ${done ? "done" : ""}" data-phase="${p.id}" style="--own:${col}">
         <input type="checkbox" data-pf="done" ${done ? "checked" : ""} />
         <span class="pname2">${esc(p.phase)}</span>
         <span class="powner">${esc(owners)}</span>
