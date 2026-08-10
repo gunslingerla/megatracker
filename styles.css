@@ -564,15 +564,29 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 /* ---- Teleprompter ----------------------------------------------------------*/
 .teleprompter { position: fixed; inset: 0; z-index: 80; background: #050408; color: #f6f2fa; display: none; flex-direction: column; }
 .teleprompter.open { display: flex; }
-.tp-bar { display: flex; align-items: center; gap: 12px; padding: 12px 56px 12px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; }
-.tp-bar.collapsed { display: none; }
+/* Controls slide out as a vertical panel from the right. */
+.tp-panel {
+  position: absolute; top: 0; right: 0; height: 100%; width: min(280px, 82vw); z-index: 3;
+  display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+  padding: 58px 16px 20px; overflow-y: auto;
+  background: rgba(10,9,15,0.97); border-left: 1px solid rgba(255,255,255,0.1);
+  box-shadow: -18px 0 40px rgba(0,0,0,0.4);
+  transform: translateX(100%); transition: transform .22s ease;
+}
+.tp-panel.open { transform: none; }
+.tp-panel .tp-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+.tp-panel button, .tp-panel select { background: rgba(255,255,255,0.06); color: #f6f2fa; border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 9px 12px; cursor: pointer; font-size: 13px; width: 100%; }
+.tp-panel button:hover { border-color: var(--accent); }
+.tp-row { display: flex; gap: 8px; }
+.tp-row button { flex: 1; }
 .tp-menu-btn {
-  position: absolute; top: 10px; right: 12px; z-index: 4;
+  position: absolute; top: 10px; right: 12px; z-index: 5;
   background: rgba(255,255,255,0.08); color: #f6f2fa; border: 1px solid rgba(255,255,255,0.16);
   border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 600; opacity: 0.6;
 }
 .tp-menu-btn:hover { opacity: 1; border-color: var(--accent); }
-.tp-ctl { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(246,242,250,0.6); }
+.tp-ctl { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(246,242,250,0.65); }
+.tp-ctl input[type="range"] { flex: 1; }
 .tp-bar .tp-title { font-weight: 700; }
 .tp-bar .spacer { flex: 1; }
 .tp-bar button, .tp-bar select { background: rgba(255,255,255,0.06); color: #f6f2fa; border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
