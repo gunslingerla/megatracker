@@ -1114,10 +1114,23 @@ function previewHTML() {
 const LYRIC_LABELS = ["Intro", "Verse 1", "Verse 2", "Verse 3", "Verse 4", "Pre-Chorus", "Chorus", "Post-Chorus", "Bridge", "Breakdown", "Solo", "VO", "Outro", "Bench"];
 function parseSections(t) {
   if (t.lyricsData) { try { const d = JSON.parse(t.lyricsData); if (Array.isArray(d) && d.length) return d; } catch {} }
-  if (t.lyrics && t.lyrics.trim()) return [{ label: "Lyrics", text: t.lyrics }];
+  if (t.lyrics && t.lyrics.trim()) return sectionsFromText(t.lyrics);
   return [];
 }
-function flattenSections(secs) { return secs.map((s) => `[${s.label}]\n${s.text}`).join("\n\n"); }
+// Split raw text into sections using [Label] lines as headers.
+function sectionsFromText(raw) {
+  const lines = String(raw).replace(/\r/g, "").split("\n");
+  const secs = []; let cur = null;
+  for (const line of lines) {
+    const m = line.match(/^\s*\[(.+?)\]\s*$/);
+    if (m) { cur = { label: m[1].trim(), text: "" }; secs.push(cur); }
+    else { if (!cur) { cur = { label: "", text: "" }; secs.push(cur); } cur.text += (cur.text ? "\n" : "") + line; }
+  }
+  secs.forEach((s) => (s.text = s.text.replace(/^\n+|\n+$/g, "")));
+  return secs.filter((s) => s.label || s.text.trim());
+}
+// Sections back to text: bracketed label lines (label omitted when empty).
+function flattenSections(secs) { return secs.map((s) => (s.label ? `[${s.label}]\n` : "") + s.text).join("\n\n"); }
 async function saveSections(id, secs) {
   return update("track", id, { lyricsData: JSON.stringify(secs), lyrics: flattenSections(secs) });
 }
@@ -1193,20 +1206,17 @@ function openLyricsEditor(id) {
     openModal(`
       <div class="mhd"><h2>Lyrics &middot; ${esc(t.title)}</h2><span style="flex:1"></span><button class="add-btn ghost" id="teleBtn">Teleprompter</button><button class="icon-btn close" id="mClose">&times;</button></div>
       <div class="mbd">
-        ${secs.map((s, i) => sectionHTML(s, i, secs)).join("") || `<p style="color:var(--muted-2)">No sections yet — add one below.</p>`}
-        <div class="addsec">
-          <select id="newLabel">${LYRIC_LABELS.map((l) => `<option>${l}</option>`).join("")}</select>
-          <button class="add-btn ghost" id="addSec">+ Add section</button>
-          <button class="add-btn ghost" id="importBtn">Paste / import</button>
-          <span class="spacer" style="flex:1"></span>
-          <button class="add-btn" id="saveSecs">Save lyrics</button>
-        </div>
+        <p class="lyr-hint">Type freely. Put a section title in brackets on its own line — like <code>[Verse 1]</code> or <code>[Chorus]</code> — and it becomes a labeled section on the teleprompter.</p>
+        <textarea id="lyrText" class="lyr-big" spellcheck="false" placeholder="[Verse 1]&#10;First line…">${esc(flattenSections(secs))}</textarea>
+        <div class="addsec"><span class="spacer" style="flex:1"></span><button class="add-btn" id="saveSecs">Save lyrics</button></div>
       </div>`);
     $("#mClose").onclick = closeModal;
-    $("#addSec").onclick = () => { collect(); secs.push({ label: $("#newLabel").value, text: "" }); draw(); };
-    $("#importBtn").onclick = () => { collect(); drawImport(); };
-    $("#teleBtn").onclick = () => { collect(); openTeleprompter(id, secs.map((s) => ({ label: s.label, text: s.text }))); };
-    $("#saveSecs").onclick = async () => { collect(); const r = await saveSections(id, secs); if (r.ok) { toast("Lyrics saved"); closeModal(); refresh(); } };
+    $("#teleBtn").onclick = () => openTeleprompter(id, sectionsFromText($("#lyrText").value));
+    $("#saveSecs").onclick = async () => {
+      const raw = $("#lyrText").value;
+      const r = await update("track", id, { lyrics: raw.trim(), lyricsData: JSON.stringify(sectionsFromText(raw)) });
+      if (r.ok) { toast("Lyrics saved"); closeModal(); refresh(); }
+    };
     document.querySelectorAll("#modal .sec").forEach((el) => {
       const i = Number(el.dataset.i);
       const sel = el.querySelector('[data-s="label"]');
@@ -1289,7 +1299,7 @@ function openTeleprompter(id, secsOverride) {
     tp.innerHTML = `
       <div class="tp-bar">
         <span class="tp-title">${esc(t.title)}</span>
-        <div class="tp-jump">${secs.map((s, i) => `<button data-j="${i}">${esc(s.label)}</button>`).join("")}</div>
+        <div class="tp-jump">${secs.map((s, i) => s.label ? `<button data-j="${i}">${esc(s.label)}</button>` : "").join("")}</div>
         <span class="spacer" style="flex:1"></span>
         <button id="tpMinus">A&minus;</button><button id="tpPlus">A+</button>
         <button id="tpAuto">${auto ? "Pause" : "Auto"}</button>
@@ -1297,7 +1307,7 @@ function openTeleprompter(id, secsOverride) {
         <button id="tpClose">Close</button>
       </div>
       <div class="tp-scroll" id="tpScroll" style="font-size:${font}px">
-        ${secs.map((s) => `<div class="tp-section"><div class="tp-lbl">${esc(s.label)}</div><div class="tp-txt">${esc(s.text)}</div></div>`).join("") || `<div class="tp-section"><div class="tp-txt">No lyrics yet.</div></div>`}
+        ${secs.map((s) => `<div class="tp-section">${s.label ? `<div class="tp-lbl">${esc(s.label)}</div>` : ""}<div class="tp-txt">${esc(s.text)}</div></div>`).join("") || `<div class="tp-section"><div class="tp-txt">No lyrics yet.</div></div>`}
       </div>`;
     const sc = $("#tpScroll");
     $("#tpClose").onclick = close;
