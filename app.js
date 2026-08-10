@@ -1048,7 +1048,8 @@ function albumPreviewSection(alb) {
     </div>`;
 }
 function previewHTML() {
-  const albums = state.data.albums;
+  // Current album floats to the top; the rest keep their existing order.
+  const albums = state.data.albums.slice().sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0));
   const unassigned = state.data.tracks.filter((t) => !t.albumId && !t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
   if (!albums.length && !unassigned.length) return `<div class="loading">No albums yet — use “+ Album”.</div>`;
   let html = albums.map(albumPreviewSection).join("");
