@@ -55,6 +55,7 @@ async function refresh(keepDrawer = true) {
     syncFilters();
     render();
     if (keepDrawer && state.openTrackId) openDrawer(state.openTrackId);
+    if (state.audio.currentOrder != null) renderMarkers();
   }
   if (refreshQueued) { refreshQueued = false; refresh(keepDrawer); }
 }
@@ -628,7 +629,10 @@ function renderPlayer() {
     </div>
     <div class="pinfo"><div class="pt">${esc(t.title)}</div><div class="ps">${esc(t.inspiredBy || "")}${item.ext ? " &middot; " + item.ext.toUpperCase() : ""}</div></div>
     <div class="pseek">
-      <input type="range" id="pSeek" min="0" max="1000" value="0" />
+      <div class="seekwrap">
+        <input type="range" id="pSeek" min="0" max="1000" value="0" />
+        <div class="markers" id="pMarkers"></div>
+      </div>
     </div>
     <div class="ptime" id="pTime">0:00 / 0:00</div>
     ${warn}
@@ -639,6 +643,22 @@ function renderPlayer() {
   document.getElementById("pClose").onclick = () => { a.pause(); state.audio.currentOrder = null; el.className = "player hidden"; updatePlayButtons(); };
   const seek = document.getElementById("pSeek");
   seek.oninput = () => { if (a.duration) a.currentTime = (seek.value / 1000) * a.duration; };
+  renderMarkers();
+}
+
+// Feedback dots on the player's seek bar (only for a real track, not a version preview).
+function renderMarkers() {
+  const wrap = document.getElementById("pMarkers");
+  if (!wrap) return;
+  const a = audioEl();
+  const t = trackByOrder(state.audio.currentOrder);
+  if (!t || !a.duration || !isFinite(a.duration)) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = (t.feedback || []).map((fb) => {
+    const pct = Math.min(100, Math.max(0, (fb.timestamp / a.duration) * 100));
+    return `<div class="marker ${fb.status === "Resolved" ? "resolved" : "open"}" style="left:${pct}%" data-mk="${fb.timestamp}" title="${esc(mmss(fb.timestamp))} — ${esc(fb.author || "")}: ${esc((fb.comment || "").slice(0, 80))}"></div>`;
+  }).join("");
+  wrap.querySelectorAll("[data-mk]").forEach((m) =>
+    m.onclick = () => { a.currentTime = Number(m.dataset.mk); a.play().catch(() => {}); });
 }
 
 function wireAudio() {
@@ -646,6 +666,8 @@ function wireAudio() {
   a.addEventListener("play", () => { state.audio.playing = true; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9208;"; });
   a.addEventListener("pause", () => { state.audio.playing = false; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9654;"; });
   a.addEventListener("ended", () => playNext(1));
+  a.addEventListener("loadedmetadata", renderMarkers);
+  a.addEventListener("durationchange", renderMarkers);
   a.addEventListener("timeupdate", () => {
     const seek = document.getElementById("pSeek"), time = document.getElementById("pTime");
     if (seek && a.duration) seek.value = String((a.currentTime / a.duration) * 1000);
