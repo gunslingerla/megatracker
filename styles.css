@@ -268,6 +268,18 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .card:active { cursor: grabbing; transform: scale(0.998); }
 .card .top { display: flex; align-items: flex-start; gap: 8px; }
 .card-art { width: 40px; height: 40px; border-radius: 8px; background: var(--panel-2) center/cover no-repeat; border: 1px solid var(--stroke-strong); flex: none; }
+[data-artview] { cursor: zoom-in; }
+
+/* Full-size art lightbox */
+.lightbox {
+  position: fixed; inset: 0; z-index: 90; display: none; align-items: center; justify-content: center;
+  padding: 4vh 4vw; background: rgba(4,3,10,0.88); backdrop-filter: blur(6px); cursor: zoom-out;
+}
+.lightbox.open { display: flex; }
+.lightbox img {
+  max-width: 100%; max-height: 92vh; border-radius: 12px;
+  border: 1px solid var(--stroke-strong); box-shadow: 0 24px 70px rgba(0,0,0,0.6);
+}
 .card .title { font-weight: 700; font-size: 14.5px; line-height: 1.2; }
 .card .ip {
   position: relative; font-size: 10.5px; color: var(--accent-2); background: var(--accent-soft);

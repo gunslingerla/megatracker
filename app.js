@@ -155,10 +155,23 @@ function render() {
   else if (state.view === "roster") main.innerHTML = rosterHTML();
   wireBoard();
   wireSwitchers();
+  wireArt();
   // The header strip switcher shows on album-scoped views; on Preview each section
   // header is its own switcher, so the strip is hidden there.
   const showStrip = ["tracks", "members", "calendar"].includes(state.view);
   $("#albumStrip").style.display = showStrip ? "" : "none";
+}
+
+// Click any album/track art to view it full-size in a lightbox.
+function openLightbox(url) {
+  const lb = $("#lightbox");
+  lb.innerHTML = `<img src="${esc(url)}" alt="Artwork" />`;
+  lb.classList.add("open");
+}
+function closeLightbox() { const lb = $("#lightbox"); lb.classList.remove("open"); lb.innerHTML = ""; }
+function wireArt() {
+  document.querySelectorAll("[data-artview]").forEach((el) =>
+    el.addEventListener("click", (e) => { e.stopPropagation(); openLightbox(el.dataset.artview); }));
 }
 
 // Album filter lives in the header (and each preview title): the title is a
@@ -203,7 +216,7 @@ function renderAlbumStrip() {
   const alb = currentAlbum();
   const full = state.view === "tracks" && !!alb; // cover + progress only on the dashboard
   if (full) {
-    const cover = alb.cover[0] ? `style="background-image:url('${alb.cover[0].thumb}')"` : "";
+    const cover = alb.cover[0] ? `data-artview="${esc(alb.cover[0].url)}" title="View art" style="background-image:url('${alb.cover[0].thumb}')"` : "";
     el.innerHTML = `
       <div class="album-strip">
         <div class="cover" ${cover}></div>
@@ -270,7 +283,7 @@ function cardHTML(t) {
   return `
     <div class="card" draggable="true" data-id="${t.id}">
       <div class="top">
-        ${t.cover && t.cover[0] ? `<div class="card-art" style="background-image:url('${t.cover[0].thumb}')"></div>` : ""}
+        ${t.cover && t.cover[0] ? `<div class="card-art" data-artview="${esc(t.cover[0].url)}" title="View art" style="background-image:url('${t.cover[0].thumb}')"></div>` : ""}
         <div class="title-wrap">${playBtn}${num !== "" ? `<span class="tnum">${num}</span>` : ""}<div class="title">${esc(t.title)}</div></div>
         ${t.inspiredBy ? ipTagHTML(t) : ""}
       </div>
@@ -339,7 +352,7 @@ function albumsBoardHTML() {
 function albumCardHTML(a) {
   return `
     <div class="card${a.current ? " is-current" : ""}" data-album="${a.id}">
-      <div class="top">${a.cover && a.cover[0] ? `<div class="card-art" style="background-image:url('${a.cover[0].thumb}')"></div>` : ""}<div class="title">${esc(a.title)}${a.current ? ` <span class="cur-tag">Current</span>` : ""}</div></div>
+      <div class="top">${a.cover && a.cover[0] ? `<div class="card-art" data-artview="${esc(a.cover[0].url)}" title="View art" style="background-image:url('${a.cover[0].thumb}')"></div>` : ""}<div class="title">${esc(a.title)}${a.current ? ` <span class="cur-tag">Current</span>` : ""}</div></div>
       <div class="ref">${esc(a.artist)} &middot; ${a.trackCount} tracks</div>
       <div class="meter"><div class="bar" style="flex:1"><i style="width:${a.progress}%"></i></div></div>
       <div class="footer"><span class="prog-num">${a.progress}% complete</span></div>
@@ -1082,7 +1095,7 @@ function trackRowHTML(t) {
 }
 function albumPreviewSection(alb) {
   const tracks = state.data.tracks.filter((t) => t.albumId === alb.id && !t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
-  const cover = alb.cover[0] ? `style="background-image:url('${alb.cover[0].thumb}')"` : "";
+  const cover = alb.cover[0] ? `data-artview="${esc(alb.cover[0].url)}" title="View art" style="background-image:url('${alb.cover[0].thumb}')"` : "";
   const anyAudio = tracks.some((t) => audioFor(t));
   return `
     <div class="palbum">
@@ -1577,7 +1590,8 @@ function wireChrome() {
   $("#logout").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); location.href = "/login.html"; });
   $("#scrim").addEventListener("click", closeDrawer);
   $("#mscrim").addEventListener("click", closeModal);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeModal(); closeMenu(); closeNav(); } });
+  $("#lightbox").addEventListener("click", closeLightbox);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeLightbox(); closeDrawer(); closeModal(); closeMenu(); closeNav(); } });
 }
 
 (async function boot() {
