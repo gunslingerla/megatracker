@@ -214,6 +214,9 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .drawer.open { transform: none; }
 .drawer .dhead { padding: 18px 20px; border-bottom: 1px solid var(--stroke); display: flex; gap: 12px; align-items: flex-start; }
 .drawer .dhead h2 { margin: 0; font-size: 20px; }
+.title-edit { width: 100%; font-size: 19px; font-weight: 700; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 4px 6px; }
+.title-edit:hover { border-color: var(--stroke-strong); }
+.title-edit:focus { outline: none; border-color: var(--accent); background: var(--panel-2); }
 .drawer .dbody { padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
 .field label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--label); margin-bottom: 6px; }
 .field input, .field textarea, .field select { width: 100%; }

@@ -156,12 +156,12 @@ async function albumData(input, prefix) {
     .filter((e) => e[".tag"] === "folder")
     .map((e) => ({ e, p: parseProject(e.name, prefix || "") }))
     .filter((x) => x.p);
-  const items = [];
-  for (const { e, p } of projects) {
+  // List each song's Bounces in parallel — much faster than sequential for a full album.
+  const items = await Promise.all(projects.map(async ({ e, p }) => {
     let file = null;
     try { file = newestAudio(await listChildren(e.path_lower + "/Bounces", tok)); } catch (_) {}
-    items.push({ order: p.order, title: p.title, folder: e.name, file: file ? { path_lower: file.path_lower, name: file.name, server_modified: file.server_modified } : null });
-  }
+    return { order: p.order, title: p.title, folder: e.name, file: file ? { path_lower: file.path_lower, name: file.name, server_modified: file.server_modified } : null };
+  }));
   items.sort((a, b) => a.order - b.order);
   return { tok, items };
 }

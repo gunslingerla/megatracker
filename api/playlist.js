@@ -9,8 +9,7 @@ module.exports = async (req, res) => {
   const prefix = req.query.prefix || "";
   try {
     const { tok, items } = await albumData(folder, prefix);
-    const out = [];
-    for (const it of items) {
+    const out = await Promise.all(items.map(async (it) => {
       let url = null, ext = null, modified = null, name = it.folder;
       if (it.file) {
         url = await tempLink(it.file.path_lower, tok);
@@ -18,8 +17,8 @@ module.exports = async (req, res) => {
         ext = it.file.name.split(".").pop().toLowerCase();
         modified = it.file.server_modified;
       }
-      out.push({ order: it.order, title: it.title, folder: it.folder, name, ext, modified, url });
-    }
+      return { order: it.order, title: it.title, folder: it.folder, name, ext, modified, url };
+    }));
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json({ items: out, configured: true });
   } catch (e) {

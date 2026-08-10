@@ -424,7 +424,7 @@ function openDrawer(id) {
 
   openShell(`
     <div class="dhead">
-      <div style="flex:1"><input id="dTitle" type="text" value="${esc(t.title)}" style="font-size:19px;font-weight:700;background:transparent;border:1px solid transparent;padding:4px 6px" /></div>
+      <div style="flex:1"><input id="dTitle" type="text" value="${esc(t.title)}" class="title-edit" title="Click to rename" /></div>
       <button class="icon-btn close" id="closeDrawer">&times;</button>
     </div>
     <div class="dbody">
@@ -531,7 +531,7 @@ function openAlbumDrawer(id) {
   if (!a) return;
   const stages = state.data.stages;
   openShell(`
-    <div class="dhead"><div style="flex:1"><input id="aTitle" type="text" value="${esc(a.title)}" style="font-size:19px;font-weight:700;background:transparent;border:1px solid transparent;padding:4px 6px" /></div><button class="icon-btn close" id="closeDrawer">&times;</button></div>
+    <div class="dhead"><div style="flex:1"><input id="aTitle" type="text" value="${esc(a.title)}" class="title-edit" title="Click to rename" /></div><button class="icon-btn close" id="closeDrawer">&times;</button></div>
     <div class="dbody">
       <div class="row2">
         <div class="field"><label>Artist</label><input id="aArtist" type="text" value="${esc(a.artist)}" /></div>
@@ -542,7 +542,7 @@ function openAlbumDrawer(id) {
         <div class="field"><label>Release date</label><input id="aRelease" type="date" value="${a.releaseDate || ""}" /></div>
       </div>
       <div class="field"><label>Playlist link</label><input id="aPlaylist" type="text" value="${esc(a.playlist)}" placeholder="https://…" /></div>
-      <div class="field"><label>Dropbox album folder</label><input id="aFolder" type="text" value="${esc(a.dropboxFolder)}" placeholder="https://www.dropbox.com/scl/fo/…" /></div>
+      <div class="field"><label>Dropbox album folder</label><input id="aFolder" type="text" value="${esc(a.dropboxFolder)}" placeholder="/Your/Folder/Path  or  https://…share link" /><div class="gate-note ok" style="color:var(--muted)">A folder path works with your current scopes; a share link needs Dropbox 'sharing.read'.</div></div>
       <div class="field"><label>Project folder prefix</label><input id="aPrefix" type="text" value="${esc(a.trackPrefix)}" placeholder="e.g. The Belmonts" /><div class="gate-note ok" style="color:var(--muted)">Reads folders named PREFIX_##_Song, pulling audio from each song's “Bounces”.</div></div>
       <div class="field"><button class="add-btn ghost" id="aMakeFolders">&#128193; Create missing song folders</button></div>
       <div class="field"><label>Concept / Notes</label><textarea id="aNotes" style="min-height:200px">${esc(a.notes)}</textarea></div>
