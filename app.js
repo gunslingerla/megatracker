@@ -165,7 +165,11 @@ function render() {
   else if (state.view === "roster") main.innerHTML = rosterHTML();
   wireBoard();
   $("#albumStrip").style.display = (state.view === "tracks") ? "" : "none";
-  $("#newTrack").style.display = (state.view === "tracks") ? "" : "none";
+  // Filter bar: album filter on any album-scoped view; inspiration/member only on the board.
+  const showFilters = ["tracks", "preview", "members", "calendar"].includes(state.view);
+  $("#filterbar").classList.toggle("hidden", !showFilters);
+  $("#filterIP").style.display = (state.view === "tracks") ? "" : "none";
+  $("#filterMember").style.display = (state.view === "tracks") ? "" : "none";
 }
 
 function renderAlbumStrip() {
@@ -223,7 +227,7 @@ function cardHTML(t) {
   const audio = audioFor(t);
   const playingThis = state.audio.currentId === t.id && state.audio.playing;
   const playBtn = audio
-    ? `<button class="play-btn ${playingThis ? "playing" : ""}" data-play="${t.id}" title="Play latest bounce">${playingThis ? "&#9208;" : "&#9654;"}</button>`
+    ? `<button class="play-btn ${playingThis ? "playing" : ""}" data-play="${t.id}" title="Play latest bounce">${playingThis ? "&#9208;&#xFE0E;" : "&#9654;&#xFE0E;"}</button>`
     : "";
   const num = dispNum(t);
   return `
@@ -878,7 +882,7 @@ function updatePlayButtons() {
   document.querySelectorAll(".play-btn[data-play]").forEach((b) => {
     const on = b.dataset.play === state.audio.currentId && state.audio.playing;
     b.classList.toggle("playing", on);
-    b.innerHTML = on ? "&#9208;" : "&#9654;";
+    b.innerHTML = on ? "&#9208;&#xFE0E;" : "&#9654;&#xFE0E;";
   });
 }
 
@@ -894,9 +898,9 @@ function renderPlayer() {
   el.className = "player";
   el.innerHTML = `
     <div class="pctrl">
-      <button class="pbtn mini" id="pPrev" title="Previous">&#9198;</button>
-      <button class="pbtn" id="pToggle" title="Play/Pause">${a.paused ? "&#9654;" : "&#9208;"}</button>
-      <button class="pbtn mini" id="pNext" title="Next">&#9197;</button>
+      <button class="pbtn mini" id="pPrev" title="Previous">&#9198;&#xFE0E;</button>
+      <button class="pbtn" id="pToggle" title="Play/Pause">${a.paused ? "&#9654;&#xFE0E;" : "&#9208;&#xFE0E;"}</button>
+      <button class="pbtn mini" id="pNext" title="Next">&#9197;&#xFE0E;</button>
     </div>
     <div class="pinfo"><div class="pt">${esc(t.title)}</div><div class="ps">${esc(t.inspiredBy || "")}${item.ext ? " &middot; " + item.ext.toUpperCase() : ""}</div></div>
     <div class="pseek">
@@ -961,8 +965,8 @@ function renderMarkers() {
 
 function wireAudio() {
   const a = audioEl();
-  a.addEventListener("play", () => { state.audio.playing = true; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9208;"; });
-  a.addEventListener("pause", () => { state.audio.playing = false; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9654;"; });
+  a.addEventListener("play", () => { state.audio.playing = true; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9208;&#xFE0E;"; });
+  a.addEventListener("pause", () => { state.audio.playing = false; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9654;&#xFE0E;"; });
   a.addEventListener("ended", () => playNext(1));
   a.addEventListener("loadedmetadata", renderMarkers);
   a.addEventListener("durationchange", renderMarkers);
@@ -1019,8 +1023,8 @@ function trackRowHTML(t) {
   const audio = audioFor(t);
   const playing = state.audio.currentId === t.id && state.audio.playing;
   const btn = audio
-    ? `<button class="play-btn ${playing ? "playing" : ""}" data-play="${t.id}">${playing ? "&#9208;" : "&#9654;"}</button>`
-    : `<span class="play-btn" style="visibility:hidden">&#9654;</span>`;
+    ? `<button class="play-btn ${playing ? "playing" : ""}" data-play="${t.id}">${playing ? "&#9208;&#xFE0E;" : "&#9654;&#xFE0E;"}</button>`
+    : `<span class="play-btn" style="visibility:hidden">&#9654;&#xFE0E;</span>`;
   return `
     <div class="trow ${playing ? "playing" : ""}" data-tid="${t.id}">
       <div class="num">${dispNum(t)}</div>${btn}
@@ -1041,17 +1045,21 @@ function albumPreviewSection(alb) {
         <div>
           <h1>${esc(alb.title)}</h1>
           <div class="sub">${esc(alb.artist)} &middot; ${tracks.length} tracks &middot; ${alb.progress}% complete</div>
-          <div class="playall">${anyAudio ? `<button class="add-btn" data-playalbum="${alb.id}">&#9654; Play album</button>` : `<span class="empty">No audio yet</span>`}</div>
+          <div class="playall">${anyAudio ? `<button class="add-btn" data-playalbum="${alb.id}">&#9654;&#xFE0E; Play album</button>` : `<span class="empty">No audio yet</span>`}</div>
         </div>
       </div>
       ${tracks.map(trackRowHTML).join("") || `<div class="empty">No tracks yet.</div>`}
     </div>`;
 }
 function previewHTML() {
+  const id = state.filters.albumId;
   // Current album floats to the top; the rest keep their existing order.
-  const albums = state.data.albums.slice().sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0));
-  const unassigned = state.data.tracks.filter((t) => !t.albumId && !t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
-  if (!albums.length && !unassigned.length) return `<div class="loading">No albums yet — use “+ Album”.</div>`;
+  let albums = state.data.albums.slice().sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0));
+  if (id === "__unassigned") albums = [];
+  else if (id && id !== "__all") albums = albums.filter((a) => a.id === id);
+  const showUnassigned = !id || id === "__all" || id === "__unassigned";
+  const unassigned = showUnassigned ? state.data.tracks.filter((t) => !t.albumId && !t.onHold).sort((a, b) => effOrder(a) - effOrder(b)) : [];
+  if (!albums.length && !unassigned.length) return `<div class="loading">Nothing to preview for this filter.</div>`;
   let html = albums.map(albumPreviewSection).join("");
   if (unassigned.length) html += `<div class="palbum"><div class="phead"><div class="cover"></div><div><h1>Unassigned</h1><div class="sub">${unassigned.length} track(s) not on an album</div></div></div>${unassigned.map(trackRowHTML).join("")}</div>`;
   return `<div class="preview">${html}</div>`;
@@ -1380,14 +1388,21 @@ function wireChrome() {
   $("#filterAlbum").addEventListener("change", (e) => { state.filters.albumId = e.target.value; render(); });
   $("#filterIP").addEventListener("change", (e) => { state.filters.ip = e.target.value; render(); });
   $("#filterMember").addEventListener("change", (e) => { state.filters.memberId = e.target.value; render(); });
-  $("#newTrack").addEventListener("click", openCreateTrack);
-  $("#newAlbum").addEventListener("click", openCreateAlbum);
-  $("#whoami").addEventListener("click", pickIdentity);
-  $("#refresh").addEventListener("click", async () => { await refresh(false); await fetchPlaylist(); render(); });
+  // Right slide-out menu
+  const openMenu = () => { $("#sidemenu").classList.add("open"); $("#menuScrim").classList.add("open"); };
+  const closeMenu = () => { $("#sidemenu").classList.remove("open"); $("#menuScrim").classList.remove("open"); };
+  $("#menuBtn").addEventListener("click", openMenu);
+  $("#menuClose").addEventListener("click", closeMenu);
+  $("#menuScrim").addEventListener("click", closeMenu);
+
+  $("#newTrack").addEventListener("click", () => { closeMenu(); openCreateTrack(); });
+  $("#newAlbum").addEventListener("click", () => { closeMenu(); openCreateAlbum(); });
+  $("#whoami").addEventListener("click", () => { closeMenu(); pickIdentity(); });
+  $("#refresh").addEventListener("click", async () => { closeMenu(); await refresh(false); await fetchPlaylist(); render(); });
   $("#logout").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); location.href = "/login.html"; });
   $("#scrim").addEventListener("click", closeDrawer);
   $("#mscrim").addEventListener("click", closeModal);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeModal(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeModal(); closeMenu(); } });
 }
 
 (async function boot() {

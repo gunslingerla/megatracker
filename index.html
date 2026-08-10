@@ -25,20 +25,27 @@
       <button class="tab" data-view="hold">On Hold</button>
     </div>
     <div class="spacer"></div>
-    <div class="filters" id="filters">
-      <select id="filterAlbum"></select>
-      <select id="filterIP"><option value="">All inspirations</option></select>
-      <select id="filterMember"><option value="">All members</option></select>
-      <button class="add-btn" id="newTrack" title="Add a track">+ Track</button>
-      <button class="add-btn ghost" id="newAlbum" title="Add an album">+ Album</button>
-      <button class="add-btn ghost" id="whoami" title="Set your name">You</button>
-      <button class="add-btn ghost" id="refresh" title="Refresh">Refresh</button>
-      <button class="add-btn ghost" id="logout" title="Sign out">Sign out</button>
-    </div>
+    <button class="menu-btn" id="menuBtn" title="Menu" aria-label="Open menu">&#9776;</button>
+  </div>
+
+  <div class="filterbar" id="filterbar">
+    <select id="filterAlbum"></select>
+    <select id="filterIP"><option value="">All inspirations</option></select>
+    <select id="filterMember"><option value="">All members</option></select>
   </div>
 
   <div id="albumStrip"></div>
   <div id="main"><div class="loading">Loading the board…</div></div>
+
+  <div class="menu-scrim" id="menuScrim"></div>
+  <nav class="sidemenu" id="sidemenu" aria-label="Actions">
+    <div class="sidemenu-head"><span>Menu</span><button class="icon-btn" id="menuClose" aria-label="Close menu">&times;</button></div>
+    <button class="add-btn" id="newTrack" title="Add a track">+ Track</button>
+    <button class="add-btn ghost" id="newAlbum" title="Add an album">+ Album</button>
+    <button class="add-btn ghost" id="whoami" title="Set your name">You</button>
+    <button class="add-btn ghost" id="refresh" title="Refresh">Refresh</button>
+    <button class="add-btn ghost" id="logout" title="Sign out">Sign out</button>
+  </nav>
 
   <div class="scrim" id="scrim"></div>
   <div class="drawer" id="drawer"></div>
