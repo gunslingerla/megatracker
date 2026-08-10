@@ -1284,7 +1284,7 @@ function openTeleprompter(id, secsOverride) {
   const t = state.data.tracks.find((x) => x.id === id);
   const secs = secsOverride || parseSections(t);
   const tp = $("#teleprompter");
-  let font = 46, auto = false, speed = 40, raf = null, last = 0, editing = false;
+  let font = 46, auto = false, speed = 40, raf = null, last = 0, editing = false, center = false;
   function loop(now) {
     if (!auto) return;
     if (!last) last = now;
@@ -1305,12 +1305,13 @@ function openTeleprompter(id, secsOverride) {
         <button id="tpMinus">A&minus;</button><button id="tpPlus">A+</button>
         <button id="tpAuto">${auto ? "Pause" : "Auto"}</button>
         <input type="range" id="tpSpeed" min="10" max="140" value="${speed}" title="Scroll speed" />
+        <button id="tpAlign">${center ? "Left" : "Center"}</button>
         <button id="tpEdit">Edit</button>
         <button id="tpFull">Fullscreen</button>
         <button id="tpPop">Pop-Out</button>
         <button id="tpClose">Close</button>
       </div>
-      <div class="tp-scroll" id="tpScroll" style="font-size:${font}px">
+      <div class="tp-scroll${center ? " center" : ""}" id="tpScroll" style="font-size:${font}px">
         ${secs.map((s) => `<div class="tp-section">${s.label ? `<div class="tp-lbl">${esc(s.label)}</div>` : ""}<div class="tp-txt">${esc(s.text)}</div></div>`).join("") || `<div class="tp-section"><div class="tp-txt">No lyrics yet.</div></div>`}
       </div>`;
     const sc = $("#tpScroll");
@@ -1319,6 +1320,7 @@ function openTeleprompter(id, secsOverride) {
     $("#tpMinus").onclick = () => { font = Math.max(20, font - 4); sc.style.fontSize = font + "px"; };
     $("#tpSpeed").oninput = (e) => { speed = Number(e.target.value); };
     $("#tpAuto").onclick = () => { auto = !auto; $("#tpAuto").innerHTML = auto ? "Pause" : "Auto"; last = 0; if (auto) raf = requestAnimationFrame(loop); else cancelAnimationFrame(raf); };
+    $("#tpAlign").onclick = () => { center = !center; sc.classList.toggle("center", center); $("#tpAlign").textContent = center ? "Left" : "Center"; };
     $("#tpEdit").onclick = () => { stop(); editing = true; draw(); };
     $("#tpFull").onclick = toggleFull;
     $("#tpPop").onclick = popOut;
@@ -1361,6 +1363,7 @@ function openTeleprompter(id, secsOverride) {
       .jump{display:flex;gap:6px;flex-wrap:wrap}
       .jump button{padding:4px 9px;font-size:12px;color:#c9c2d6}
       .sc{padding:8vh 3vw 60vh;font-size:46px;font-weight:700;line-height:1.32;scroll-behavior:smooth;height:100vh;overflow:auto}
+      .sc.center .s{text-align:center}
       .s{margin:0 0 1.1em;max-width:none}
       .l{color:#e5399f;text-transform:uppercase;letter-spacing:.12em;font-size:.42em;margin-bottom:.25em}
       .x{white-space:pre-wrap}
@@ -1375,6 +1378,7 @@ function openTeleprompter(id, secsOverride) {
         <button onclick="fz(-4)">A&minus;</button><button onclick="fz(4)">A+</button>
         <button id="au" onclick="tg()">Auto</button>
         <input id="sp" type="range" min="10" max="140" value="40" title="Scroll speed">
+        <button id="al" onclick="ce()">Center</button>
         <button onclick="edit()">Edit</button>
         <button onclick="fs()">Fullscreen</button>
       </div>
@@ -1398,6 +1402,7 @@ function openTeleprompter(id, secsOverride) {
         function loop(now){if(!auto)return;if(!last)last=now;sc.scrollTop+=speed*(now-last)/1000;last=now;raf=requestAnimationFrame(loop);}
         function tg(){auto=!auto;document.getElementById('au').textContent=auto?'Pause':'Auto';last=0;if(auto)raf=requestAnimationFrame(loop);else cancelAnimationFrame(raf);}
         function fs(){var e=document.documentElement;if(!document.fullscreenElement){(e.requestFullscreen||e.webkitRequestFullscreen||function(){}).call(e);}else{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}}
+        function ce(){var on=sc.classList.toggle('center');document.getElementById('al').textContent=on?'Left':'Center';}
         function edit(){document.getElementById('ta').value=flat(secs);document.getElementById('edwrap').style.display='flex';}
         function cancelEd(){document.getElementById('edwrap').style.display='none';}
         function save(){var raw=document.getElementById('ta').value;secs=parse(raw);
