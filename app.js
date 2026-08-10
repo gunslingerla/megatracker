@@ -1284,7 +1284,7 @@ function openTeleprompter(id, secsOverride) {
   const t = state.data.tracks.find((x) => x.id === id);
   const secs = secsOverride || parseSections(t);
   const tp = $("#teleprompter");
-  let font = 46, auto = false, speed = 40, raf = null, last = 0, editing = false, center = true, track = 0;
+  let font = 46, auto = false, speed = 40, raf = null, last = 0, editing = false, center = true, track = 0, showCtrl = true;
   function loop(now) {
     if (!auto) return;
     if (!last) last = now;
@@ -1298,14 +1298,15 @@ function openTeleprompter(id, secsOverride) {
   function draw() {
     if (editing) { drawEdit(); return; }
     tp.innerHTML = `
-      <div class="tp-bar">
+      <button class="tp-menu-btn" id="tpMenu" title="Show / hide controls">${showCtrl ? "Hide controls" : "Controls"}</button>
+      <div class="tp-bar${showCtrl ? "" : " collapsed"}" id="tpBar">
         <span class="tp-title">${esc(t.title)}</span>
         <div class="tp-jump">${secs.map((s, i) => s.label ? `<button data-j="${i}">${esc(s.label)}</button>` : "").join("")}</div>
         <span class="spacer" style="flex:1"></span>
         <button id="tpMinus">A&minus;</button><button id="tpPlus">A+</button>
         <button id="tpAuto">${auto ? "Pause" : "Auto"}</button>
-        <input type="range" id="tpSpeed" min="10" max="140" value="${speed}" title="Scroll speed" />
-        <input type="range" id="tpTrack" min="0" max="10" step="0.5" value="${track}" title="Letter spacing (tracking)" />
+        <label class="tp-ctl"><span>Speed</span><input type="range" id="tpSpeed" min="10" max="140" value="${speed}" title="Scroll speed" /></label>
+        <label class="tp-ctl"><span>Tracking</span><input type="range" id="tpTrack" min="0" max="10" step="0.5" value="${track}" title="Letter spacing" /></label>
         <button id="tpAlign">${center ? "Left" : "Center"}</button>
         <button id="tpEdit">Edit</button>
         <button id="tpFull">Fullscreen</button>
@@ -1316,6 +1317,7 @@ function openTeleprompter(id, secsOverride) {
         ${secs.map((s) => `<div class="tp-section">${s.label ? `<div class="tp-lbl">${esc(s.label)}</div>` : ""}<div class="tp-txt">${esc(s.text)}</div></div>`).join("") || `<div class="tp-section"><div class="tp-txt">No lyrics yet.</div></div>`}
       </div>`;
     const sc = $("#tpScroll");
+    $("#tpMenu").onclick = () => { showCtrl = !showCtrl; $("#tpBar").classList.toggle("collapsed", !showCtrl); $("#tpMenu").textContent = showCtrl ? "Hide controls" : "Controls"; };
     $("#tpClose").onclick = close;
     $("#tpPlus").onclick = () => { font = Math.min(140, font + 4); sc.style.fontSize = font + "px"; };
     $("#tpMinus").onclick = () => { font = Math.max(20, font - 4); sc.style.fontSize = font + "px"; };
@@ -1358,10 +1360,14 @@ function openTeleprompter(id, secsOverride) {
       :root{color-scheme:dark}*{box-sizing:border-box}
       body{margin:0;background:#0a0a0e;color:#ede8f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
       .bar{position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:rgba(20,18,28,.95);border-bottom:1px solid #2a2733}
+      .bar.collapsed{display:none}
       .bar .ttl{font-weight:800}
       .bar button{background:#1d1a26;color:#ede8f5;border:1px solid #34303f;border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:600;font-size:13px}
       .bar button:hover{border-color:#e5399f}
       .bar input{accent-color:#e5399f}
+      .ctl{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(237,232,245,.6)}
+      .mbtn{position:absolute;top:10px;right:12px;z-index:6;background:rgba(255,255,255,.08);color:#ede8f5;border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600;opacity:.6}
+      .mbtn:hover{opacity:1;border-color:#e5399f}
       .jump{display:flex;gap:6px;flex-wrap:wrap}
       .jump button{padding:4px 9px;font-size:12px;color:#c9c2d6}
       .sc{padding:8vh 3vw 60vh;font-size:46px;font-weight:700;line-height:1.32;scroll-behavior:smooth;height:100vh;overflow:auto}
@@ -1373,14 +1379,15 @@ function openTeleprompter(id, secsOverride) {
       .edwrap textarea{flex:1;width:100%;background:rgba(255,255,255,.03);color:#ede8f5;border:1px solid #34303f;border-radius:12px;padding:16px 18px;font-size:18px;line-height:1.5;resize:none;font-family:ui-monospace,Menlo,Consolas,monospace}
       .edbar{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
     </style></head><body>
-      <div class="bar">
+      <button class="mbtn" id="mbtn" onclick="mt()">Hide controls</button>
+      <div class="bar" id="bar">
         <span class="ttl">${esc(t.title)}</span>
         <div class="jump" id="jump"></div>
         <span style="flex:1"></span>
         <button onclick="fz(-4)">A&minus;</button><button onclick="fz(4)">A+</button>
         <button id="au" onclick="tg()">Auto</button>
-        <input id="sp" type="range" min="10" max="140" value="40" title="Scroll speed">
-        <input id="tr" type="range" min="0" max="10" step="0.5" value="0" title="Letter spacing (tracking)">
+        <label class="ctl"><span>Speed</span><input id="sp" type="range" min="10" max="140" value="40" title="Scroll speed"></label>
+        <label class="ctl"><span>Tracking</span><input id="tr" type="range" min="0" max="10" step="0.5" value="0" title="Letter spacing"></label>
         <button id="al" onclick="ce()">Left</button>
         <button onclick="edit()">Edit</button>
         <button onclick="fs()">Fullscreen</button>
@@ -1406,6 +1413,7 @@ function openTeleprompter(id, secsOverride) {
         function tg(){auto=!auto;document.getElementById('au').textContent=auto?'Pause':'Auto';last=0;if(auto)raf=requestAnimationFrame(loop);else cancelAnimationFrame(raf);}
         function fs(){var e=document.documentElement;if(!document.fullscreenElement){(e.requestFullscreen||e.webkitRequestFullscreen||function(){}).call(e);}else{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}}
         function ce(){var on=sc.classList.toggle('center');document.getElementById('al').textContent=on?'Left':'Center';}
+        function mt(){var c=document.getElementById('bar').classList.toggle('collapsed');document.getElementById('mbtn').textContent=c?'Controls':'Hide controls';}
         function edit(){document.getElementById('ta').value=flat(secs);document.getElementById('edwrap').style.display='flex';}
         function cancelEd(){document.getElementById('edwrap').style.display='none';}
         function save(){var raw=document.getElementById('ta').value;secs=parse(raw);

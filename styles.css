@@ -564,7 +564,15 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 /* ---- Teleprompter ----------------------------------------------------------*/
 .teleprompter { position: fixed; inset: 0; z-index: 80; background: #050408; color: #f6f2fa; display: none; flex-direction: column; }
 .teleprompter.open { display: flex; }
-.tp-bar { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; }
+.tp-bar { display: flex; align-items: center; gap: 12px; padding: 12px 56px 12px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; }
+.tp-bar.collapsed { display: none; }
+.tp-menu-btn {
+  position: absolute; top: 10px; right: 12px; z-index: 4;
+  background: rgba(255,255,255,0.08); color: #f6f2fa; border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 600; opacity: 0.6;
+}
+.tp-menu-btn:hover { opacity: 1; border-color: var(--accent); }
+.tp-ctl { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(246,242,250,0.6); }
 .tp-bar .tp-title { font-weight: 700; }
 .tp-bar .spacer { flex: 1; }
 .tp-bar button, .tp-bar select { background: rgba(255,255,255,0.06); color: #f6f2fa; border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
