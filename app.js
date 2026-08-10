@@ -1284,7 +1284,7 @@ function openTeleprompter(id, secsOverride) {
   const t = state.data.tracks.find((x) => x.id === id);
   const secs = secsOverride || parseSections(t);
   const tp = $("#teleprompter");
-  let font = 46, auto = false, speed = 40, raf = null, last = 0, editing = false, center = false;
+  let font = 46, auto = false, speed = 40, raf = null, last = 0, editing = false, center = true, track = 0;
   function loop(now) {
     if (!auto) return;
     if (!last) last = now;
@@ -1305,13 +1305,14 @@ function openTeleprompter(id, secsOverride) {
         <button id="tpMinus">A&minus;</button><button id="tpPlus">A+</button>
         <button id="tpAuto">${auto ? "Pause" : "Auto"}</button>
         <input type="range" id="tpSpeed" min="10" max="140" value="${speed}" title="Scroll speed" />
+        <input type="range" id="tpTrack" min="0" max="10" step="0.5" value="${track}" title="Letter spacing (tracking)" />
         <button id="tpAlign">${center ? "Left" : "Center"}</button>
         <button id="tpEdit">Edit</button>
         <button id="tpFull">Fullscreen</button>
         <button id="tpPop">Pop-Out</button>
         <button id="tpClose">Close</button>
       </div>
-      <div class="tp-scroll${center ? " center" : ""}" id="tpScroll" style="font-size:${font}px">
+      <div class="tp-scroll${center ? " center" : ""}" id="tpScroll" style="font-size:${font}px;letter-spacing:${track}px">
         ${secs.map((s) => `<div class="tp-section">${s.label ? `<div class="tp-lbl">${esc(s.label)}</div>` : ""}<div class="tp-txt">${esc(s.text)}</div></div>`).join("") || `<div class="tp-section"><div class="tp-txt">No lyrics yet.</div></div>`}
       </div>`;
     const sc = $("#tpScroll");
@@ -1319,6 +1320,7 @@ function openTeleprompter(id, secsOverride) {
     $("#tpPlus").onclick = () => { font = Math.min(140, font + 4); sc.style.fontSize = font + "px"; };
     $("#tpMinus").onclick = () => { font = Math.max(20, font - 4); sc.style.fontSize = font + "px"; };
     $("#tpSpeed").oninput = (e) => { speed = Number(e.target.value); };
+    $("#tpTrack").oninput = (e) => { track = Number(e.target.value); sc.style.letterSpacing = track + "px"; };
     $("#tpAuto").onclick = () => { auto = !auto; $("#tpAuto").innerHTML = auto ? "Pause" : "Auto"; last = 0; if (auto) raf = requestAnimationFrame(loop); else cancelAnimationFrame(raf); };
     $("#tpAlign").onclick = () => { center = !center; sc.classList.toggle("center", center); $("#tpAlign").textContent = center ? "Left" : "Center"; };
     $("#tpEdit").onclick = () => { stop(); editing = true; draw(); };
@@ -1378,11 +1380,12 @@ function openTeleprompter(id, secsOverride) {
         <button onclick="fz(-4)">A&minus;</button><button onclick="fz(4)">A+</button>
         <button id="au" onclick="tg()">Auto</button>
         <input id="sp" type="range" min="10" max="140" value="40" title="Scroll speed">
-        <button id="al" onclick="ce()">Center</button>
+        <input id="tr" type="range" min="0" max="10" step="0.5" value="0" title="Letter spacing (tracking)">
+        <button id="al" onclick="ce()">Left</button>
         <button onclick="edit()">Edit</button>
         <button onclick="fs()">Fullscreen</button>
       </div>
-      <div class="sc" id="sc"></div>
+      <div class="sc center" id="sc"></div>
       <div class="edwrap" id="edwrap">
         <textarea id="ta" spellcheck="false" placeholder="[Verse 1]&#10;First line…"></textarea>
         <div class="edbar"><button onclick="save()">Save</button><button onclick="cancelEd()">Cancel</button></div>
@@ -1410,6 +1413,7 @@ function openTeleprompter(id, secsOverride) {
           .then(function(r){return r.json();}).then(function(j){if(j&&j.ok){render();cancelEd();try{if(window.opener&&!window.opener.closed&&window.opener.__tpRefresh)window.opener.__tpRefresh();}catch(e){}}else{alert((j&&j.error)||'Save failed');}}).catch(function(){alert('Save failed');});
         }
         document.getElementById('sp').oninput=function(e){speed=+e.target.value;};
+        document.getElementById('tr').oninput=function(e){sc.style.letterSpacing=(+e.target.value)+'px';};
         render();
       <\/script>
     </body></html>`);
