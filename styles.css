@@ -54,6 +54,7 @@
   --radius:    14px;
   --radius-sm: 10px;
   --shadow:    0 12px 34px var(--card-shadow);
+  --gutter:    clamp(14px, 3vw, 22px);   /* fluid side padding across the app */
 }
 
 * { box-sizing: border-box; }
@@ -71,8 +72,8 @@ button { font-family: inherit; }
 
 /* ---- Top bar ---------------------------------------------------------------*/
 .topbar {
-  display: flex; align-items: center; gap: 18px;
-  padding: 14px 22px;
+  display: flex; align-items: center; gap: clamp(10px, 1.6vw, 18px);
+  padding: 14px var(--gutter);
   border-bottom: 1px solid var(--stroke);
   background: rgba(10, 10, 14, 0.72);
   backdrop-filter: blur(10px);
@@ -127,7 +128,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .drawer-actions .add-btn { flex: 1; text-align: center; }
 
 /* ---- Album header strip ----------------------------------------------------*/
-.album-strip { display: flex; align-items: center; gap: 18px; padding: 18px 22px 6px; }
+.album-strip { display: flex; align-items: center; gap: 18px; padding: 18px var(--gutter) 6px; }
 .album-strip .cover {
   width: 58px; height: 58px; border-radius: 12px; border: 1px solid var(--stroke-strong);
   background: var(--panel-2) center/cover no-repeat; flex: none;
@@ -145,14 +146,16 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .albums-head { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 0 6px 12px; }
 .albums-row { display: flex; flex-wrap: wrap; gap: 14px; }
 .albums-row .card { width: 260px; cursor: pointer; }
+.albums-row .card.is-current { box-shadow: 0 0 0 1.5px var(--accent); }
+.cur-tag { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #0c0b10; background: var(--accent); padding: 2px 6px; border-radius: 999px; vertical-align: middle; }
 
 .bar { height: 7px; border-radius: 999px; background: var(--panel-3); overflow: hidden; }
 .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
 
 /* ---- Board -----------------------------------------------------------------*/
 .board {
-  display: flex; align-items: flex-start; gap: 14px;
-  padding: 16px 22px 40px; overflow-x: auto;
+  display: flex; align-items: flex-start; gap: clamp(10px, 1.4vw, 14px);
+  padding: 16px var(--gutter) 40px; overflow-x: auto;
 }
 .col {
   flex: 0 0 auto; align-self: flex-start;
@@ -171,7 +174,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .col h3 .dot { width: 9px; height: 9px; border-radius: 50%; }
 .col h3 .count { margin-left: auto; color: var(--muted-2); font-weight: 700; }
 .col .cards { padding: 10px; display: flex; align-items: flex-start; gap: 10px; min-height: 40px; }
-.cardcol { display: flex; flex-direction: column; gap: 10px; width: 272px; }
+.cardcol { display: flex; flex-direction: column; gap: 10px; width: clamp(236px, 21vw, 272px); }
 
 /* ---- Track card (signature tracker treatment) -----------------------------*/
 .card {
@@ -190,10 +193,14 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 }
 .card .ref { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
 
-.meter { display: flex; gap: 4px; margin-top: 10px; }
-.seg { flex: 1; height: 6px; border-radius: 3px; background: var(--idle); opacity: 0.45; }
-.seg.done { background: var(--good); opacity: 1; }
-.seg.prog { background: var(--warn); opacity: 1; }
+.meter { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.pchip {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.01em;
+  padding: 3px 8px; border-radius: 999px; border: 1px solid transparent;
+  white-space: nowrap; line-height: 1.15;
+}
+.pchip.done { font-weight: 600; text-decoration: line-through; opacity: 0.85; }
+.pchip.prog { box-shadow: 0 0 0 2px rgba(255,255,255,0.14) inset; }
 
 .card .footer { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .card .prog-num { font-size: 11px; color: var(--muted); }
@@ -256,7 +263,13 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .phase-row2 .powner { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
 .phase-row2.done { border-color: rgba(70,219,160,0.35); background: rgba(70,219,160,0.06); }
 .phase-row2.done .pname2 { color: var(--muted); text-decoration: line-through; }
-.roster-bar { padding: 14px 22px 0; }
+.roster-bar { padding: 14px var(--gutter) 0; display: flex; gap: 10px; flex-wrap: wrap; }
+.phase-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.ppick { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 4px 9px; border: 1px solid var(--stroke); border-radius: 999px; cursor: pointer; user-select: none; }
+.ppick input { width: 14px; height: 14px; accent-color: var(--accent); }
+.ppick.on { border-color: var(--accent); background: rgba(229,57,159,0.10); }
+.mtags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.mtag { font-size: 10.5px; font-weight: 700; color: var(--muted); background: var(--panel-3); border: 1px solid var(--stroke); padding: 2px 8px; border-radius: 999px; }
 .mcard .field { margin-top: 8px; }
 .mmeta { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -290,7 +303,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .cal-nav h2 { margin: 0; font-size: 18px; }
 
 /* ---- Member (Who's Up Next) view ------------------------------------------*/
-.members { padding: 16px 22px 40px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+.members { padding: 16px var(--gutter) 40px; display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(260px, 26vw, 320px), 1fr)); gap: 14px; align-items: start; }
 .mcard {
   border: 1px solid transparent; border-radius: var(--radius); padding: 16px;
   background: var(--card-fill);
@@ -387,7 +400,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .fb-badge { font-size: 10.5px; color: var(--warn); display: inline-flex; align-items: center; gap: 3px; }
 
 /* ---- Preview album ---------------------------------------------------------*/
-.preview { padding: 16px 22px 90px; max-width: 860px; margin: 0 auto; }
+.preview { padding: 16px var(--gutter) 90px; max-width: 860px; margin: 0 auto; }
 .preview .phead { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
 .preview .phead .cover { width: 88px; height: 88px; border-radius: 14px; border: 1px solid var(--stroke-strong); background: var(--panel-2) center/cover no-repeat; display: grid; place-items: center; color: var(--muted-2); font-size: 30px; }
 .preview .phead h1 { margin: 0; font-size: 26px; }
@@ -468,6 +481,23 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .tp-section .tp-txt { white-space: pre-wrap; line-height: 1.32; font-weight: 700; }
 
 /* ---- Mobile / responsive ---------------------------------------------------*/
+/* Tablet / narrow-desktop: header reflows to two rows, filter labels shrink,
+   but the board stays a scrollable multi-column layout. */
+@media (max-width: 1080px) {
+  .topbar { flex-wrap: wrap; }
+  .spacer { display: none; }
+  .tabs { order: 3; width: 100%; margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .tab { white-space: nowrap; }
+  .filters { order: 2; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+  .filters select { min-width: 120px; }
+}
+
+@media (max-width: 900px) {
+  .filters { width: 100%; justify-content: flex-start; }
+  .filters select { flex: 1; min-width: 110px; }
+  .album-strip .albprog2 { max-width: none; }
+}
+
 @media (max-width: 760px) {
   .topbar { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
   .topbar .spacer { display: none; }

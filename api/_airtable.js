@@ -30,6 +30,7 @@ const F = {
     trackCount: "fldr9b77emNbU1nV4",
     dropboxFolder: "fldrgy8vF45MirkKT",
     trackPrefix: "fldtoIxyNrItdk0gJ",
+    current: "fldK6h7H7VLwrRp9H",
   },
   track: {
     title: "fldmHI4nP7OIeZQ3q",
@@ -79,6 +80,7 @@ const F = {
     email: "fldWg3Ns8qMCCmxYr",
     nickname: "fldlqmdVveUp6Ndto",
     color: "fldjGoImeca6pSVMA",
+    phases: "fldW5lVAr3vWuzlyl", // "Default Phases" (multipleSelects of phase names)
   },
 };
 

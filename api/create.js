@@ -2,7 +2,11 @@ const { T, F, PHASE_NAMES, listAll, create } = require("./_airtable");
 const { requireAuth } = require("./_auth");
 
 // Default owner(s) for each production phase.
+// Primary source of truth: each member's "Default Phases" list. If nobody has claimed
+// a phase there, fall back to the old name/role heuristic so tracks still get assigned.
 function ownersForPhase(phaseName, members) {
+  const explicit = members.filter((m) => (m.phases || []).includes(phaseName));
+  if (explicit.length) return explicit;
   const role = (kw) => members.filter((m) => (m.role || "").toLowerCase().includes(kw));
   const name = (kw) => members.filter((m) => (m.name || "").toLowerCase().includes(kw));
   const MAP = {
@@ -90,7 +94,12 @@ module.exports = async (req, res) => {
 
       // Auto-create the 5 production phases, each assigned to the matching roster member(s).
       const membersRaw = await listAll(T.members);
-      const members = membersRaw.map((r) => ({ id: r.id, role: r.fields[F.member.role] || "" }));
+      const members = membersRaw.map((r) => ({
+        id: r.id,
+        name: r.fields[F.member.name] || "",
+        role: r.fields[F.member.role] || "",
+        phases: Array.isArray(r.fields[F.member.phases]) ? r.fields[F.member.phases] : [],
+      }));
       const phaseRecords = PHASE_NAMES.map((p) => ({
         fields: {
           [F.phase.name]: `${tf[F.track.title]} — ${p}`,

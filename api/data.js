@@ -21,7 +21,7 @@ module.exports = async (req, res) => {
     const members = membersR.map((r) => {
       const name = r.fields[F.member.name] || "";
       const nickname = r.fields[F.member.nickname] || "";
-      return { id: r.id, name, nickname, display: nickname || name, role: r.fields[F.member.role] || "", email: r.fields[F.member.email] || "", color: r.fields[F.member.color] || "" };
+      return { id: r.id, name, nickname, display: nickname || name, role: r.fields[F.member.role] || "", email: r.fields[F.member.email] || "", color: r.fields[F.member.color] || "", phases: arr(r.fields[F.member.phases]) };
     });
     // Use the nickname (falling back to name) everywhere owners/authors are shown.
     const memberName = Object.fromEntries(members.map((m) => [m.id, m.display]));
@@ -112,6 +112,7 @@ module.exports = async (req, res) => {
         label: f[F.album.label] || "",
         dropboxFolder: f[F.album.dropboxFolder] || "",
         trackPrefix: f[F.album.trackPrefix] || "",
+        current: !!f[F.album.current],
         ownerIds: arr(f[F.album.owner]),
         owners: arr(f[F.album.owner]).map((id) => memberName[id] || "?"),
         progress: f[F.album.progress] ?? 0,

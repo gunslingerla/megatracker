@@ -22,7 +22,7 @@ const MAP = {
   },
   member: {
     table: T.members,
-    fields: { name: F.member.name, nickname: F.member.nickname, role: F.member.role, email: F.member.email, color: F.member.color },
+    fields: { name: F.member.name, nickname: F.member.nickname, role: F.member.role, email: F.member.email, color: F.member.color, phases: F.member.phases },
     links: [],
   },
   phase: {
@@ -37,6 +37,7 @@ const MAP = {
       releaseDate: F.album.releaseDate, playlist: F.album.playlist, genre: F.album.genre,
       label: F.album.label, notes: F.album.notes, ownerIds: F.album.owner,
       dropboxFolder: F.album.dropboxFolder, trackPrefix: F.album.trackPrefix, cover: F.album.cover,
+      current: F.album.current,
     },
     links: ["ownerIds"],
   },

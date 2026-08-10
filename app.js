@@ -133,7 +133,12 @@ function syncFilters() {
   const { albums, members } = state.data;
   const fa = $("#filterAlbum");
   fa.innerHTML = `<option value="__all">All albums</option>` + albums.map((a) => `<option value="${a.id}">${esc(a.title)}</option>`).join("") + `<option value="__unassigned">Unassigned</option>`;
-  if (!state.filters.albumId) state.filters.albumId = "__all";
+  // On a fresh load, default to the album marked "Current" (if any); once the user
+  // changes the filter this stays put for the rest of the session.
+  if (!state.filters.albumId) {
+    const cur = albums.find((a) => a.current);
+    state.filters.albumId = cur ? cur.id : "__all";
+  }
   const valid = state.filters.albumId === "__all" || state.filters.albumId === "__unassigned" || albums.some((a) => a.id === state.filters.albumId);
   if (!valid) state.filters.albumId = "__all";
   fa.value = state.filters.albumId;
@@ -185,13 +190,18 @@ function renderAlbumStrip() {
 function segClass(status) { return status === "Done" ? "done" : status === "In progress" ? "prog" : ""; }
 
 function cardHTML(t) {
-  // Each phase pill is tinted by its owner's color; filled by status.
+  // Each phase is a labeled chip tinted by its owner's color:
+  // bright while open/in-progress, dark + struck through once Done.
   const segs = t.phases.map((p) => {
     const m = memberById(p.ownerIds[0]);
-    const col = m && m.color ? m.color : "var(--idle)";
-    const op = p.status === "Done" ? 1 : p.status === "In progress" ? 0.6 : 0.28;
+    const col = m && m.color ? m.color : "#6a6478";
     const who = m ? m.display : "unassigned";
-    return `<div class="seg" style="background:${col};opacity:${op}" title="${esc(p.phase)} (${esc(who)}): ${esc(p.status)}"></div>`;
+    const done = p.status === "Done";
+    const prog = p.status === "In progress";
+    const style = done
+      ? `background:#1b1a22;border-color:${col}55;color:#726d80`
+      : `background:${col};border-color:${col};color:#0c0b10`;
+    return `<span class="pchip${done ? " done" : ""}${prog ? " prog" : ""}" style="${style}" title="${esc(p.phase)} (${esc(who)}): ${esc(p.status)}">${esc(p.phase)}</span>`;
   }).join("");
   // Avatars for the members whose parts aren't done yet (dedup), colored by member.
   const ownerIdSet = new Map();
@@ -280,8 +290,8 @@ function albumsBoardHTML() {
 }
 function albumCardHTML(a) {
   return `
-    <div class="card" data-album="${a.id}">
-      <div class="top">${a.cover && a.cover[0] ? `<div class="card-art" style="background-image:url('${a.cover[0].thumb}')"></div>` : ""}<div class="title">${esc(a.title)}</div></div>
+    <div class="card${a.current ? " is-current" : ""}" data-album="${a.id}">
+      <div class="top">${a.cover && a.cover[0] ? `<div class="card-art" style="background-image:url('${a.cover[0].thumb}')"></div>` : ""}<div class="title">${esc(a.title)}${a.current ? ` <span class="cur-tag">Current</span>` : ""}</div></div>
       <div class="ref">${esc(a.artist)} &middot; ${a.trackCount} tracks</div>
       <div class="meter"><div class="bar" style="flex:1"><i style="width:${a.progress}%"></i></div></div>
       <div class="footer"><span class="prog-num">${a.progress}% complete</span></div>
@@ -350,17 +360,25 @@ function rosterHTML() {
         <div class="field"><label>Role / Instrument</label><input data-mf="role" value="${esc(m.role)}" placeholder="e.g. Drums" /></div>
         <div class="field"><label>Email</label><input data-mf="email" type="email" value="${esc(m.email)}" placeholder="name@email.com" /></div>
         <div class="field"><label>Color</label><div class="swatches">${PALETTE.map((c) => `<button class="swatch${(m.color || "").toLowerCase() === c ? " sel" : ""}" data-mcolor="${m.id}:${c}" style="background:${c}" title="${c}"></button>`).join("")}</div></div>
+        <div class="field"><label>Production phases (who owns what)</label>
+          <div class="phase-picks">${phaseNames().map((p) => `<label class="ppick${(m.phases || []).includes(p) ? " on" : ""}"><input type="checkbox" data-mphase="${m.id}:${esc(p)}" ${(m.phases || []).includes(p) ? "checked" : ""} /> ${esc(p)}</label>`).join("")}</div>
+        </div>
       </div>`;
     }
+    const phaseTags = (m.phases || []).length
+      ? `<div class="mtags">${m.phases.map((p) => `<span class="mtag">${esc(p)}</span>`).join("")}</div>`
+      : "";
     return `
       <div class="mcard" data-member="${m.id}">
         <div class="mhead">${av}<div style="flex:1"><div class="mname">${esc(m.display || m.name || "—")}</div><div class="mrole">${esc(m.role || "")}</div></div><button class="fb-mini" data-medit="${m.id}">Edit</button></div>
         ${m.nickname ? `<div class="mmeta">Name: ${esc(m.name)}</div>` : ""}
         ${m.email ? `<div class="mmeta">${esc(m.email)}</div>` : ""}
+        ${phaseTags}
       </div>`;
   }).join("");
-  return `<div class="roster-bar"><button class="add-btn" id="rosterAdd">+ Add member</button></div><div class="members">${cards}</div>`;
+  return `<div class="roster-bar"><button class="add-btn" id="rosterAdd">+ Add member</button><button class="add-btn ghost" id="applyPhases" title="Update every existing track's phase owners to match these assignments">Apply to all tracks</button></div><div class="members">${cards}</div>`;
 }
+function phaseNames() { return (state.data.phaseNames && state.data.phaseNames.length) ? state.data.phaseNames : ["Drums","Bass","Eric Guitar","Josh Guitar","Eric Vocals","Josh Vocals","Backing Vocals","Synth","Sound Design"]; }
 
 /* ---- Calendar --------------------------------------------------------------*/
 let calMonth = new Date();
@@ -436,6 +454,31 @@ function wireBoard() {
     const r = await update("member", id, { color: c });
     if (r.ok) { toast("Color set"); refresh(false); }
   });
+  // Toggle which production phases a member owns (their "Default Phases").
+  document.querySelectorAll("[data-mphase]").forEach((inp) => inp.addEventListener("change", async () => {
+    const sep = inp.dataset.mphase.indexOf(":");
+    const id = inp.dataset.mphase.slice(0, sep);
+    const phase = inp.dataset.mphase.slice(sep + 1);
+    const m = state.data.members.find((x) => x.id === id);
+    if (!m) return;
+    const set = new Set(m.phases || []);
+    if (inp.checked) set.add(phase); else set.delete(phase);
+    const next = phaseNames().filter((p) => set.has(p)); // keep canonical order
+    const r = await update("member", id, { phases: next });
+    if (r.ok) { toast("Assignments saved"); m.phases = next; } else { inp.checked = !inp.checked; }
+  }));
+  const applyBtn = document.getElementById("applyPhases");
+  if (applyBtn) applyBtn.onclick = async () => {
+    if (!confirm("Update every existing track's phase owners to match these assignments? Any manual per-track owner tweaks will be overwritten.")) return;
+    applyBtn.disabled = true; applyBtn.textContent = "Applying…";
+    try {
+      const res = await fetch("/api/reassign", { method: "POST" });
+      const j = await res.json();
+      if (res.ok && j.ok) { toast(`Updated ${j.changed} phase${j.changed === 1 ? "" : "s"}`); await refresh(false); }
+      else toast(j.error || "Failed");
+    } catch (e) { toast("Failed"); }
+    applyBtn.disabled = false; applyBtn.textContent = "Apply to all tracks";
+  };
 
   document.querySelectorAll(".col[data-stage]").forEach((col) => {
     col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drag-over"); });
@@ -643,6 +686,7 @@ function openAlbumDrawer(id) {
         <div class="field"><label>Genre</label><input id="aGenre" type="text" value="${esc(a.genre)}" /></div>
         <div class="field"><label>Release date</label><input id="aRelease" type="date" value="${a.releaseDate || ""}" /></div>
       </div>
+      <div class="field"><label>Dashboard default</label><label class="owner-chip" style="margin-top:2px"><input type="checkbox" id="aCurrent" ${a.current ? "checked" : ""} /> Current album — the Dashboard opens to this on a fresh load</label></div>
       <div class="field"><label>Dropbox album folder</label><input id="aFolder" type="text" value="${esc(a.dropboxFolder)}" placeholder="/Your/Folder/Path  or  https://…share link" /><div class="gate-note ok" style="color:var(--muted)">A folder path works with your current scopes; a share link needs Dropbox 'sharing.read'.</div></div>
       <div class="field"><label>Project folder prefix</label><input id="aPrefix" type="text" value="${esc(a.trackPrefix)}" placeholder="e.g. The Belmonts" /><div class="gate-note ok" style="color:var(--muted)">Reads folders named PREFIX_##_Song, pulling audio from each song's “Bounces”.</div></div>
       <div class="field"><label>Concept / Notes</label><textarea id="aNotes" style="min-height:200px">${esc(a.notes)}</textarea></div>
@@ -665,6 +709,16 @@ function openAlbumDrawer(id) {
   });
   saveFolder("#aFolder", "dropboxFolder");
   saveFolder("#aPrefix", "trackPrefix");
+  // Only one album can be Current — checking this one clears the flag on the others.
+  $("#aCurrent").addEventListener("change", async (e) => {
+    const on = e.target.checked;
+    if (on) {
+      const others = state.data.albums.filter((x) => x.id !== id && x.current);
+      await Promise.all(others.map((x) => update("album", x.id, { current: false })));
+    }
+    const r = await update("album", id, { current: on });
+    if (r.ok) { toast(on ? "Set as current album" : "Cleared current album"); if (on) state.filters.albumId = id; await refresh(false); render(); }
+  });
   $("#aDelete").addEventListener("click", async () => {
     if (!confirm(`Delete album "${a.title}"? (Only works if it has no tracks.)`)) return;
     const r = await deleteEntity("album", id);
