@@ -101,10 +101,36 @@ button { font-family: inherit; }
 .spacer { flex: 1; }
 .filters { display: flex; align-items: center; gap: 8px; }
 
-/* Hamburger menu trigger */
+/* Left nav hamburger (mobile only) */
+.nav-btn {
+  display: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-strong);
+  width: 40px; height: 36px; border-radius: 9px; cursor: pointer; font-size: 22px; font-weight: 700;
+  line-height: 1; flex: none; padding-bottom: 3px;
+}
+.nav-btn:hover { border-color: var(--accent); }
+.nav-scrim { position: fixed; inset: 0; background: rgba(5,4,12,0.6); backdrop-filter: blur(3px); z-index: 60; opacity: 0; pointer-events: none; transition: opacity .18s; }
+.nav-scrim.open { opacity: 1; pointer-events: auto; }
+.navmenu {
+  position: fixed; top: 0; left: 0; height: 100%; width: min(260px, 82vw);
+  background: var(--bg-1); border-right: 1px solid var(--stroke-strong);
+  z-index: 70; transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 6px; padding: 14px;
+}
+.navmenu.open { transform: none; }
+.navmenu-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.navmenu-head span { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+.navitem {
+  text-align: left; background: transparent; border: 1px solid transparent; color: var(--muted);
+  padding: 11px 12px; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600;
+}
+.navitem:hover { color: var(--text); background: var(--panel); }
+.navitem.active { color: var(--text); background: var(--panel-3); border-color: var(--stroke-strong); }
+
+/* Right actions-menu trigger (left-facing caret) */
 .menu-btn {
   background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-strong);
-  width: 40px; height: 36px; border-radius: 9px; cursor: pointer; font-size: 16px; line-height: 1; flex: none;
+  width: 40px; height: 36px; border-radius: 9px; cursor: pointer; font-size: 22px; font-weight: 700;
+  line-height: 1; flex: none; padding-bottom: 3px;
 }
 .menu-btn:hover { border-color: var(--accent); }
 
@@ -629,8 +655,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 @media (max-width: 760px) {
   .topbar { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
   .topbar .spacer { display: none; }
-  .tabs { order: 3; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
-  .tab { white-space: nowrap; }
+  .nav-btn { display: inline-flex; align-items: center; justify-content: center; }
+  .tabs { display: none; }            /* replaced by the left slide-out nav */
   .filterbar select { flex: 1; min-width: 120px; }
   .brand { flex: 1; }
 

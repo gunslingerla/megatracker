@@ -144,7 +144,7 @@ function syncFilters() {
 
 /* ---- Render dispatch -------------------------------------------------------*/
 function render() {
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === state.view));
+  document.querySelectorAll(".tab, .navitem").forEach((t) => t.classList.toggle("active", t.dataset.view === state.view));
   renderAlbumStrip();
   const main = $("#main");
   if (state.view === "tracks") main.innerHTML = boardHTML(visibleTracks()) + albumsSectionHTML();
@@ -1544,6 +1544,14 @@ function wireChrome() {
   window.__tpRefresh = () => refresh(false);
   document.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => { state.view = t.dataset.view; render(); }));
+  // Left slide-out navigation (mobile)
+  const openNav = () => { $("#navmenu").classList.add("open"); $("#navScrim").classList.add("open"); };
+  const closeNav = () => { $("#navmenu").classList.remove("open"); $("#navScrim").classList.remove("open"); };
+  $("#navBtn").addEventListener("click", openNav);
+  $("#navClose").addEventListener("click", closeNav);
+  $("#navScrim").addEventListener("click", closeNav);
+  document.querySelectorAll(".navitem").forEach((t) =>
+    t.addEventListener("click", () => { state.view = t.dataset.view; closeNav(); render(); }));
   // Close any open album switcher menu when clicking outside of it.
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".asw-wrap")) document.querySelectorAll(".asw-menu.open").forEach((m) => m.classList.remove("open"));
@@ -1562,7 +1570,7 @@ function wireChrome() {
   $("#logout").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); location.href = "/login.html"; });
   $("#scrim").addEventListener("click", closeDrawer);
   $("#mscrim").addEventListener("click", closeModal);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeModal(); closeMenu(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeModal(); closeMenu(); closeNav(); } });
 }
 
 (async function boot() {

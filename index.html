@@ -9,6 +9,7 @@
 </head>
 <body>
   <div class="topbar">
+    <button class="nav-btn" id="navBtn" title="Navigation" aria-label="Open navigation">&#8250;</button>
     <div class="brand">
       <div class="logo">M</div>
       <div class="titles">
@@ -24,11 +25,21 @@
       <button class="tab" data-view="calendar">Calendar</button>
     </div>
     <div class="spacer"></div>
-    <button class="menu-btn" id="menuBtn" title="Menu" aria-label="Open menu">&#9776;</button>
+    <button class="menu-btn" id="menuBtn" title="Menu" aria-label="Open menu">&#8249;</button>
   </div>
 
   <div id="albumStrip"></div>
   <div id="main"><div class="loading">Loading the board…</div></div>
+
+  <div class="nav-scrim" id="navScrim"></div>
+  <nav class="navmenu" id="navmenu" aria-label="Sections">
+    <div class="navmenu-head"><span>The Megas</span><button class="icon-btn" id="navClose" aria-label="Close navigation">&times;</button></div>
+    <button class="navitem" data-view="tracks">Dashboard</button>
+    <button class="navitem" data-view="preview">Preview Albums</button>
+    <button class="navitem" data-view="members">Assignments</button>
+    <button class="navitem" data-view="roster">Band</button>
+    <button class="navitem" data-view="calendar">Calendar</button>
+  </nav>
 
   <div class="menu-scrim" id="menuScrim"></div>
   <nav class="sidemenu" id="sidemenu" aria-label="Actions">
