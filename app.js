@@ -67,8 +67,8 @@ function artFieldHTML(entity, id, cover) {
   return `
     <div class="field"><label>${entity === "album" ? "Cover art" : "Track art"}</label>
       <div class="art-row">
-        <div class="art-thumb" ${has ? `style="background-image:url('${has.thumb}')"` : ""}>${has ? "" : "&#9835;"}</div>
-        <label class="add-btn ghost art-upload">&#128247; Upload / change<input type="file" accept="image/*" data-artupload="${entity}:${id}" hidden /></label>
+        <div class="art-thumb" ${has ? `style="background-image:url('${has.thumb}')"` : ""}>${has ? "" : ""}</div>
+        <label class="add-btn ghost art-upload">Upload / change<input type="file" accept="image/*" data-artupload="${entity}:${id}" hidden /></label>
         ${has ? `<button class="fb-mini" data-artremove="${entity}:${id}">Remove</button>` : ""}
       </div>
     </div>`;
@@ -167,7 +167,7 @@ function renderAlbumStrip() {
   const cover = alb.cover[0] ? `style="background-image:url('${alb.cover[0].thumb}')"` : "";
   el.innerHTML = `
     <div class="album-strip">
-      <div class="cover" ${cover}>${alb.cover[0] ? "" : "&#9835;"}</div>
+      <div class="cover" ${cover}>${alb.cover[0] ? "" : ""}</div>
       <div>
         <h1>${esc(alb.title)}</h1>
         <div class="sub">${esc(alb.artist)} &middot; ${alb.trackCount} tracks &middot; ${esc(alb.stage)}${alb.playlist ? ` &middot; <a href="${esc(alb.playlist)}" target="_blank" rel="noopener">Playlist</a>` : ""} &middot; <a href="#" id="editAlbumLink">Edit album</a></div>
@@ -217,9 +217,9 @@ function cardHTML(t) {
       <div class="meter">${segs}</div>
       <div class="footer">
         <span class="prog-num">${t.phasesDone}/${t.phasesTotal} phases</span>
-        <button class="lyr-btn" data-lyr="${t.id}" title="Edit lyrics">&#9998; Lyrics</button>
-        ${waitingName ? `<span class="waiting" title="Only ${esc(waitingName)}'s part is left">&#9203; Waiting on ${esc(waitingName)}</span>` : (gated ? `<span class="lock" title="All phases must be Done to reach Mixing">&#128274; gated</span>` : "")}
-        ${openFbCount(t) ? `<span class="fb-badge" title="${openFbCount(t)} open feedback on current version">&#128172; ${openFbCount(t)}</span>` : ""}
+        <button class="lyr-btn" data-lyr="${t.id}" title="Edit lyrics">Lyrics</button>
+        ${waitingName ? `<span class="waiting" title="Only ${esc(waitingName)}'s part is left">Waiting on ${esc(waitingName)}</span>` : (gated ? `<span class="lock" title="All phases must be Done to reach Mixing">gated</span>` : "")}
+        ${openFbCount(t) ? `<span class="fb-badge" title="${openFbCount(t)} open feedback on current version">${openFbCount(t)} notes</span>` : ""}
         <div class="avatars">${avatars}</div>
       </div>
     </div>`;
@@ -247,7 +247,7 @@ function holdHTML() {
   const held = state.data.tracks.filter((t) => t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
   if (!held.length) return `<div class="loading">Nothing on hold. Put a track on hold from its detail panel.</div>`;
   return `<div class="preview"><div class="palbum">
-    <div class="phead"><div class="cover">&#9208;</div><div><h1>On Hold</h1><div class="sub">${held.length} track(s) parked — open one and untick “On hold” to bring it back</div></div></div>
+    <div class="phead"><div class="cover"></div><div><h1>On Hold</h1><div class="sub">${held.length} track(s) parked — open one and untick “On hold” to bring it back</div></div></div>
     ${held.map(trackRowHTML).join("")}
   </div></div>`;
 }
@@ -300,7 +300,7 @@ function membersHTML() {
       <div class="song-card">
         <div class="song-title">${s.num !== "" ? `<span class="tnum">${s.num}</span> ` : ""}${esc(s.title)}</div>
         ${s.items.map((it) => `<label class="song-task" data-phase="${it.phaseId}"><input type="checkbox" /> <span class="stp">${esc(it.phase)}</span>${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}</label>`).join("")}
-      </div>`).join("") || `<div class="empty">All caught up &#10003;</div>`;
+      </div>`).join("") || `<div class="empty">All caught up</div>`;
     const meCls = me && member.id === me.id ? " me" : "";
     return `
       <div class="mcard${meCls}">
@@ -439,7 +439,7 @@ function openDrawer(id) {
   const stages = state.data.stages;
 
   const gateNote = t.phasesTotal
-    ? `<div class="gate-note ${t.productionComplete ? "ok" : ""}">${t.productionComplete ? "&#10003; Production complete — clear to advance." : `&#128274; ${t.phasesDone}/${t.phasesTotal} phases done — finish all to reach Mixing.`}</div>`
+    ? `<div class="gate-note ${t.productionComplete ? "ok" : ""}">${t.productionComplete ? "Production complete — clear to advance." : `${t.phasesDone}/${t.phasesTotal} phases done — finish all to reach Mixing.`}</div>`
     : "";
 
   const phaseRows = t.phases.map((p) => {
@@ -454,8 +454,8 @@ function openDrawer(id) {
   }).join("");
 
   const links = [];
-  if (t.songLink) links.push(`<a class="chip" href="${esc(t.songLink)}" target="_blank" rel="noopener">&#9836; Original</a>`);
-  if (t.projectFile) links.push(`<a class="chip" href="${esc(t.projectFile)}" target="_blank" rel="noopener">&#128193; Project file</a>`);
+  if (t.songLink) links.push(`<a class="chip" href="${esc(t.songLink)}" target="_blank" rel="noopener">Original song</a>`);
+  if (t.projectFile) links.push(`<a class="chip" href="${esc(t.projectFile)}" target="_blank" rel="noopener">Project file</a>`);
 
   openShell(`
     <div class="dhead">
@@ -484,7 +484,7 @@ function openDrawer(id) {
         <div class="field"><label>Project file</label><input id="dProj" type="text" value="${esc(t.projectFile)}" placeholder="https://…" /></div>
       </div>
       ${links.length ? `<div class="field"><label>Open</label><div class="chip-links">${links.join("")}</div></div>` : ""}
-      ${audioFor(t) ? `<div class="field"><label>Latest bounce</label><button class="add-btn" id="dPlay">&#9654; Play &middot; ${esc(audioFor(t).name)}</button></div>` : ""}
+      ${audioFor(t) ? `<div class="field"><label>Latest bounce</label><button class="add-btn" id="dPlay">Play &middot; ${esc(audioFor(t).name)}</button></div>` : ""}
       <div class="field">
         <label>Production phases</label>
         ${phaseRows}
@@ -493,13 +493,13 @@ function openDrawer(id) {
       <div class="field">
         <label>Lyrics</label>
         <div class="drawer-actions" style="margin-top:0">
-          <button class="add-btn ghost" id="dLyricsEdit">&#9998; Edit sections</button>
-          <button class="add-btn ghost" id="dTele">&#128253; Teleprompter</button>
+          <button class="add-btn ghost" id="dLyricsEdit">Edit sections</button>
+          <button class="add-btn ghost" id="dTele">Teleprompter</button>
         </div>
       </div>
       <div class="field"><label>Timestamped feedback</label><div id="dFeedback"></div></div>
       <div class="field"><label>Versions (from Dropbox)</label><div id="dVersions"><button class="fb-mini" id="dVerLoad">Show version history</button></div></div>
-      <div class="field"><label>Dropbox project folder</label><button class="add-btn ghost" id="dMakeFolder">&#128193; Create this song's folder</button></div>
+      <div class="field"><label>Dropbox project folder</label><button class="add-btn ghost" id="dMakeFolder">Create this song's folder</button></div>
       <div class="drawer-actions">
         <button class="danger-btn" id="dDelete">Delete track</button>
       </div>
@@ -779,7 +779,7 @@ function renderPlayer() {
     </div>
     <div class="ptime" id="pTime">0:00 / 0:00</div>
     ${warn}
-    <button class="pbtn mini" id="pFbBtn" title="Add feedback at current time">&#128172;</button>
+    <button class="fb-mini" id="pFbBtn" title="Add feedback at current time">Note</button>
     <button class="pclose" id="pClose" title="Close">&times;</button>
     <div class="pfb hidden" id="pFbForm">
       <span class="ptime">@ <span id="pFbTime">0:00</span></span>
@@ -864,7 +864,7 @@ function updateWhoami() {
   const b = $("#whoami"); if (!b) return;
   const me = getMe();
   b.title = me ? `You: ${me.name} (click to change)` : "Set your name";
-  b.innerHTML = me ? esc(initials(me.name)) : "&#128100;";
+  b.innerHTML = me ? esc(initials(me.name)) : "You";
 }
 function pickIdentity() {
   return new Promise((resolve) => {
@@ -897,7 +897,7 @@ function trackRowHTML(t) {
     <div class="trow ${playing ? "playing" : ""}" data-tid="${t.id}">
       <div class="num">${dispNum(t)}</div>${btn}
       <div class="tp"><div class="tt">${esc(t.title)}</div><div class="ts">${esc(t.inspiredBy || "")}${t.reference ? " &middot; " + esc(t.reference) : ""}</div></div>
-      ${openFbCount(t) ? `<span class="fb-badge">&#128172; ${openFbCount(t)}</span>` : ""}
+      ${openFbCount(t) ? `<span class="fb-badge">${openFbCount(t)} notes</span>` : ""}
       <span class="badge">${esc(t.stage)}</span>
       ${audio ? "" : `<span class="noaudio">no audio</span>`}
     </div>`;
@@ -909,7 +909,7 @@ function albumPreviewSection(alb) {
   return `
     <div class="palbum">
       <div class="phead">
-        <div class="cover" ${cover}>${alb.cover[0] ? "" : "&#9835;"}</div>
+        <div class="cover" ${cover}>${alb.cover[0] ? "" : ""}</div>
         <div>
           <h1>${esc(alb.title)}</h1>
           <div class="sub">${esc(alb.artist)} &middot; ${tracks.length} tracks &middot; ${alb.progress}% complete</div>
@@ -924,7 +924,7 @@ function previewHTML() {
   const unassigned = state.data.tracks.filter((t) => !t.albumId && !t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
   if (!albums.length && !unassigned.length) return `<div class="loading">No albums yet — use “+ Album”.</div>`;
   let html = albums.map(albumPreviewSection).join("");
-  if (unassigned.length) html += `<div class="palbum"><div class="phead"><div class="cover">&#9834;</div><div><h1>Unassigned</h1><div class="sub">${unassigned.length} track(s) not on an album</div></div></div>${unassigned.map(trackRowHTML).join("")}</div>`;
+  if (unassigned.length) html += `<div class="palbum"><div class="phead"><div class="cover"></div><div><h1>Unassigned</h1><div class="sub">${unassigned.length} track(s) not on an album</div></div></div>${unassigned.map(trackRowHTML).join("")}</div>`;
   return `<div class="preview">${html}</div>`;
 }
 
@@ -1009,13 +1009,13 @@ function openLyricsEditor(id) {
   }
   function draw() {
     openModal(`
-      <div class="mhd"><h2>Lyrics &middot; ${esc(t.title)}</h2><span style="flex:1"></span><button class="add-btn ghost" id="teleBtn">&#128253; Teleprompter</button><button class="icon-btn close" id="mClose">&times;</button></div>
+      <div class="mhd"><h2>Lyrics &middot; ${esc(t.title)}</h2><span style="flex:1"></span><button class="add-btn ghost" id="teleBtn">Teleprompter</button><button class="icon-btn close" id="mClose">&times;</button></div>
       <div class="mbd">
         ${secs.map((s, i) => sectionHTML(s, i, secs)).join("") || `<p style="color:var(--muted-2)">No sections yet — add one below.</p>`}
         <div class="addsec">
           <select id="newLabel">${LYRIC_LABELS.map((l) => `<option>${l}</option>`).join("")}</select>
           <button class="add-btn ghost" id="addSec">+ Add section</button>
-          <button class="add-btn ghost" id="importBtn">&#128203; Paste / import</button>
+          <button class="add-btn ghost" id="importBtn">Paste / import</button>
           <span class="spacer" style="flex:1"></span>
           <button class="add-btn" id="saveSecs">Save lyrics</button>
         </div>
@@ -1110,7 +1110,7 @@ function openTeleprompter(id, secsOverride) {
         <div class="tp-jump">${secs.map((s, i) => `<button data-j="${i}">${esc(s.label)}</button>`).join("")}</div>
         <span class="spacer" style="flex:1"></span>
         <button id="tpMinus">A&minus;</button><button id="tpPlus">A+</button>
-        <button id="tpAuto">${auto ? "&#10073;&#10073; Pause" : "&#9654; Auto"}</button>
+        <button id="tpAuto">${auto ? "Pause" : "Auto"}</button>
         <input type="range" id="tpSpeed" min="10" max="140" value="${speed}" title="Scroll speed" />
         <button id="tpClose">Close</button>
       </div>
@@ -1122,7 +1122,7 @@ function openTeleprompter(id, secsOverride) {
     $("#tpPlus").onclick = () => { font = Math.min(140, font + 4); sc.style.fontSize = font + "px"; };
     $("#tpMinus").onclick = () => { font = Math.max(20, font - 4); sc.style.fontSize = font + "px"; };
     $("#tpSpeed").oninput = (e) => { speed = Number(e.target.value); };
-    $("#tpAuto").onclick = () => { auto = !auto; $("#tpAuto").innerHTML = auto ? "&#10073;&#10073; Pause" : "&#9654; Auto"; last = 0; if (auto) raf = requestAnimationFrame(loop); else cancelAnimationFrame(raf); };
+    $("#tpAuto").onclick = () => { auto = !auto; $("#tpAuto").innerHTML = auto ? "Pause" : "Auto"; last = 0; if (auto) raf = requestAnimationFrame(loop); else cancelAnimationFrame(raf); };
     document.querySelectorAll("#teleprompter [data-j]").forEach((b) =>
       b.onclick = () => { const el = sc.querySelectorAll(".tp-section")[Number(b.dataset.j)]; if (el) sc.scrollTo({ top: el.offsetTop - 40, behavior: "smooth" }); });
   }
@@ -1226,7 +1226,7 @@ async function loadVersions(t) {
         <span class="vlabel">${esc(v.version || "—")}</span>
         <span class="vmeta">${esc(v.ext.toUpperCase())} &middot; ${new Date(v.modified).toLocaleDateString()}</span>
         <span class="vtag">${v.current ? "current" : (v.previous ? "previous" : "")}</span>
-        <button class="fb-mini" data-vurl="${esc(v.url)}" title="Play this version">&#9654;</button>
+        <button class="fb-mini" data-vurl="${esc(v.url)}" title="Play this version">Play</button>
       </div>`).join("")}</div>`;
     el.querySelectorAll("[data-vurl]").forEach((b) => b.onclick = () => {
       const a = audioEl(); state.audio.currentId = null; a.src = b.dataset.vurl; a.play().catch(() => {});
