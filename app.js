@@ -283,8 +283,8 @@ function cardHTML(t) {
       <div class="footer">
         <span class="prog-num">${t.phasesDone}/${t.phasesTotal} phases</span>
         <button class="lyr-btn" data-lyr="${t.id}" title="Edit lyrics">Lyrics</button>
-        ${waitingName ? `<span class="waiting" title="Only ${esc(waitingName)}'s part is left">Waiting on ${esc(waitingName)}</span>` : (gated ? `<span class="lock" title="All phases must be Done to reach Mixing">gated</span>` : "")}
-        ${openFbCount(t) ? `<span class="fb-badge" title="${openFbCount(t)} open feedback on current version">${openFbCount(t)} notes</span>` : ""}
+        <button class="lyr-btn" data-fb="${t.id}" title="Timestamped feedback">Feedback${openFbCount(t) ? ` (${openFbCount(t)})` : ""}</button>
+        ${waitingName ? `<span class="waiting" title="Only ${esc(waitingName)}'s part is left">Waiting on ${esc(waitingName)}</span>` : ""}
         <div class="avatars">${avatars}</div>
       </div>
     </div>`;
@@ -473,6 +473,8 @@ function wireBoard() {
 
   document.querySelectorAll(".lyr-btn[data-lyr]").forEach((b) =>
     b.addEventListener("click", (e) => { e.stopPropagation(); openLyricsEditor(b.dataset.lyr); }));
+  document.querySelectorAll(".lyr-btn[data-fb]").forEach((b) =>
+    b.addEventListener("click", (e) => { e.stopPropagation(); openFeedbackModal(b.dataset.fb); }));
 
   document.querySelectorAll("[data-playalbum]").forEach((b) => b.onclick = () => playAlbum(b.dataset.playalbum));
   document.querySelectorAll(".trow[data-tid]").forEach((r) =>
@@ -660,7 +662,7 @@ function openDrawer(id) {
           <button class="add-btn ghost" id="dTele">Teleprompter</button>
         </div>
       </div>
-      <div class="field"><label>Timestamped feedback</label><div id="dFeedback"></div></div>
+      <div class="field"><label>Timestamped feedback</label><button class="add-btn ghost" id="dFbBtn">Open feedback${openFbCount(t) ? ` (${openFbCount(t)})` : ""}</button></div>
       <div class="field"><label>Versions (from Dropbox)</label><div id="dVersions"><button class="fb-mini" id="dVerLoad">Show version history</button></div></div>
       <div class="field"><label>Dropbox project folder</label><button class="add-btn ghost" id="dMakeFolder">Create this song's folder</button></div>
       <div class="drawer-actions">
@@ -715,7 +717,7 @@ function openDrawer(id) {
     const r = await post("/api/makefolders", { trackId: id });
     if (r.ok) { toast(r.created && r.created.length ? "Folder created" : "Folder already exists"); await refresh(false); await fetchPlaylist(); openDrawer(id); }
   };
-  renderFeedback(t);
+  $("#dFbBtn").addEventListener("click", () => openFeedbackModal(t.id));
 
   $("#dDelete").addEventListener("click", async () => {
     if (!confirm(`Delete "${t.title}" and its 5 phases? This can't be undone.`)) return;
@@ -1343,6 +1345,16 @@ function fbItemHTML(fb) {
       <div class="fb-comment">${esc(fb.comment)}</div>
     </div>`;
 }
+// Timestamped feedback lives in its own modal (like the lyrics editor).
+function openFeedbackModal(id) {
+  const t = trackById(id);
+  if (!t) return;
+  openModal(`
+    <div class="mhd"><h2>Feedback &middot; ${esc(t.title)}</h2><span style="flex:1"></span><button class="icon-btn close" id="mClose">&times;</button></div>
+    <div class="mbd"><div id="dFeedback"></div></div>`);
+  $("#mClose").onclick = closeModal;
+  renderFeedback(t);
+}
 function renderFeedback(t) {
   const el = $("#dFeedback"); if (!el) return;
   const all = t.feedback || [];
@@ -1374,12 +1386,12 @@ function renderFeedback(t) {
     item.querySelector("[data-fbtoggle]").onclick = async () => {
       const cur = item.querySelector("[data-fbtoggle]").dataset.fbtoggle;
       const r = await update("feedback", id, { status: cur === "Open" ? "Resolved" : "Open" });
-      if (r.ok) { toast("Updated"); refresh(); }
+      if (r.ok) { toast("Updated"); await refresh(); reRenderFeedback(t.id); }
     };
     item.querySelector("[data-fbdel]").onclick = async () => {
       if (!confirm("Delete this feedback?")) return;
       const r = await deleteEntity("feedback", id);
-      if (r.ok) { toast("Deleted"); refresh(); }
+      if (r.ok) { toast("Deleted"); await refresh(); reRenderFeedback(t.id); }
     };
   });
   $("#fbNow").onclick = () => {
@@ -1391,8 +1403,14 @@ function renderFeedback(t) {
     if (!comment) { toast("Write a note first", true); return; }
     const me = await ensureMe();
     const r = await createEntity("feedback", { trackId: t.id, timestamp: parseTime($("#fbTime").value), comment, authorId: me ? me.id : undefined, version: cur });
-    if (r.ok) { toast("Feedback added"); refresh(); }
+    if (r.ok) { toast("Feedback added"); await refresh(); reRenderFeedback(t.id); }
   };
+}
+// After data reloads, repaint the feedback list in the open modal (if any).
+function reRenderFeedback(id) {
+  if (!document.getElementById("dFeedback")) return;
+  const nt = trackById(id);
+  if (nt) renderFeedback(nt);
 }
 
 /* ---- Versions --------------------------------------------------------------*/
