@@ -185,7 +185,10 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 
 .card .footer { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .card .prog-num { font-size: 11px; color: var(--muted); }
+.lyr-btn { background: var(--panel-2); border: 1px solid var(--stroke-strong); color: var(--muted); border-radius: 7px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.lyr-btn:hover { color: var(--text); border-color: var(--accent); }
 .card .lock { font-size: 11px; color: var(--danger); display: inline-flex; align-items: center; gap: 4px; }
+.card .waiting { font-size: 10.5px; color: var(--info); display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
 .avatars { display: flex; margin-left: auto; }
 .avatar {
   width: 24px; height: 24px; border-radius: 50%; margin-left: -7px; border: 2px solid var(--panel);

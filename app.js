@@ -148,6 +148,14 @@ function cardHTML(t) {
   const avatars = [...ownerSet.entries()].slice(0, 5)
     .map(([name, role]) => `<div class="avatar" data-role="${esc(role)}" title="${esc(name)}${role ? " — " + esc(role) : ""}">${esc(initials(name))}</div>`).join("");
   const gated = t.stage === "Production" && !t.productionComplete;
+  // "Waiting on X" — when every remaining production part belongs to a single member.
+  let waitingName = "";
+  {
+    const notDone = t.phases.filter((p) => p.status !== "Done");
+    const rem = new Set(); const nameById = {};
+    notDone.forEach((p) => p.ownerIds.forEach((oid, idx) => { rem.add(oid); nameById[oid] = p.owners[idx] || nameById[oid]; }));
+    if (t.stage === "Production" && !t.productionComplete && notDone.length > 0 && rem.size === 1) waitingName = nameById[[...rem][0]] || "";
+  }
   const audio = state.audio.map[t.order];
   const playingThis = state.audio.currentOrder === t.order && state.audio.playing;
   const playBtn = audio
@@ -163,7 +171,8 @@ function cardHTML(t) {
       <div class="meter">${segs}</div>
       <div class="footer">
         <span class="prog-num">${t.phasesDone}/${t.phasesTotal} phases</span>
-        ${gated ? `<span class="lock" title="All phases must be Done to reach Mixing">&#128274; gated</span>` : ""}
+        <button class="lyr-btn" data-lyr="${t.id}" title="Edit lyrics">&#9998; Lyrics</button>
+        ${waitingName ? `<span class="waiting" title="Only ${esc(waitingName)}'s part is left">&#9203; Waiting on ${esc(waitingName)}</span>` : (gated ? `<span class="lock" title="All phases must be Done to reach Mixing">&#128274; gated</span>` : "")}
         ${t.openFeedback ? `<span class="fb-badge" title="${t.openFeedback} open feedback">&#128172; ${t.openFeedback}</span>` : ""}
         <div class="avatars">${avatars}</div>
       </div>
@@ -173,7 +182,9 @@ function cardHTML(t) {
 function boardHTML(tracks) {
   const stages = state.data.stages;
   const active = tracks.filter((t) => !t.onHold);
-  const cols = stages.map((s) => {
+  const shown = stages.filter((s) => active.some((t) => t.stage === s));
+  if (!shown.length) return `<div class="loading">No tracks here yet.</div>`;
+  const cols = shown.map((s) => {
     const inCol = active.filter((t) => t.stage === s);
     const locked = stages.indexOf(s) > PROD_IDX;
     return `
@@ -302,6 +313,9 @@ function wireBoard() {
 
   document.querySelectorAll(".play-btn[data-play]").forEach((b) =>
     b.addEventListener("click", (e) => { e.stopPropagation(); playOrder(Number(b.dataset.play)); }));
+
+  document.querySelectorAll(".lyr-btn[data-lyr]").forEach((b) =>
+    b.addEventListener("click", (e) => { e.stopPropagation(); openLyricsEditor(b.dataset.lyr); }));
 
   document.querySelectorAll("[data-playalbum]").forEach((b) => b.onclick = () => playAlbum(b.dataset.playalbum));
   document.querySelectorAll(".trow[data-tid]").forEach((r) =>
@@ -907,6 +921,7 @@ function openLyricsEditor(id) {
           <select id="newLabel">${LYRIC_LABELS.map((l) => `<option>${l}</option>`).join("")}</select>
           <button class="add-btn ghost" id="addSec">+ Add section</button>
           <button class="add-btn ghost" id="importBtn">&#128203; Paste / import</button>
+          <button class="add-btn ghost" id="teleBtn">&#128253; Teleprompter</button>
           <span class="spacer" style="flex:1"></span>
           <button class="add-btn" id="saveSecs">Save lyrics</button>
         </div>
@@ -914,6 +929,7 @@ function openLyricsEditor(id) {
     $("#mClose").onclick = closeModal;
     $("#addSec").onclick = () => { collect(); secs.push({ label: $("#newLabel").value, text: "" }); draw(); };
     $("#importBtn").onclick = () => { collect(); drawImport(); };
+    $("#teleBtn").onclick = () => { collect(); openTeleprompter(id, secs.map((s) => ({ label: s.label, text: s.text }))); };
     $("#saveSecs").onclick = async () => { collect(); const r = await saveSections(id, secs); if (r.ok) { toast("Lyrics saved"); closeModal(); refresh(); } };
     document.querySelectorAll("#modal .sec").forEach((el) => {
       const i = Number(el.dataset.i);
@@ -978,9 +994,9 @@ function openLyricsEditor(id) {
 }
 
 /* ---- Teleprompter ----------------------------------------------------------*/
-function openTeleprompter(id) {
+function openTeleprompter(id, secsOverride) {
   const t = state.data.tracks.find((x) => x.id === id);
-  const secs = parseSections(t);
+  const secs = secsOverride || parseSections(t);
   const tp = $("#teleprompter");
   let font = 46, auto = false, speed = 40, raf = null, last = 0;
   function loop(now) {
