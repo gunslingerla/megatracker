@@ -1284,7 +1284,7 @@ function openTeleprompter(id, secsOverride) {
   const t = state.data.tracks.find((x) => x.id === id);
   const secs = secsOverride || parseSections(t);
   const tp = $("#teleprompter");
-  let font = 46, auto = false, speed = 40, raf = null, last = 0;
+  let font = 46, auto = false, speed = 40, raf = null, last = 0, editing = false;
   function loop(now) {
     if (!auto) return;
     if (!last) last = now;
@@ -1296,6 +1296,7 @@ function openTeleprompter(id, secsOverride) {
   function stop() { auto = false; cancelAnimationFrame(raf); last = 0; }
   function close() { stop(); tp.classList.remove("open"); tp.innerHTML = ""; }
   function draw() {
+    if (editing) { drawEdit(); return; }
     tp.innerHTML = `
       <div class="tp-bar">
         <span class="tp-title">${esc(t.title)}</span>
@@ -1304,6 +1305,9 @@ function openTeleprompter(id, secsOverride) {
         <button id="tpMinus">A&minus;</button><button id="tpPlus">A+</button>
         <button id="tpAuto">${auto ? "Pause" : "Auto"}</button>
         <input type="range" id="tpSpeed" min="10" max="140" value="${speed}" title="Scroll speed" />
+        <button id="tpEdit">Edit</button>
+        <button id="tpFull">Fullscreen</button>
+        <button id="tpPop">Pop-Out</button>
         <button id="tpClose">Close</button>
       </div>
       <div class="tp-scroll" id="tpScroll" style="font-size:${font}px">
@@ -1315,8 +1319,65 @@ function openTeleprompter(id, secsOverride) {
     $("#tpMinus").onclick = () => { font = Math.max(20, font - 4); sc.style.fontSize = font + "px"; };
     $("#tpSpeed").oninput = (e) => { speed = Number(e.target.value); };
     $("#tpAuto").onclick = () => { auto = !auto; $("#tpAuto").innerHTML = auto ? "Pause" : "Auto"; last = 0; if (auto) raf = requestAnimationFrame(loop); else cancelAnimationFrame(raf); };
+    $("#tpEdit").onclick = () => { stop(); editing = true; draw(); };
+    $("#tpFull").onclick = toggleFull;
+    $("#tpPop").onclick = popOut;
     document.querySelectorAll("#teleprompter [data-j]").forEach((b) =>
       b.onclick = () => { const el = sc.querySelectorAll(".tp-section")[Number(b.dataset.j)]; if (el) sc.scrollTo({ top: el.offsetTop - 40, behavior: "smooth" }); });
+  }
+  function drawEdit() {
+    tp.innerHTML = `
+      <div class="tp-bar">
+        <span class="tp-title">Editing &middot; ${esc(t.title)}</span>
+        <span class="spacer" style="flex:1"></span>
+        <button id="tpEsave">Save</button>
+        <button id="tpEcancel">Cancel</button>
+      </div>
+      <div class="tp-editwrap"><textarea id="tpEdit" class="tp-editarea" spellcheck="false" placeholder="[Verse 1]&#10;First line…">${esc(flattenSections(secs))}</textarea></div>`;
+    $("#tpEcancel").onclick = () => { editing = false; draw(); };
+    $("#tpEsave").onclick = async () => {
+      const raw = $("#tpEdit").value;
+      const next = sectionsFromText(raw);
+      const r = await update("track", id, { lyrics: raw.trim(), lyricsData: JSON.stringify(next) });
+      if (r.ok) { secs.length = 0; next.forEach((s) => secs.push(s)); editing = false; toast("Lyrics saved"); draw(); refresh(); }
+    };
+  }
+  function toggleFull() {
+    if (!document.fullscreenElement) (tp.requestFullscreen || tp.webkitRequestFullscreen || (() => {})).call(tp);
+    else (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document);
+  }
+  function popOut() {
+    const w = window.open("", "tp_" + id, "width=900,height=1000");
+    if (!w) { toast("Allow pop-ups to use Pop-Out", true); return; }
+    const body = secs.map((s) => `<div class="s">${s.label ? `<div class="l">${esc(s.label)}</div>` : ""}<div class="x">${esc(s.text)}</div></div>`).join("") || `<div class="s"><div class="x">No lyrics yet.</div></div>`;
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(t.title)} — Teleprompter</title><style>
+      :root{color-scheme:dark}*{box-sizing:border-box}
+      body{margin:0;background:#0a0a0e;color:#ede8f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+      .bar{position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;padding:10px 14px;background:rgba(20,18,28,.95);border-bottom:1px solid #2a2733}
+      .bar .ttl{font-weight:800}
+      .bar button{background:#1d1a26;color:#ede8f5;border:1px solid #34303f;border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:600}
+      .bar input{accent-color:#e5399f}
+      .sc{padding:8vh 8vw 60vh;font-size:46px;font-weight:700;line-height:1.32;scroll-behavior:smooth;height:100vh;overflow:auto}
+      .s{margin:0 auto 1.1em;max-width:1100px}
+      .l{color:#e5399f;text-transform:uppercase;letter-spacing:.12em;font-size:.42em;margin-bottom:.25em}
+      .x{white-space:pre-wrap}
+    </style></head><body>
+      <div class="bar"><span class="ttl">${esc(t.title)}</span><span style="flex:1"></span>
+        <button onclick="fz(-4)">A&minus;</button><button onclick="fz(4)">A+</button>
+        <button id="au" onclick="tg()">Auto</button>
+        <input id="sp" type="range" min="10" max="140" value="40" title="Scroll speed">
+      </div>
+      <div class="sc" id="sc">${body}</div>
+      <script>
+        var font=46,auto=false,raf=null,last=0,speed=40,sc=document.getElementById('sc');
+        function fz(d){font=Math.max(20,Math.min(160,font+d));sc.style.fontSize=font+'px';}
+        function loop(now){if(!auto)return;if(!last)last=now;sc.scrollTop+=speed*(now-last)/1000;last=now;raf=requestAnimationFrame(loop);}
+        function tg(){auto=!auto;document.getElementById('au').textContent=auto?'Pause':'Auto';last=0;if(auto)raf=requestAnimationFrame(loop);else cancelAnimationFrame(raf);}
+        document.getElementById('sp').oninput=function(e){speed=+e.target.value;};
+      <\/script>
+    </body></html>`);
+    w.document.close();
   }
   tp.classList.add("open");
   draw();
