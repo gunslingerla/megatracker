@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#e5399f" />
+  <title>The Megas — Album Tracker</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">M</div>
+      <div class="titles">
+        <div class="band">The Megas</div>
+        <div class="app">Album Tracker</div>
+      </div>
+    </div>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-view="tracks">Tracks</button>
+      <button class="tab" data-view="albums">Albums</button>
+      <button class="tab" data-view="members">Who's Up Next</button>
+      <button class="tab" data-view="calendar">Calendar</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="filters" id="filters">
+      <select id="filterAlbum"></select>
+      <select id="filterIP"><option value="">All inspirations</option></select>
+      <select id="filterMember"><option value="">All members</option></select>
+      <button class="icon-btn" id="refresh" title="Refresh">&#8635;</button>
+      <button class="icon-btn" id="logout" title="Sign out">&#9099;</button>
+    </div>
+  </div>
+
+  <div id="albumStrip"></div>
+  <div id="main"><div class="loading">Loading the board…</div></div>
+
+  <div class="scrim" id="scrim"></div>
+  <div class="drawer" id="drawer"></div>
+  <div class="toast" id="toast"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

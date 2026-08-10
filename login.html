@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#e5399f" />
+  <title>Sign in — The Megas Album Tracker</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="login-wrap">
+    <form class="login-card" id="form">
+      <div class="logo">M</div>
+      <div class="band">The Megas</div>
+      <h1>Album Tracker</h1>
+      <input type="password" id="pw" placeholder="Band password" autocomplete="current-password" autofocus />
+      <button class="btn" type="submit">Sign In</button>
+      <div class="err" id="err"></div>
+    </form>
+  </div>
+  <script>
+    const form = document.getElementById("form");
+    const err = document.getElementById("err");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      err.textContent = "";
+      const password = document.getElementById("pw").value;
+      const r = await fetch("/api/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (r.ok) {
+        const next = new URLSearchParams(location.search).get("next") || "/";
+        location.href = next;
+      } else {
+        err.textContent = "Incorrect password.";
+      }
+    });
+  </script>
+</body>
+</html>

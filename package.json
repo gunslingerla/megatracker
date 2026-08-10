@@ -1,0 +1,9 @@
+{
+  "name": "gunslingers-album-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Megas — Album Tracker. A TRACKIT-style board backed by Airtable.",
+  "engines": {
+    "node": ">=18"
+  }
+}
