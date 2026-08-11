@@ -447,6 +447,7 @@ function rosterHTML() {
 function phaseNames() { return (state.data.phaseNames && state.data.phaseNames.length) ? state.data.phaseNames : ["Drums","Bass","Eric Guitar","Josh Guitar","Eric Vocals","Josh Vocals","Backing Vocals","Synth","Sound Design"]; }
 
 /* ---- Calendar --------------------------------------------------------------*/
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function fmtDay(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00:00"); return isNaN(d) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
 function computePlan(open, deadlineISO, spread) {
   const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -605,7 +606,10 @@ function wireBoard() {
 
   document.querySelectorAll(".song-task[data-phase]").forEach((l) =>
     l.querySelector("input").addEventListener("change", async (e) => {
-      const r = await update("phase", l.dataset.phase, { status: e.target.checked ? "Done" : "Not started" });
+      const done = e.target.checked;
+      const fields = { status: done ? "Done" : "Not started" };
+      if (!done) { const ph = (state.data.phases || []).find((p) => p.id === l.dataset.phase); if (ph && !ph.due) fields.due = todayISO(); }
+      const r = await update("phase", l.dataset.phase, fields);
       if (r.ok) { toast("Updated"); refresh(); } else { e.target.checked = !e.target.checked; }
     }));
 
@@ -834,8 +838,11 @@ function openDrawer(id) {
 
   document.querySelectorAll(".phase-row2").forEach((row) => {
     row.querySelector('[data-pf="done"]').addEventListener("change", async (e) => {
-      const r = await update("phase", row.dataset.phase, { status: e.target.checked ? "Done" : "Not started" });
-      if (r.ok) { toast(e.target.checked ? "Marked done" : "Reopened"); refresh(); }
+      const done = e.target.checked;
+      const fields = { status: done ? "Done" : "Not started" };
+      if (!done) { const ph = (state.data.phases || []).find((p) => p.id === row.dataset.phase); if (ph && !ph.due) fields.due = todayISO(); }
+      const r = await update("phase", row.dataset.phase, fields);
+      if (r.ok) { toast(done ? "Marked done" : "Reopened — added to today's calendar"); refresh(); }
       else { e.target.checked = !e.target.checked; }
     });
     const du = row.querySelector('[data-pf="due"]');
