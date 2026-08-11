@@ -499,26 +499,37 @@ function openPlanModal() {
   };
 }
 let calMonth = new Date();
+let calView = "month";
+let calSong = "";
 function calendarHTML() {
   const alb = currentAlbum();
   const inScope = (t) => !t.onHold && (!alb || t.albumId === alb.id);
   const tracksById = {}; state.data.tracks.forEach((t) => (tracksById[t.id] = t));
-  const tasks = state.data.phases.filter((p) => p.due && p.status !== "Done" && tracksById[p.trackId] && inScope(tracksById[p.trackId]));
-  const deadlines = state.data.tracks.filter((t) => t.dueDate && inScope(t));
-  const y = calMonth.getFullYear(), m = calMonth.getMonth();
-  const first = new Date(y, m, 1), start = new Date(first);
-  start.setDate(1 - ((first.getDay() + 6) % 7));
-  const monthName = calMonth.toLocaleString(undefined, { month: "long", year: "numeric" });
+  const songSel = (t) => !calSong || t.id === calSong;
+  const tasks = state.data.phases.filter((p) => p.due && p.status !== "Done" && tracksById[p.trackId] && inScope(tracksById[p.trackId]) && songSel(tracksById[p.trackId]));
+  const deadlines = state.data.tracks.filter((t) => t.dueDate && inScope(t) && songSel(t));
+  const songOpts = state.data.tracks.filter((t) => inScope(t)).sort((a, b) => effOrder(a) - effOrder(b)).map((t) => `<option value="${t.id}"${calSong === t.id ? " selected" : ""}>${dispNum(t) !== "" ? dispNum(t) + ". " : ""}${esc(t.title)}</option>`).join("");
+  const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const todayIso = isoOf(new Date());
+  const weekly = calView === "week";
+  const start = new Date(calMonth); start.setHours(0, 0, 0, 0);
+  if (weekly) start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  else { start.setDate(1); start.setDate(1 - ((start.getDay() + 6) % 7)); }
+  const cellCount = weekly ? 7 : 42;
+  const curMonth = calMonth.getMonth();
+  const title = weekly
+    ? (() => { const e = new Date(start); e.setDate(e.getDate() + 6); const o = { month: "short", day: "numeric" }; return `${start.toLocaleDateString(undefined, o)} – ${e.toLocaleDateString(undefined, o)}`; })()
+    : calMonth.toLocaleString(undefined, { month: "long", year: "numeric" });
   const heads = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => `<div class="cal-head">${d}</div>`).join("");
   let cells = "";
-  for (let i = 0; i < 42; i++) {
+  for (let i = 0; i < cellCount; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const iso = isoOf(d);
     const dl = deadlines.filter((t) => t.dueDate === iso);
     const tk = tasks.filter((p) => p.due === iso).sort((a, b) => effOrder(tracksById[a.trackId]) - effOrder(tracksById[b.trackId]));
-    cells += `<div class="cal-cell${d.getMonth() !== m ? " out" : ""}" data-day="${iso}">
-      <div class="d">${d.getDate()}</div>
-      ${dl.map((t) => `<div class="cal-deadline" draggable="true" data-cd="${t.id}" data-open="${t.id}" title="Deadline">${dispNum(t) !== "" ? `${dispNum(t)}. ` : ""}${esc(t.title)}</div>`).join("")}
+    cells += `<div class="cal-cell${(!weekly && d.getMonth() !== curMonth) ? " out" : ""}${iso === todayIso ? " today" : ""}${weekly ? " wk" : ""}" data-day="${iso}">
+      <div class="d">${weekly ? d.toLocaleDateString(undefined, { weekday: "short" }) + " " : ""}${d.getDate()}</div>
+      ${dl.map((t) => `<div class="cal-deadline" draggable="true" data-cd="${t.id}" data-open="${t.id}" title="Deadline: ${esc(t.title)}"><span class="flag">&#9873;</span><span class="dl-txt">${dispNum(t) !== "" ? `${dispNum(t)}. ` : ""}${esc(t.title)}</span></div>`).join("")}
       ${tk.map((p) => { const t = tracksById[p.trackId]; const mm = memberById(p.ownerIds[0]); const col = mm && mm.color ? mm.color : "#6a6478"; return `<div class="cal-task" draggable="true" data-ct="${p.id}" data-open="${p.trackId}" style="--own:${col}" title="${esc(p.owners.join(', ') || 'unassigned')}">${esc(t.title)} — ${esc(p.phase)}</div>`; }).join("")}
     </div>`;
   }
@@ -526,9 +537,13 @@ function calendarHTML() {
     <div class="calendar">
       <div class="cal-nav">
         <button class="icon-btn" data-cal="-1">&#8249;</button>
-        <h2>${monthName}</h2>
+        <h2>${esc(title)}</h2>
         <button class="icon-btn" data-cal="1">&#8250;</button>
-        <span style="color:var(--muted);font-size:13px;margin-left:8px">Phase tasks &amp; deadlines · drag to reschedule</span>
+        <div class="cal-viewtoggle">
+          <button class="${weekly ? "" : "on"}" data-calview="month">Month</button>
+          <button class="${weekly ? "on" : ""}" data-calview="week">Week</button>
+        </div>
+        <select id="calSongFilter" class="cal-songfilter" title="Filter by song"><option value="">All songs</option>${songOpts}</select>
         <span class="spacer" style="flex:1"></span>
         <button class="add-btn" id="calPlanBtn">Plan a song</button>
         <button class="add-btn ghost" id="calSubBtn">Sync to Google Calendar</button>
@@ -672,7 +687,9 @@ function wireBoard() {
   });
 
   document.querySelectorAll("[data-cal]").forEach((b) =>
-    b.addEventListener("click", () => { calMonth.setMonth(calMonth.getMonth() + Number(b.dataset.cal)); render(); }));
+    b.addEventListener("click", () => { const n = Number(b.dataset.cal); if (calView === "week") calMonth.setDate(calMonth.getDate() + 7 * n); else calMonth.setMonth(calMonth.getMonth() + n); render(); }));
+  document.querySelectorAll("[data-calview]").forEach((b) => b.onclick = () => { calView = b.dataset.calview; render(); });
+  { const sf = document.getElementById("calSongFilter"); if (sf) sf.onchange = () => { calSong = sf.value; render(); }; }
   { const cs = document.getElementById("calSubBtn"); if (cs) cs.onclick = openCalSync; }
   { const cp = document.getElementById("calPlanBtn"); if (cp) cp.onclick = openPlanModal; }
   document.querySelectorAll(".cal-task[data-ct], .cal-deadline[data-cd]").forEach((el) => {
