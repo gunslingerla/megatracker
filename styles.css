@@ -420,6 +420,18 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .cal-cell.out { opacity: 0.4; }
 .cal-cell .d { font-size: 12px; color: var(--muted); }
 .cal-ev { font-size: 11.5px; background: var(--accent-soft); border: 1px solid var(--accent-soft); color: var(--accent-2); border-radius: 6px; padding: 3px 6px; margin-top: 5px; cursor: pointer; }
+.cal-deadline, .cal-task { font-size: 11px; font-weight: 600; border-radius: 6px; padding: 3px 6px; margin-top: 5px; cursor: grab; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-deadline { font-weight: 700; background: color-mix(in srgb, var(--accent) 24%, transparent); border: 1px solid var(--accent); color: var(--text); }
+.cal-task { background: color-mix(in srgb, var(--own) 20%, transparent); border: 1px solid color-mix(in srgb, var(--own) 55%, transparent); color: var(--text); }
+.cal-task.dragging, .cal-deadline.dragging { opacity: 0.45; }
+.cal-cell.cal-over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft) inset; }
+.due-tag { margin-left: 8px; font-size: 10.5px; font-weight: 700; color: var(--accent-2); background: var(--accent-soft); border-radius: 999px; padding: 1px 7px; }
+.due-tag.sm { margin-left: auto; font-size: 10px; padding: 0 6px; }
+.plan-preview { display: flex; flex-direction: column; gap: 4px; }
+.plan-preview .plan-h { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.plan-preview .plan-row { display: flex; justify-content: space-between; font-size: 13px; padding: 5px 9px; border: 1px solid var(--stroke); border-radius: 8px; }
+.plan-preview .muted { color: var(--muted); }
+.phase-row2 .pdue { margin-left: auto; width: 132px; font-size: 12px; padding: 5px 8px; }
 .cal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .cal-nav h2 { margin: 0; font-size: 18px; }
 .cal-sync { margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--stroke-strong); border-radius: 12px; background: var(--panel-2); max-width: 720px; }

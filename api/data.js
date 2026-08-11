@@ -34,6 +34,7 @@ module.exports = async (req, res) => {
       trackId: first(r.fields[F.phase.track]) || null,
       ownerIds: arr(r.fields[F.phase.owner]),
       owners: arr(r.fields[F.phase.owner]).map((id) => memberName[id] || "?"),
+      due: r.fields[F.phase.due] || null,
     }));
     const phasesByTrack = {};
     phases.forEach((p) => {

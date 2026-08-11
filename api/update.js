@@ -48,7 +48,7 @@ const MAP = {
   },
   phase: {
     table: T.phases,
-    fields: { status: F.phase.status, ownerIds: F.phase.owner },
+    fields: { status: F.phase.status, ownerIds: F.phase.owner, due: F.phase.due },
     links: ["ownerIds"],
   },
   album: {
@@ -78,6 +78,20 @@ module.exports = async (req, res) => {
   if (entity === "reassign") {
     try { const changed = await reassignPhases(); return res.status(200).json({ ok: true, changed }); }
     catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+  }
+
+  if (entity === "planphases") {
+    try {
+      const b = body || {};
+      const ops = [];
+      if (b.trackId && b.deadline) ops.push(patch(T.tracks, [{ id: b.trackId, fields: { [F.track.dueDate]: b.deadline } }], true));
+      const asg = Array.isArray(b.assignments) ? b.assignments : [];
+      for (let i = 0; i < asg.length; i += 10) {
+        ops.push(patch(T.phases, asg.slice(i, i + 10).map((a) => ({ id: a.phaseId, fields: { [F.phase.due]: a.due || null } })), true));
+      }
+      await Promise.all(ops);
+      return res.status(200).json({ ok: true, count: asg.length });
+    } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
   }
 
   const spec = MAP[entity];

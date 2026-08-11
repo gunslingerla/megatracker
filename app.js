@@ -375,25 +375,30 @@ function membersHTML() {
   const tracks = state.data.tracks.filter((t) => (!alb || t.albumId === alb.id) && !t.onHold);
   const me = getMe();
   const byMember = {};
-  state.data.members.forEach((m) => (byMember[m.id] = { member: m, songs: {}, count: 0 }));
+  state.data.members.forEach((m) => (byMember[m.id] = { member: m, songs: {}, count: 0, nextDue: null }));
+  const earlier = (a, b) => (a == null ? b : b == null ? a : (a < b ? a : b));
   tracks.forEach((t) => {
     t.phases.filter((p) => p.status !== "Done").forEach((p) => {
       p.ownerIds.forEach((oid) => {
         const rec = byMember[oid]; if (!rec) return;
-        (rec.songs[t.id] = rec.songs[t.id] || { id: t.id, title: t.title, order: effOrder(t), num: dispNum(t), items: [] }).items.push({ phaseId: p.id, phase: p.phase, status: p.status });
+        const song = (rec.songs[t.id] = rec.songs[t.id] || { id: t.id, title: t.title, order: effOrder(t), num: dispNum(t), nextDue: null, items: [] });
+        song.items.push({ phaseId: p.id, phase: p.phase, status: p.status, due: p.due || null });
+        if (p.due) { song.nextDue = earlier(song.nextDue, p.due); rec.nextDue = earlier(rec.nextDue, p.due); }
         rec.count++;
       });
     });
   });
+  const byDue = (a, b) => (a.nextDue && b.nextDue) ? (a.nextDue < b.nextDue ? -1 : a.nextDue > b.nextDue ? 1 : 0) : (a.nextDue ? -1 : b.nextDue ? 1 : 0);
   const entries = Object.values(byMember).sort((a, b) => {
     if (me) { if (a.member.id === me.id) return -1; if (b.member.id === me.id) return 1; }
+    const d = byDue(a, b); if (d) return d;
     return b.count - a.count;
   });
   const cards = entries.map(({ member, songs, count }) => {
-    const songCards = Object.values(songs).sort((a, b) => a.order - b.order).map((s) => `
+    const songCards = Object.values(songs).sort((a, b) => { const d = byDue(a, b); return d || (a.order - b.order); }).map((s) => `
       <div class="song-card" data-song="${s.id}">
-        <div class="song-title" data-songopen="${s.id}">${s.num !== "" ? `<span class="tnum">${s.num}</span> ` : ""}${esc(s.title)}</div>
-        ${s.items.map((it) => `<label class="song-task" data-phase="${it.phaseId}"><input type="checkbox" /> <span class="stp">${esc(it.phase)}</span>${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}</label>`).join("")}
+        <div class="song-title" data-songopen="${s.id}">${s.num !== "" ? `<span class="tnum">${s.num}</span> ` : ""}${esc(s.title)}${s.nextDue ? `<span class="due-tag">${fmtDay(s.nextDue)}</span>` : ""}</div>
+        ${s.items.map((it) => `<label class="song-task" data-phase="${it.phaseId}"><input type="checkbox" /> <span class="stp">${esc(it.phase)}</span>${it.due ? `<span class="due-tag sm">${fmtDay(it.due)}</span>` : ""}${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}</label>`).join("")}
       </div>`).join("") || `<div class="empty">All caught up</div>`;
     const meCls = me && member.id === me.id ? " me" : "";
     return `
@@ -442,10 +447,64 @@ function rosterHTML() {
 function phaseNames() { return (state.data.phaseNames && state.data.phaseNames.length) ? state.data.phaseNames : ["Drums","Bass","Eric Guitar","Josh Guitar","Eric Vocals","Josh Vocals","Backing Vocals","Synth","Sound Design"]; }
 
 /* ---- Calendar --------------------------------------------------------------*/
+function fmtDay(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00:00"); return isNaN(d) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
+function computePlan(open, deadlineISO, spread) {
+  const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  if (!deadlineISO) return open.map((p) => ({ phase: p, due: null }));
+  const deadline = new Date(deadlineISO + "T00:00:00");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = []; let cur = new Date(today.getTime() + 864e5);
+  while (cur <= deadline) { const dow = cur.getDay(); if (spread !== "week" || (dow !== 0 && dow !== 6)) days.push(new Date(cur)); cur = new Date(cur.getTime() + 864e5); }
+  if (!days.length || isoOf(days[days.length - 1]) !== isoOf(deadline)) days.push(new Date(deadline));
+  const len = days.length, N = open.length;
+  if (spread === "back") return open.map((p, i) => { const idx = len - 1 - (N - 1 - i); return { phase: p, due: isoOf(days[Math.max(0, idx)]) }; });
+  return open.map((p, i) => { const idx = N === 1 ? len - 1 : Math.round(i * (len - 1) / (N - 1)); return { phase: p, due: isoOf(days[Math.min(len - 1, idx)]) }; });
+}
+function openPlanModal() {
+  const alb = currentAlbum();
+  const songs = state.data.tracks.filter((t) => !t.onHold && t.stage !== "Released" && (!alb || t.albumId === alb.id)).sort((a, b) => effOrder(a) - effOrder(b));
+  const opts = songs.map((t) => `<option value="${t.id}">${dispNum(t) !== "" ? dispNum(t) + ". " : ""}${esc(t.title)}</option>`).join("");
+  const def = (() => { const d = new Date(Date.now() + 21 * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  openModal(`
+    <div class="mhd"><h2>Plan a song</h2><span style="flex:1"></span><button class="icon-btn close" id="mClose">&times;</button></div>
+    <div class="mbd">
+      <div class="field"><label>Song</label><select id="planSong">${opts || `<option value="">No eligible songs</option>`}</select></div>
+      <div class="row2">
+        <div class="field"><label>Deadline</label><input type="date" id="planDate" value="${def}" /></div>
+        <div class="field"><label>Spread across</label><select id="planSpread"><option value="week">Weekdays (Mon-Fri)</option><option value="all">Every day</option><option value="back">Back-to-back from deadline</option></select></div>
+      </div>
+      <div id="planPreview" class="plan-preview"></div>
+      <div class="drawer-actions"><button class="add-btn" id="planGo">Schedule open phases</button></div>
+    </div>`);
+  $("#mClose").onclick = closeModal;
+  const preview = () => {
+    const t = trackById($("#planSong").value); const box = $("#planPreview"); if (!t) { box.innerHTML = ""; return; }
+    const open = t.phases.filter((x) => x.status !== "Done");
+    if (!open.length) { box.innerHTML = `<div class="empty">This song has no open phases.</div>`; return; }
+    const sched = computePlan(open, $("#planDate").value, $("#planSpread").value);
+    box.innerHTML = `<div class="plan-h">${open.length} open phase(s):</div>` + sched.map((s) => `<div class="plan-row"><span>${esc(s.phase.phase)}</span><span class="muted">${fmtDay(s.due)}</span></div>`).join("");
+  };
+  ["#planSong", "#planDate", "#planSpread"].forEach((sel) => { const el = $(sel); if (el) el.addEventListener("change", preview); });
+  preview();
+  $("#planGo").onclick = async () => {
+    const t = trackById($("#planSong").value); if (!t) { toast("Pick a song", true); return; }
+    const open = t.phases.filter((x) => x.status !== "Done");
+    if (!open.length) { toast("No open phases to schedule", true); return; }
+    const deadline = $("#planDate").value;
+    const assignments = computePlan(open, deadline, $("#planSpread").value).map((s) => ({ phaseId: s.phase.id, due: s.due }));
+    const r = await fetch("/api/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "planphases", trackId: t.id, deadline, assignments }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) { toast(`Scheduled ${assignments.length} phase(s)`); closeModal(); await refresh(false); render(); }
+    else toast(j.error || "Plan failed", true);
+  };
+}
 let calMonth = new Date();
 function calendarHTML() {
   const alb = currentAlbum();
-  const tracks = state.data.tracks.filter((t) => t.dueDate && !t.onHold && (!alb || t.albumId === alb.id));
+  const inScope = (t) => !t.onHold && (!alb || t.albumId === alb.id);
+  const tracksById = {}; state.data.tracks.forEach((t) => (tracksById[t.id] = t));
+  const tasks = state.data.phases.filter((p) => p.due && p.status !== "Done" && tracksById[p.trackId] && inScope(tracksById[p.trackId]));
+  const deadlines = state.data.tracks.filter((t) => t.dueDate && inScope(t));
   const y = calMonth.getFullYear(), m = calMonth.getMonth();
   const first = new Date(y, m, 1), start = new Date(first);
   start.setDate(1 - ((first.getDay() + 6) % 7));
@@ -454,11 +513,13 @@ function calendarHTML() {
   let cells = "";
   for (let i = 0; i < 42; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i);
-    const iso = d.toISOString().slice(0, 10);
-    const evs = tracks.filter((t) => t.dueDate === iso);
-    cells += `<div class="cal-cell${d.getMonth() !== m ? " out" : ""}">
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const dl = deadlines.filter((t) => t.dueDate === iso);
+    const tk = tasks.filter((p) => p.due === iso).sort((a, b) => effOrder(tracksById[a.trackId]) - effOrder(tracksById[b.trackId]));
+    cells += `<div class="cal-cell${d.getMonth() !== m ? " out" : ""}" data-day="${iso}">
       <div class="d">${d.getDate()}</div>
-      ${evs.map((e) => `<div class="cal-ev" data-open="${e.id}">${esc(e.title)}</div>`).join("")}
+      ${dl.map((t) => `<div class="cal-deadline" draggable="true" data-cd="${t.id}" data-open="${t.id}" title="Deadline">${dispNum(t) !== "" ? `${dispNum(t)}. ` : ""}${esc(t.title)}</div>`).join("")}
+      ${tk.map((p) => { const t = tracksById[p.trackId]; const mm = memberById(p.ownerIds[0]); const col = mm && mm.color ? mm.color : "#6a6478"; return `<div class="cal-task" draggable="true" data-ct="${p.id}" data-open="${p.trackId}" style="--own:${col}" title="${esc(p.owners.join(', ') || 'unassigned')}">${esc(t.title)} — ${esc(p.phase)}</div>`; }).join("")}
     </div>`;
   }
   return `
@@ -467,8 +528,9 @@ function calendarHTML() {
         <button class="icon-btn" data-cal="-1">&#8249;</button>
         <h2>${monthName}</h2>
         <button class="icon-btn" data-cal="1">&#8250;</button>
-        <span style="color:var(--muted);font-size:13px;margin-left:8px">Track due dates</span>
+        <span style="color:var(--muted);font-size:13px;margin-left:8px">Phase tasks &amp; deadlines · drag to reschedule</span>
         <span class="spacer" style="flex:1"></span>
+        <button class="add-btn" id="calPlanBtn">Plan a song</button>
         <button class="add-btn ghost" id="calSubBtn">Sync to Google Calendar</button>
       </div>
       <div id="calSubBody"></div>
@@ -612,6 +674,22 @@ function wireBoard() {
   document.querySelectorAll("[data-cal]").forEach((b) =>
     b.addEventListener("click", () => { calMonth.setMonth(calMonth.getMonth() + Number(b.dataset.cal)); render(); }));
   { const cs = document.getElementById("calSubBtn"); if (cs) cs.onclick = openCalSync; }
+  { const cp = document.getElementById("calPlanBtn"); if (cp) cp.onclick = openPlanModal; }
+  document.querySelectorAll(".cal-task[data-ct], .cal-deadline[data-cd]").forEach((el) => {
+    el.addEventListener("dragstart", (e) => { el.classList.add("dragging"); const kind = el.dataset.ct ? "phase" : "track"; e.dataTransfer.setData("text/cal", kind + ":" + (el.dataset.ct || el.dataset.cd)); e.dataTransfer.effectAllowed = "move"; });
+    el.addEventListener("dragend", () => el.classList.remove("dragging"));
+  });
+  document.querySelectorAll(".cal-cell[data-day]").forEach((cell) => {
+    cell.addEventListener("dragover", (e) => { if ((e.dataTransfer.types || []).includes && [].slice.call(e.dataTransfer.types).indexOf("text/cal") >= 0) { e.preventDefault(); cell.classList.add("cal-over"); } });
+    cell.addEventListener("dragleave", () => cell.classList.remove("cal-over"));
+    cell.addEventListener("drop", async (e) => {
+      e.preventDefault(); cell.classList.remove("cal-over");
+      const data = e.dataTransfer.getData("text/cal"); if (!data) return;
+      const ix = data.indexOf(":"); const kind = data.slice(0, ix), idv = data.slice(ix + 1); const day = cell.dataset.day;
+      const r = kind === "phase" ? await update("phase", idv, { due: day }) : await update("track", idv, { dueDate: day });
+      if (r.ok) { toast("Rescheduled to " + fmtDay(day)); refresh(false); }
+    });
+  });
   document.querySelectorAll("[data-open]").forEach((b) =>
     b.addEventListener("click", () => openDrawer(b.dataset.open)));
 }
@@ -658,11 +736,12 @@ function openDrawer(id) {
     const m = memberById(p.ownerIds[0]);
     const col = m && m.color ? m.color : "#6a6478";
     return `
-      <label class="phase-row2 ${done ? "done" : ""}" data-phase="${p.id}" style="--own:${col}">
+      <div class="phase-row2 ${done ? "done" : ""}" data-phase="${p.id}" style="--own:${col}">
         <input type="checkbox" data-pf="done" ${done ? "checked" : ""} />
         <span class="pname2">${esc(p.phase)}</span>
+        <input type="date" class="pdue" data-pf="due" value="${p.due || ""}" title="Phase due date" />
         <span class="powner">${esc(owners)}</span>
-      </label>`;
+      </div>`;
   }).join("");
 
   const links = [];
@@ -741,6 +820,11 @@ function openDrawer(id) {
       const r = await update("phase", row.dataset.phase, { status: e.target.checked ? "Done" : "Not started" });
       if (r.ok) { toast(e.target.checked ? "Marked done" : "Reopened"); refresh(); }
       else { e.target.checked = !e.target.checked; }
+    });
+    const du = row.querySelector('[data-pf="due"]');
+    if (du) du.addEventListener("change", async (e) => {
+      const r = await update("phase", row.dataset.phase, { due: e.target.value || null });
+      if (r.ok) toast(e.target.value ? "Phase date set" : "Phase date cleared");
     });
   });
 
