@@ -155,7 +155,7 @@ function render() {
   else if (state.view === "roster") main.innerHTML = rosterHTML();
   wireBoard();
   wireSwitchers();
-  wireArt();
+  wireArtView();
   // The header strip switcher shows on album-scoped views; on Preview each section
   // header is its own switcher, so the strip is hidden there.
   const showStrip = ["tracks", "members", "calendar"].includes(state.view);
@@ -169,7 +169,7 @@ function openLightbox(url) {
   lb.classList.add("open");
 }
 function closeLightbox() { const lb = $("#lightbox"); lb.classList.remove("open"); lb.innerHTML = ""; }
-function wireArt() {
+function wireArtView() {
   document.querySelectorAll("[data-artview]").forEach((el) =>
     el.addEventListener("click", (e) => { e.stopPropagation(); openLightbox(el.dataset.artview); }));
 }
