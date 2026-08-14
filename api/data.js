@@ -42,7 +42,7 @@ module.exports = async (req, res) => {
     });
     // Keep phases in the canonical instrument order.
     Object.values(phasesByTrack).forEach((list) =>
-      list.sort((a, b) => PHASE_NAMES.indexOf(a.phase) - PHASE_NAMES.indexOf(b.phase))
+      list.sort((a, b) => { const ix = (n) => { const i = PHASE_NAMES.indexOf(n); return i === -1 ? 999 : i; }; return ix(a.phase) - ix(b.phase); })
     );
 
     const feedback = feedbackR.map((r) => {

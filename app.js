@@ -751,17 +751,20 @@ function openDrawer(id) {
     ? `<div class="gate-note ${t.productionComplete ? "ok" : ""}">${t.productionComplete ? "Production complete — clear to advance." : `${t.phasesDone}/${t.phasesTotal} phases done — finish all to reach Mixing.`}</div>`
     : "";
 
+  const canonPhases = state.data.phaseNames || [];
   const phaseRows = t.phases.map((p) => {
     const done = p.status === "Done";
-    const owners = p.owners.join(", ") || "Unassigned";
     const m = memberById(p.ownerIds[0]);
     const col = m && m.color ? m.color : "#6a6478";
+    const custom = !canonPhases.includes(p.phase);
+    const ownerOpts = `<option value="">Unassigned</option>` + state.data.members.map((mm) => `<option value="${mm.id}"${p.ownerIds[0] === mm.id ? " selected" : ""}>${esc(mm.display)}</option>`).join("");
     return `
-      <div class="phase-row2 ${done ? "done" : ""}" data-phase="${p.id}" style="--own:${col}">
+      <div class="phase-row2 ${done ? "done" : ""}${custom ? " custom" : ""}" data-phase="${p.id}" style="--own:${col}">
         <input type="checkbox" data-pf="done" ${done ? "checked" : ""} />
-        <span class="pname2">${esc(p.phase)}</span>
+        <span class="pname2">${esc(p.phase)}${custom ? ` <span class="cust-tag">custom</span>` : ""}</span>
+        <select class="powner-sel" data-pf="owner" title="Assign owner">${ownerOpts}</select>
         <input type="date" class="pdue" data-pf="due" value="${p.due || ""}" title="Phase due date" />
-        <span class="powner">${esc(owners)}</span>
+        ${custom ? `<button class="pdel" data-pdel="${p.id}" title="Remove this phase">&times;</button>` : ""}
       </div>`;
   }).join("");
 
@@ -800,6 +803,7 @@ function openDrawer(id) {
       <div class="field">
         <label>Production phases</label>
         ${phaseRows}
+        <div class="addphase"><input id="newPhaseName" type="text" placeholder="Add a custom phase for this song…" /><button class="add-btn ghost" id="addPhaseBtn">+ Add phase</button></div>
       </div>
       <div class="field"><label>Notes</label><textarea id="dNotes">${esc(t.notes)}</textarea></div>
       <div class="field">
@@ -850,6 +854,24 @@ function openDrawer(id) {
       const r = await update("phase", row.dataset.phase, { due: e.target.value || null });
       if (r.ok) toast(e.target.value ? "Phase date set" : "Phase date cleared");
     });
+    const ow = row.querySelector('[data-pf="owner"]');
+    if (ow) ow.addEventListener("change", async (e) => {
+      const v = e.target.value;
+      const r = await update("phase", row.dataset.phase, { ownerIds: v ? [v] : [] });
+      if (r.ok) { toast(v ? "Owner assigned" : "Owner cleared"); refresh(); }
+    });
+  });
+  { const ap = $("#addPhaseBtn"); if (ap) ap.onclick = async () => {
+      const nm = ($("#newPhaseName").value || "").trim();
+      if (!nm) { toast("Name the phase first", true); return; }
+      const r = await createEntity("phase", { trackId: id, phase: nm });
+      if (r.ok) { toast("Phase added"); await refresh(false); openDrawer(id); } else toast((r && r.error) || "Couldn't add phase", true);
+    }; }
+  { const np = $("#newPhaseName"); if (np) np.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#addPhaseBtn").click(); } }); }
+  document.querySelectorAll("[data-pdel]").forEach((b) => b.onclick = async () => {
+    if (!confirm("Remove this phase from the song?")) return;
+    const r = await deleteEntity("phase", b.dataset.pdel);
+    if (r.ok) { toast("Phase removed"); await refresh(false); openDrawer(id); } else toast((r && r.error) || "Couldn't remove", true);
   });
 
   $("#dAlbum").addEventListener("change", async (e) => {

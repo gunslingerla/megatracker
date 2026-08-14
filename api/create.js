@@ -73,6 +73,18 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true, id: rec[0].id });
     }
 
+    if (entity === "phase") {
+      if (!fields.trackId) return res.status(400).json({ error: "trackId required" });
+      const label = (fields.phase || fields.name || "New phase").toString().slice(0, 80);
+      const rec = await create(T.phases, [{ fields: {
+        [F.phase.name]: label,
+        [F.phase.phase]: label,
+        [F.phase.status]: "Not started",
+        [F.phase.track]: [fields.trackId],
+      } }]);
+      return res.status(200).json({ ok: true, id: rec[0].id });
+    }
+
     if (entity === "track") {
       const tf = {
         [F.track.title]: fields.title || "New track",

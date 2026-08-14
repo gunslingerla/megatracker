@@ -25,6 +25,10 @@ module.exports = async (req, res) => {
       await del(T.feedback, [id]);
       return res.status(200).json({ ok: true });
     }
+    if (entity === "phase") {
+      await del(T.phases, [id]);
+      return res.status(200).json({ ok: true });
+    }
     if (entity === "album") {
       const tracks = await listAll(T.tracks);
       const inAlbum = tracks.filter((t) => (t.fields[F.track.album] || []).includes(id));
