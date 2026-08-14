@@ -48,7 +48,7 @@ const MAP = {
   },
   phase: {
     table: T.phases,
-    fields: { status: F.phase.status, ownerIds: F.phase.owner, due: F.phase.due },
+    fields: { status: F.phase.status, ownerIds: F.phase.owner, due: F.phase.due, subtasks: F.phase.subtasks },
     links: ["ownerIds"],
   },
   album: {

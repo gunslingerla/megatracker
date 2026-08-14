@@ -445,6 +445,20 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .phase-row2 .pdel { flex: none; width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--stroke-strong); background: var(--panel-2); color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
 .phase-row2 .pdel:hover { border-color: var(--danger); color: var(--danger); }
 .cust-tag { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-2); background: var(--accent-soft); border-radius: 999px; padding: 1px 6px; margin-left: 6px; }
+.phase-block + .phase-block { margin-top: 5px; }
+.sub-toggle { flex: none; background: var(--panel-2); border: 1px solid var(--stroke-strong); color: var(--muted); border-radius: 7px; padding: 4px 8px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.sub-toggle:hover, .sub-toggle.open { color: var(--text); border-color: var(--accent); }
+.subtasks { display: none; margin: 6px 0 2px 26px; padding: 8px 10px; border: 1px solid var(--stroke); border-left: 2px solid var(--own, var(--stroke-strong)); border-radius: 8px; background: rgba(255,255,255,0.02); }
+.subtasks.open { display: block; }
+.sub-item { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+.sub-item input { width: 15px; height: 15px; accent-color: var(--good); flex: none; }
+.sub-item span { flex: 1; }
+.sub-item span.done { color: var(--muted); text-decoration: line-through; }
+.sub-del { flex: none; background: transparent; border: none; color: var(--muted-2); cursor: pointer; font-size: 15px; line-height: 1; }
+.sub-del:hover { color: var(--danger); }
+.sub-empty { color: var(--muted-2); font-size: 12px; padding: 2px 0 6px; }
+.sub-add { display: flex; gap: 6px; margin-top: 6px; }
+.sub-add input { flex: 1; font-size: 12.5px; padding: 5px 8px; }
 .addphase { display: flex; gap: 8px; margin-top: 8px; }
 .addphase input { flex: 1; }
 .cal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }

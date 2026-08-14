@@ -15,7 +15,8 @@ const state = {
   audio: { byTrack: {}, order: {}, currentId: null, playing: false, configured: false, queue: [] },
 };
 const CANT_PLAY_EXT = ["aif", "aiff"]; // browsers (esp. Chrome) usually can't play AIFF
-const editingMembers = new Set(); // Band cards in edit mode
+const editingMembers = new Set();
+const expandedSubs = new Set(); // phases whose subtask checklist is open // Band cards in edit mode
 const PALETTE = ["#6cb6ff", "#46dba0", "#ffab4a", "#f0654f", "#b58cff", "#4fd0e0", "#f078c0", "#e5c94a", "#8a9bff", "#5fd08a"];
 const memberById = (id) => (state.data && state.data.members ? state.data.members.find((m) => m.id === id) : null);
 // Normalize a title (or filename) for matching Dropbox audio to a track.
@@ -758,13 +759,24 @@ function openDrawer(id) {
     const col = m && m.color ? m.color : "#6a6478";
     const custom = !canonPhases.includes(p.phase);
     const ownerOpts = `<option value="">Unassigned</option>` + state.data.members.map((mm) => `<option value="${mm.id}"${p.ownerIds[0] === mm.id ? " selected" : ""}>${esc(mm.display)}</option>`).join("");
+    const subs = Array.isArray(p.subtasks) ? p.subtasks : [];
+    const sdone = subs.filter((x) => x.done).length;
+    const open = expandedSubs.has(p.id);
+    const subItems = subs.map((st, i) => `<label class="sub-item"><input type="checkbox" data-subchk="${p.id}:${i}" ${st.done ? "checked" : ""} /><span class="${st.done ? "done" : ""}">${esc(st.text)}</span><button class="sub-del" data-subdel="${p.id}:${i}" title="Delete">&times;</button></label>`).join("");
     return `
-      <div class="phase-row2 ${done ? "done" : ""}${custom ? " custom" : ""}" data-phase="${p.id}" style="--own:${col}">
-        <input type="checkbox" data-pf="done" ${done ? "checked" : ""} />
-        <span class="pname2">${esc(p.phase)}${custom ? ` <span class="cust-tag">custom</span>` : ""}</span>
-        <select class="powner-sel" data-pf="owner" title="Assign owner">${ownerOpts}</select>
-        <input type="date" class="pdue" data-pf="due" value="${p.due || ""}" title="Phase due date" />
-        ${custom ? `<button class="pdel" data-pdel="${p.id}" title="Remove this phase">&times;</button>` : ""}
+      <div class="phase-block" style="--own:${col}">
+        <div class="phase-row2 ${done ? "done" : ""}${custom ? " custom" : ""}" data-phase="${p.id}">
+          <input type="checkbox" data-pf="done" ${done ? "checked" : ""} />
+          <span class="pname2">${esc(p.phase)}${custom ? ` <span class="cust-tag">custom</span>` : ""}</span>
+          <button class="sub-toggle${open ? " open" : ""}" data-subtoggle="${p.id}" title="Subtasks">&#9745; ${subs.length ? `${sdone}/${subs.length}` : "+"}</button>
+          <select class="powner-sel" data-pf="owner" title="Assign owner">${ownerOpts}</select>
+          <input type="date" class="pdue" data-pf="due" value="${p.due || ""}" title="Phase due date" />
+          ${custom ? `<button class="pdel" data-pdel="${p.id}" title="Remove this phase">&times;</button>` : ""}
+        </div>
+        <div class="subtasks${open ? " open" : ""}" data-subpanel="${p.id}">
+          ${subItems || `<div class="sub-empty">No subtasks yet.</div>`}
+          <div class="sub-add"><input type="text" data-subnew="${p.id}" placeholder="Add a subtask…" /><button class="fb-mini" data-subadd="${p.id}">Add</button></div>
+        </div>
       </div>`;
   }).join("");
 
@@ -873,6 +885,29 @@ function openDrawer(id) {
     const r = await deleteEntity("phase", b.dataset.pdel);
     if (r.ok) { toast("Phase removed"); await refresh(false); openDrawer(id); } else toast((r && r.error) || "Couldn't remove", true);
   });
+  // Subtasks (stored as JSON on each phase)
+  const phaseArr = (pid) => { const ph = (state.data.phases || []).find((p) => p.id === pid); return Array.isArray(ph && ph.subtasks) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done })) : []; };
+  const saveSubs = async (pid, arr) => { expandedSubs.add(pid); const r = await update("phase", pid, { subtasks: JSON.stringify(arr) }); if (r.ok) { await refresh(false); openDrawer(id); } return r; };
+  document.querySelectorAll("[data-subtoggle]").forEach((b) => b.onclick = () => {
+    const pid = b.dataset.subtoggle; const panel = document.querySelector(`[data-subpanel="${pid}"]`);
+    const nowOpen = !expandedSubs.has(pid);
+    if (nowOpen) expandedSubs.add(pid); else expandedSubs.delete(pid);
+    b.classList.toggle("open", nowOpen); if (panel) panel.classList.toggle("open", nowOpen);
+  });
+  document.querySelectorAll("[data-subchk]").forEach((c) => c.addEventListener("change", async (e) => {
+    const ix = c.dataset.subchk.lastIndexOf(":"); const pid = c.dataset.subchk.slice(0, ix), i = +c.dataset.subchk.slice(ix + 1);
+    const arr = phaseArr(pid); if (arr[i]) { arr[i].done = e.target.checked; await saveSubs(pid, arr); }
+  }));
+  document.querySelectorAll("[data-subdel]").forEach((b) => b.onclick = async () => {
+    const ix = b.dataset.subdel.lastIndexOf(":"); const pid = b.dataset.subdel.slice(0, ix), i = +b.dataset.subdel.slice(ix + 1);
+    const arr = phaseArr(pid); arr.splice(i, 1); await saveSubs(pid, arr);
+  });
+  document.querySelectorAll("[data-subadd]").forEach((b) => b.onclick = async () => {
+    const pid = b.dataset.subadd; const inp = document.querySelector(`[data-subnew="${pid}"]`); const txt = ((inp && inp.value) || "").trim();
+    if (!txt) { toast("Type a subtask first", true); return; }
+    const arr = phaseArr(pid); arr.push({ text: txt, done: false }); await saveSubs(pid, arr);
+  });
+  document.querySelectorAll("[data-subnew]").forEach((inp) => inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const b = document.querySelector(`[data-subadd="${inp.dataset.subnew}"]`); if (b) b.click(); } }));
 
   $("#dAlbum").addEventListener("change", async (e) => {
     const r = await update("track", id, { albumId: e.target.value || "" });
