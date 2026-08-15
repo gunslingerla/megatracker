@@ -32,6 +32,8 @@ const dispNum = (t) => (state.audio.order && state.audio.order[t.id] != null) ? 
 // The current bounce filename for a track — feedback is pinned to this so a new bounce starts fresh.
 const currentVersion = (t) => { const it = audioFor(t); return it ? it.name : ""; };
 const openFbCount = (t) => (t.feedback || []).filter((fb) => fb.status === "Open" && (fb.version || "") === (currentVersion(t) || "")).length;
+function fbCounts(t) { const cur = currentVersion(t); const list = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "")); return { total: list.length, done: list.filter((fb) => fb.status === "Resolved").length }; }
+function fbLabel(t) { const c = fbCounts(t); return c.total ? ` (${c.done}/${c.total})` : ""; }
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
@@ -307,7 +309,7 @@ function cardHTML(t) {
       <div class="footer">
         <span class="prog-num">${t.phasesDone}/${t.phasesTotal} phases</span>
         <button class="lyr-btn" data-lyr="${t.id}" title="Lyrics & teleprompter">Lyrics</button>
-        <button class="lyr-btn" data-fb="${t.id}" title="Timestamped feedback">Feedback${openFbCount(t) ? ` (${openFbCount(t)})` : ""}</button>
+        <button class="lyr-btn" data-fb="${t.id}" title="Timestamped feedback (resolved/total on current version)">Feedback${fbLabel(t)}</button>
       </div>
       ${waitBanner}
     </div>`;
@@ -404,6 +406,27 @@ function assignItemHTML(it, mode) {
   }
   return `<div class="song-task" data-phase="${it.phaseId}">${head}${subList}</div>`;
 }
+function assignmentsFeedbackBox() {
+  const alb = currentAlbum();
+  const inScope = (t) => !t.onHold && (!alb || t.albumId === alb.id);
+  const rows = [];
+  state.data.tracks.filter(inScope).forEach((t) => {
+    const cur = currentVersion(t);
+    (t.feedback || []).filter((fb) => fb.status === "Open" && (fb.version || "") === (cur || "")).forEach((fb) => rows.push({ t, fb }));
+  });
+  if (!rows.length) return "";
+  rows.sort((a, b) => (effOrder(a.t) - effOrder(b.t)) || (a.fb.timestamp - b.fb.timestamp));
+  const items = rows.map(({ t, fb }) => `
+    <div class="afb-item">
+      <span class="afb-song" data-open="${t.id}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
+      <span class="afb-time">${mmss(fb.timestamp)}</span>
+      <span class="afb-comment">${esc(fb.comment)}</span>
+      <span class="afb-author">${esc(fb.author || "")}</span>
+      <button class="fb-mini" data-afbtask="${t.id}:${fb.id}" title="Turn into a task">&#8594; Task</button>
+      <button class="fb-mini" data-afbresolve="${t.id}:${fb.id}" title="Mark resolved">Resolve</button>
+    </div>`).join("");
+  return `<div class="afb-box"><div class="afb-head">Open feedback<span class="asg-count">${rows.length}</span></div>${items}</div>`;
+}
 function membersHTML() {
   const alb = currentAlbum();
   const tracks = state.data.tracks.filter((t) => (!alb || t.albumId === alb.id) && !t.onHold);
@@ -468,7 +491,7 @@ function membersHTML() {
       </div>`;
   }).join("");
   const toolbar = `<div class="asg-bar"><span class="asg-lbl">Group by</span><div class="asg-toggle"><button class="${asgGroup === "phase" ? "on" : ""}" data-asg="phase">Phase</button><button class="${asgGroup === "song" ? "on" : ""}" data-asg="song">Song</button></div></div>`;
-  return `${toolbar}<div class="members">${cards}</div>`;
+  return `${toolbar}${assignmentsFeedbackBox()}<div class="members">${cards}</div>`;
 }
 
 /* ---- Band (member info) ----------------------------------------------------*/
@@ -681,6 +704,8 @@ function wireBoard() {
       openDrawer(card.dataset.song);
     }));
   document.querySelectorAll("[data-asg]").forEach((b) => b.onclick = () => { asgGroup = b.dataset.asg; render(); });
+  document.querySelectorAll("[data-afbtask]").forEach((b) => b.onclick = () => { const ix = b.dataset.afbtask.indexOf(":"); const tid = b.dataset.afbtask.slice(0, ix), fid = b.dataset.afbtask.slice(ix + 1); const t = trackById(tid); const fb = t && (t.feedback || []).find((x) => x.id === fid); if (fb) convertNoteToTask(tid, fb); });
+  document.querySelectorAll("[data-afbresolve]").forEach((b) => b.onclick = async () => { const ix = b.dataset.afbresolve.indexOf(":"); const fid = b.dataset.afbresolve.slice(ix + 1); const r = await update("feedback", fid, { status: "Resolved" }); if (r.ok) { toast("Resolved"); refresh(); } });
 
   document.querySelectorAll(".mcard[data-member]").forEach((card) => {
     const id = card.dataset.member;
@@ -887,7 +912,7 @@ function openDrawer(id) {
           <button class="add-btn ghost" id="dTele">Open lyrics / teleprompter</button>
         </div>
       </div>
-      <div class="field"><label>Timestamped feedback</label><button class="add-btn ghost" id="dFbBtn">Open feedback${openFbCount(t) ? ` (${openFbCount(t)})` : ""}</button></div>
+      <div class="field"><label>Timestamped feedback</label><button class="add-btn ghost" id="dFbBtn">Open feedback${fbLabel(t)}</button></div>
       <div class="field"><label>Versions (from Dropbox)</label><div id="dVersions"><button class="fb-mini" id="dVerLoad">Show version history</button></div></div>
       <div class="field"><label>Dropbox project folder</label><button class="add-btn ghost" id="dMakeFolder">Create this song's folder</button></div>
       <div class="drawer-actions">
@@ -1792,6 +1817,51 @@ function seekTo(id, seconds) {
   const go = () => { a.currentTime = seconds; a.play().catch(() => {}); };
   if (a.readyState > 0) go(); else a.addEventListener("loadedmetadata", go, { once: true });
 }
+function convertNoteToTask(trackId, note) {
+  const t = trackById(trackId); if (!t) return;
+  const phases = t.phases || [];
+  const stage = t.stage || "";
+  const POST = ["Mixing", "Mastering"];
+  const stagePhase = phases.find((p) => p.phase === stage);
+  const canOfferStage = !!stage && stage !== "Production" && !stagePhase;
+  const defSel = stagePhase ? stagePhase.id : (POST.includes(stage) && canOfferStage) ? "__stage" : (phases[0] ? phases[0].id : (canOfferStage ? "__stage" : ""));
+  const stageOpt = canOfferStage ? `<option value="__stage"${defSel === "__stage" ? " selected" : ""}>New phase: ${esc(stage)}</option>` : "";
+  const phaseOpts = phases.map((p) => `<option value="${p.id}"${p.id === defSel ? " selected" : ""}>${esc(p.phase)}</option>`).join("");
+  const inner = (stageOpt + phaseOpts) || `<option value="">No phases yet — add one on the track</option>`;
+  const text0 = `[${mmss(note.timestamp)}] ${note.comment || ""}`;
+  openModal(`
+    <div class="mhd"><h2>Turn note into a task</h2><span style="flex:1"></span><button class="icon-btn close" id="mClose">&times;</button></div>
+    <div class="mbd">
+      <div class="field"><label>Add to phase</label><select id="ctPhase">${inner}</select></div>
+      <div class="field"><label>Task</label><textarea id="ctText" style="min-height:70px">${esc(text0)}</textarea></div>
+      <div class="row2">
+        <div class="field"><label>Assign to</label><select id="ctOwner"><option value="">Unassigned</option>${state.data.members.map((m) => `<option value="${m.id}">${esc(m.display)}</option>`).join("")}</select></div>
+        <div class="field"><label>Options</label><label class="owner-chip" style="margin-top:2px"><input type="checkbox" id="ctResolve" checked /> Mark note resolved</label></div>
+      </div>
+      <div class="drawer-actions"><button class="add-btn ghost" id="ctBack">Back to notes</button><button class="add-btn" id="ctGo">Create task</button></div>
+    </div>`);
+  $("#mClose").onclick = () => openFeedbackModal(trackId);
+  $("#ctBack").onclick = () => openFeedbackModal(trackId);
+  $("#ctGo").onclick = async () => {
+    const text = ($("#ctText").value || "").trim(); if (!text) { toast("Task text is empty", true); return; }
+    let phaseId = $("#ctPhase").value;
+    if (phaseId === "__stage") {
+      const rc = await createEntity("phase", { trackId, phase: stage });
+      if (!rc.ok) { toast((rc && rc.error) || "Couldn't create phase", true); return; }
+      phaseId = rc.id; await refresh(false);
+    }
+    if (!phaseId) { toast("Pick a phase", true); return; }
+    const ph = (state.data.phases || []).find((p) => p.id === phaseId);
+    const arr = (ph && Array.isArray(ph.subtasks)) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null })) : [];
+    arr.push({ text, done: false, owner: $("#ctOwner").value || null });
+    const r2 = await update("phase", phaseId, { subtasks: JSON.stringify(arr) });
+    if (!r2.ok) { toast((r2 && r2.error) || "Couldn't add task", true); return; }
+    if ($("#ctResolve").checked) await update("feedback", note.id, { status: "Resolved" });
+    toast("Task created");
+    await refresh(false);
+    openFeedbackModal(trackId);
+  };
+}
 function fbItemHTML(fb) {
   return `
     <div class="fb-item ${fb.status === "Resolved" ? "resolved" : ""}" data-fb="${fb.id}">
@@ -1799,6 +1869,7 @@ function fbItemHTML(fb) {
         <span class="fb-time" data-seek="${fb.timestamp}">${mmss(fb.timestamp)}</span>
         <span class="fb-author">${esc(fb.author || "—")}</span>
         <div class="fb-actions">
+          <button class="fb-mini" data-fbtask title="Turn into a task">&#8594; Task</button>
           <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>
           <button class="fb-mini" data-fbdel>&times;</button>
         </div>
@@ -1838,7 +1909,7 @@ function renderFeedback(t) {
         <button class="fb-mini" id="fbNow">Use current time</button>
       </div>
       <textarea id="fbComment" placeholder="Add a note at this time…"></textarea>
-      <button class="add-btn" id="fbAdd">Add feedback</button>
+      <div class="fb-addrow"><button class="add-btn" id="fbAdd">Add feedback</button><label class="owner-chip fb-astask"><input type="checkbox" id="fbAsTask" /> also make it a task</label></div>
     </div>
     ${olderHTML}`;
   el.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Number(s.dataset.seek)));
@@ -1854,6 +1925,7 @@ function renderFeedback(t) {
       const r = await deleteEntity("feedback", id);
       if (r.ok) { toast("Deleted"); await refresh(); reRenderFeedback(t.id); }
     };
+    { const tk = item.querySelector("[data-fbtask]"); if (tk) tk.onclick = () => { const fb = (t.feedback || []).find((x) => x.id === id); if (fb) convertNoteToTask(t.id, fb); }; }
   });
   $("#fbNow").onclick = () => {
     if (state.audio.currentId === t.id) $("#fbTime").value = mmss(Math.floor(audioEl().currentTime || 0));
@@ -1863,8 +1935,13 @@ function renderFeedback(t) {
     const comment = $("#fbComment").value.trim();
     if (!comment) { toast("Write a note first", true); return; }
     const me = await ensureMe();
+    const asTask = !!($("#fbAsTask") && $("#fbAsTask").checked);
     const r = await createEntity("feedback", { trackId: t.id, timestamp: parseTime($("#fbTime").value), comment, authorId: me ? me.id : undefined, version: cur });
-    if (r.ok) { toast("Feedback added"); await refresh(); reRenderFeedback(t.id); }
+    if (r.ok) {
+      toast("Feedback added"); await refresh();
+      if (asTask) { const nt = trackById(t.id); const fb = ((nt && nt.feedback) || []).find((x) => x.id === r.id); if (fb) { convertNoteToTask(t.id, fb); return; } }
+      reRenderFeedback(t.id);
+    }
   };
 }
 // After data reloads, repaint the feedback list in the open modal (if any).

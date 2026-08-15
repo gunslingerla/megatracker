@@ -534,6 +534,16 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .asg-group + .asg-group { margin-top: 12px; }
 .asg-head { font-weight: 800; font-size: 14.5px; display: flex; align-items: center; gap: 8px; color: var(--text); padding: 2px 0 5px; border-bottom: 1px solid var(--stroke); margin: 8px 0 5px; }
 .asg-count { font-size: 10px; font-weight: 700; color: var(--muted); background: var(--panel-3); border-radius: 999px; padding: 0 7px; }
+.afb-box { margin: 10px var(--gutter) 0; padding: 12px 14px; border: 1px solid var(--stroke-strong); border-radius: 12px; background: var(--panel-2); }
+.afb-head { font-weight: 800; font-size: 14.5px; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.afb-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--stroke); font-size: 12.5px; }
+.afb-item:first-of-type { border-top: none; }
+.afb-song { font-weight: 700; white-space: nowrap; cursor: pointer; }
+.afb-song:hover { text-decoration: underline; }
+.afb-time { color: var(--accent-2); }
+.afb-comment { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.afb-author { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+@media (max-width: 640px) { .afb-item { flex-wrap: wrap; } .afb-comment { flex-basis: 100%; white-space: normal; } }
 .stp[data-open] { cursor: pointer; }
 .stp[data-open]:hover { text-decoration: underline; }
 .sub-count { font-size: 10px; font-weight: 700; color: var(--accent-2); background: var(--accent-soft); border-radius: 999px; padding: 0 6px; }
@@ -647,6 +657,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .fb-add { display: flex; flex-direction: column; gap: 8px; border: 1px dashed var(--stroke-strong); border-radius: 10px; padding: 10px; }
 .fb-add .fb-atwrap { display: flex; align-items: center; gap: 8px; }
 .fb-vercur { font-size: 11px; color: var(--muted); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-addrow { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.fb-astask { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .fb-older { margin-top: 12px; }
 .fb-older summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
 .fb-vergroup { margin-top: 8px; }
