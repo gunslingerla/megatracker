@@ -1642,33 +1642,37 @@ function openTeleprompter(id, secsOverride) {
       if (editing || e.detail > 1) return;
       const selc = window.getSelection(); if (!selc || selc.isCollapsed || selc.rangeCount === 0) return;
       const rg = selc.getRangeAt(0);
-      // Find the section (tp-txt) for the selection, robust to element-level range boundaries.
       const txts = Array.from(document.querySelectorAll("#tpScroll .tp-txt"));
-      let el1 = txts.find((el) => el === rg.startContainer || el.contains(rg.startContainer));
-      if (!el1) { try { el1 = txts.find((el) => rg.intersectsNode(el)); } catch (_) {} }
-      if (!el1) return;
-      const plain = el1.textContent;
-      const offOf = (container, offset) => {
-        if (!el1.contains(container) && container !== el1) return null;
-        const pre = document.createRange(); pre.selectNodeContents(el1); pre.setEnd(container, offset);
+      // Every section the selection touches (supports highlighting across section/paragraph breaks).
+      const hit = txts.filter((el) => { try { return rg.intersectsNode(el); } catch (_) { return el.contains(rg.startContainer) || el.contains(rg.endContainer); } });
+      if (!hit.length) return;
+      const offOf = (el, container, offset, fallback) => {
+        if (!(el === container || el.contains(container))) return fallback;
+        const pre = document.createRange(); pre.selectNodeContents(el); pre.setEnd(container, offset);
         return pre.toString().length;
       };
-      let start = offOf(rg.startContainer, rg.startOffset); if (start == null) start = 0;
-      let end = offOf(rg.endContainer, rg.endOffset); if (end == null) end = plain.length;
-      if (end <= start) return;
-      const i = Number(el1.closest(".tp-section").dataset.i);
-      if (isNaN(i) || !secs[i]) return;
-      secs[i].text = plain; // keep stored text identical to the measured DOM text
-      // Single highlight at a time: a new selection replaces the old; re-selecting it clears it.
-      const target = JSON.stringify([[start, end]]);
-      const isSame = JSON.stringify(secs[i].hl || []) === target && secs.every((sec, k) => k === i || !(sec.hl && sec.hl.length));
+      const proposed = {};
+      hit.forEach((el) => {
+        const i = Number(el.closest(".tp-section").dataset.i);
+        if (isNaN(i) || !secs[i]) return;
+        const plain = el.textContent; secs[i].text = plain;
+        const s = offOf(el, rg.startContainer, rg.startOffset, 0);
+        const eo = offOf(el, rg.endContainer, rg.endOffset, plain.length);
+        if (eo > s) proposed[i] = [s, eo];
+      });
+      const keys = Object.keys(proposed);
+      if (!keys.length) return;
+      // Single highlight at a time; re-selecting the exact same span clears it.
+      const same = secs.every((sec, k) => { const pr = proposed[k]; const cur = (sec.hl && sec.hl.length) ? sec.hl : null; return pr ? (cur && cur.length === 1 && cur[0][0] === pr[0] && cur[0][1] === pr[1]) : !cur; });
       secs.forEach((sec) => { sec.hl = []; });
-      if (!isSame) secs[i].hl = [[start, end]];
+      if (!same) keys.forEach((k) => (secs[k].hl = [proposed[k]]));
       selc.removeAllRanges();
-      const top = sc.scrollTop;
+      // Re-render only the section text in place, so the scroll position never moves.
+      document.querySelectorAll("#tpScroll .tp-section").forEach((secEl) => {
+        const k = Number(secEl.dataset.i); const txtEl = secEl.querySelector(".tp-txt");
+        if (txtEl && secs[k]) txtEl.innerHTML = renderHL(secs[k].text, secs[k].hl);
+      });
       update("track", id, { lyricsData: JSON.stringify(secs), lyrics: flattenSections(secs) });
-      draw();
-      const nsc = document.getElementById("tpScroll"); if (nsc) nsc.scrollTop = top;
     });
     $("#tpFull").onclick = toggleFull;
     $("#tpPop").onclick = popOut;
