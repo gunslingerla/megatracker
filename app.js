@@ -306,7 +306,7 @@ function cardHTML(t) {
       <div class="meter">${segs}</div>
       <div class="footer">
         <span class="prog-num">${t.phasesDone}/${t.phasesTotal} phases</span>
-        <button class="lyr-btn" data-lyr="${t.id}" title="Edit lyrics">Lyrics</button>
+        <button class="lyr-btn" data-lyr="${t.id}" title="Lyrics & teleprompter">Lyrics</button>
         <button class="lyr-btn" data-fb="${t.id}" title="Timestamped feedback">Feedback${openFbCount(t) ? ` (${openFbCount(t)})` : ""}</button>
       </div>
       ${waitBanner}
@@ -653,7 +653,7 @@ function wireBoard() {
     b.addEventListener("click", (e) => { e.stopPropagation(); playTrack(b.dataset.play); }));
 
   document.querySelectorAll(".lyr-btn[data-lyr]").forEach((b) =>
-    b.addEventListener("click", (e) => { e.stopPropagation(); openLyricsEditor(b.dataset.lyr); }));
+    b.addEventListener("click", (e) => { e.stopPropagation(); openTeleprompter(b.dataset.lyr); }));
   document.querySelectorAll(".lyr-btn[data-fb]").forEach((b) =>
     b.addEventListener("click", (e) => { e.stopPropagation(); openFeedbackModal(b.dataset.fb); }));
 
@@ -884,8 +884,7 @@ function openDrawer(id) {
       <div class="field">
         <label>Lyrics</label>
         <div class="drawer-actions" style="margin-top:0">
-          <button class="add-btn ghost" id="dLyricsEdit">Edit sections</button>
-          <button class="add-btn ghost" id="dTele">Teleprompter</button>
+          <button class="add-btn ghost" id="dTele">Open lyrics / teleprompter</button>
         </div>
       </div>
       <div class="field"><label>Timestamped feedback</label><button class="add-btn ghost" id="dFbBtn">Open feedback${openFbCount(t) ? ` (${openFbCount(t)})` : ""}</button></div>
@@ -993,7 +992,6 @@ function openDrawer(id) {
 
   const dPlay = $("#dPlay");
   if (dPlay) dPlay.onclick = () => playTrack(t.id);
-  $("#dLyricsEdit").onclick = () => openLyricsEditor(id);
   $("#dTele").onclick = () => openTeleprompter(id);
   $("#dVerLoad").onclick = () => loadVersions(t);
   $("#dMakeFolder").onclick = async () => {
@@ -1585,7 +1583,7 @@ function openTeleprompter(id, secsOverride) {
   const t = state.data.tracks.find((x) => x.id === id);
   const secs = secsOverride || parseSections(t);
   const tp = $("#teleprompter");
-  let font = 46, editing = false, center = true, track = 0, showCtrl = false;
+  let font = 46, editing = (secs.length === 0), center = true, track = 0, showCtrl = false;
   function close() { tp.classList.remove("open"); tp.innerHTML = ""; if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
   function draw() {
     if (editing) { drawEdit(); return; }
@@ -1599,7 +1597,7 @@ function openTeleprompter(id, secsOverride) {
         <button id="tpEdit">Edit</button>
         <button id="tpFull">Fullscreen</button>
         <button id="tpPop">Pop-Out</button>
-        <button id="tpClose">Close</button>
+        <button id="tpClose">Exit</button>
       </div>
       <div class="tp-scroll${center ? " center" : ""}" id="tpScroll" style="font-size:${font}px;letter-spacing:${track}px">
         ${secs.map((s) => `<div class="tp-section">${s.label ? `<div class="tp-lbl">${esc(s.label)}</div>` : ""}<div class="tp-txt">${esc(s.text)}</div></div>`).join("") || `<div class="tp-section"><div class="tp-txt">No lyrics yet.</div></div>`}
@@ -1630,7 +1628,11 @@ function openTeleprompter(id, secsOverride) {
       const raw = $("#tpEdit").value;
       const next = sectionsFromText(raw);
       const r = await update("track", id, { lyrics: raw.trim(), lyricsData: JSON.stringify(next) });
-      if (r.ok) { secs.length = 0; next.forEach((s) => secs.push(s)); editing = false; toast("Lyrics saved"); draw(); refresh(); }
+      if (r.ok) {
+        secs.length = 0; next.forEach((s) => secs.push(s)); editing = false; toast("Lyrics saved"); draw(); refresh();
+        // Keep the lyrics editor (if open underneath) in sync so it can't overwrite these edits.
+        const lt = document.getElementById("lyrText"); if (lt) lt.value = raw;
+      }
     };
   }
   function toggleFull() {
