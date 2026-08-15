@@ -2315,7 +2315,7 @@ function wireChrome() {
   $("#newTrack").addEventListener("click", () => { closeMenu(); openCreateTrack(); });
   $("#newAlbum").addEventListener("click", () => { closeMenu(); openCreateAlbum(); });
   $("#whoami").addEventListener("click", () => { closeMenu(); pickIdentity(); });
-  $("#scratchBtn").addEventListener("click", () => { closeMenu(); openScratch(); });
+  $("#scratchBtn").addEventListener("click", () => { closeMenu(); const w = window.open("/scratch.html", "megasScratch", "width=380,height=560,menubar=no,toolbar=no,location=no,status=no"); if (w) w.focus(); });
   window.addEventListener("storage", scratchSyncFromStorage);
   window.addEventListener("beforeunload", scratchFlush);
   window.addEventListener("pagehide", scratchFlush);
