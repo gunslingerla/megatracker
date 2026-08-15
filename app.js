@@ -682,7 +682,7 @@ function wireBoard() {
   document.querySelectorAll(".lyr-btn[data-lyr]").forEach((b) =>
     b.addEventListener("click", (e) => { e.stopPropagation(); openTeleprompter(b.dataset.lyr); }));
   document.querySelectorAll(".lyr-btn[data-fb]").forEach((b) =>
-    b.addEventListener("click", (e) => { e.stopPropagation(); const id = b.dataset.fb; if (state.audio.currentId && state.audio.currentId !== id && audioFor(trackById(id))) { if (confirm("Play this song instead?")) playTrack(id); } openNotesBar(id); }));
+    b.addEventListener("click", async (e) => { e.stopPropagation(); const id = b.dataset.fb; if (state.audio.currentId && state.audio.currentId !== id && audioFor(trackById(id))) { if (await confirmDialog("Another song is playing. Play this one instead?", { title: "Switch song?", okText: "Play it" })) playTrack(id); } openNotesBar(id); }));
 
   document.querySelectorAll("[data-playalbum]").forEach((b) => b.onclick = () => playAlbum(b.dataset.playalbum));
   document.querySelectorAll(".trow[data-tid]").forEach((r) =>
@@ -711,7 +711,7 @@ function wireBoard() {
   document.querySelectorAll("[data-asgme]").forEach((b) => b.onclick = () => { asgOnlyMe = !asgOnlyMe; render(); });
   document.querySelectorAll("#main .note-time[data-nseek]").forEach((b) => b.onclick = () => seekTo(b.dataset.ntrack, Math.max(0, Number(b.dataset.nseek) - preRoll)));
   document.querySelectorAll("#main [data-nresolve]").forEach((b) => b.onclick = async () => { const r = await update("feedback", b.dataset.nresolve, { status: "Resolved" }); if (r.ok) { toast("Resolved"); refresh(); } });
-  document.querySelectorAll("#main [data-ndel]").forEach((b) => b.onclick = async () => { if (!confirm("Delete this note?")) return; const r = await deleteEntity("feedback", b.dataset.ndel); if (r.ok) { toast("Deleted"); refresh(); } });
+  document.querySelectorAll("#main [data-ndel]").forEach((b) => b.onclick = async () => { if (!(await confirmDialog("Delete this note? This can\u2019t be undone.", { title: "Delete note", okText: "Delete", danger: true }))) return; const r = await deleteEntity("feedback", b.dataset.ndel); if (r.ok) { toast("Deleted"); refresh(); } });
   wireNoteCtrls(document.getElementById("main"));
 
   document.querySelectorAll(".mcard[data-member]").forEach((card) => {
@@ -745,7 +745,7 @@ function wireBoard() {
   }));
   const applyBtn = document.getElementById("applyPhases");
   if (applyBtn) applyBtn.onclick = async () => {
-    if (!confirm("Update every existing track's phase owners to match these assignments? Any manual per-track owner tweaks will be overwritten.")) return;
+    if (!(await confirmDialog("Update every existing track's phase owners to match these assignments? Any manual per-track owner tweaks will be overwritten.", { title: "Apply to all tracks?", okText: "Apply" }))) return;
     applyBtn.disabled = true; applyBtn.textContent = "Applying…";
     try {
       const res = await fetch("/api/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "reassign" }) });
@@ -975,7 +975,7 @@ function openDrawer(id) {
     }; }
   { const np = $("#newPhaseName"); if (np) np.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#addPhaseBtn").click(); } }); }
   document.querySelectorAll("[data-pdel]").forEach((b) => b.onclick = async () => {
-    if (!confirm("Remove this phase from the song?")) return;
+    if (!(await confirmDialog("Remove this phase from the song?", { title: "Remove phase", okText: "Remove", danger: true }))) return;
     const r = await deleteEntity("phase", b.dataset.pdel);
     if (r.ok) { toast("Phase removed"); await refresh(false); openDrawer(id); } else toast((r && r.error) || "Couldn't remove", true);
   });
@@ -1027,7 +1027,7 @@ function openDrawer(id) {
   $("#dTele").onclick = () => openTeleprompter(id);
   $("#dVerLoad").onclick = () => loadVersions(t);
   $("#dMakeFolder").onclick = async () => {
-    if (!confirm(`Create the Dropbox project folder (with a Bounces subfolder) for "${t.title}"?`)) return;
+    if (!(await confirmDialog(`Create the Dropbox project folder (with a Bounces subfolder) for \u201c${t.title}\u201d?`, { title: "Create folder?", okText: "Create" }))) return;
     toast("Creating folder…");
     const r = await post("/api/makefolders", { trackId: id });
     if (r.ok) { toast(r.created && r.created.length ? "Folder created" : "Folder already exists"); await refresh(false); await fetchPlaylist(); openDrawer(id); }
@@ -1035,7 +1035,7 @@ function openDrawer(id) {
   $("#dFbBtn").addEventListener("click", () => openNotesBar(t.id));
 
   $("#dDelete").addEventListener("click", async () => {
-    if (!confirm(`Delete "${t.title}" and its 5 phases? This can't be undone.`)) return;
+    if (!(await confirmDialog(`Delete \u201c${t.title}\u201d and its 5 phases? This can't be undone.`, { title: "Delete track", okText: "Delete", danger: true }))) return;
     const r = await deleteEntity("track", id);
     if (r.ok) { toast("Track deleted"); closeDrawer(); refresh(false); }
   });
@@ -1104,7 +1104,7 @@ function openAlbumDrawer(id) {
     if (r.ok) { toast(on ? "Set as current album" : "Cleared current album"); if (on) state.filters.albumId = id; await refresh(false); render(); }
   });
   $("#aDelete").addEventListener("click", async () => {
-    if (!confirm(`Delete album "${a.title}"? (Only works if it has no tracks.)`)) return;
+    if (!(await confirmDialog(`Delete album \u201c${a.title}\u201d? This only works if it has no tracks.`, { title: "Delete album", okText: "Delete", danger: true }))) return;
     const r = await deleteEntity("album", id);
     if (r.ok) { toast("Album deleted"); closeDrawer(); state.filters.albumId = ""; refresh(false); }
   });
@@ -1234,6 +1234,8 @@ function playTrack(id) {
   a.src = item.url;
   a.play().catch(() => {});
   renderPlayer();
+  const nb = document.getElementById("notesbar");
+  if (nb && nb.classList.contains("open") && notesBarTrack !== id) { notesBarTrack = id; notesTimeLocked = false; renderNotesBar(); }
 }
 function playNext(dir = 1) {
   const q = (state.audio.queue && state.audio.queue.length) ? state.audio.queue : playQueue();
@@ -1366,6 +1368,26 @@ async function ensureMe() { return getMe() || (await pickIdentity()); }
 /* ---- Modal helpers ---------------------------------------------------------*/
 function openModal(html) { const m = $("#modal"); m.innerHTML = html; $("#mscrim").classList.add("open"); m.classList.add("open"); }
 function closeModal() { $("#mscrim").classList.remove("open"); $("#modal").classList.remove("open"); }
+function confirmDialog(message, opts = {}) {
+  const okText = opts.okText || "Confirm", cancelText = opts.cancelText || "Cancel";
+  const danger = opts.danger === true, title = opts.title || "Are you sure?";
+  return new Promise((resolve) => {
+    openModal(`
+      <div class="mhd"><h2>${esc(title)}</h2><button class="icon-btn close" id="cfClose">&times;</button></div>
+      <div class="mbd">
+        <p style="margin:0;color:var(--text);line-height:1.45">${esc(message)}</p>
+        <div class="cf-actions">
+          <button class="add-btn ghost" id="cfCancel">${esc(cancelText)}</button>
+          <button class="add-btn${danger ? " danger" : ""}" id="cfOk">${esc(okText)}</button>
+        </div>
+      </div>`);
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; closeModal(); resolve(v); };
+    document.getElementById("cfClose").onclick = () => finish(false);
+    document.getElementById("cfCancel").onclick = () => finish(false);
+    const ok = document.getElementById("cfOk"); ok.onclick = () => finish(true); ok.focus();
+  });
+}
 
 /* ---- Preview album ---------------------------------------------------------*/
 function trackRowHTML(t) {
@@ -1923,13 +1945,11 @@ function noteRowHTML(t, fb) {
       <button class="note-time" data-nseek="${fb.timestamp}" data-ntrack="${t.id}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
       <span class="note-when">${fmtWhen(fb.createdTime)}</span>
       <span class="note-author">${esc(fb.author || "")}</span>
+      <div class="fb-actions"><button class="fb-mini" data-nresolve="${fb.id}">Resolve</button><button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
     </div>
     <div class="fb-body">
       <div class="fb-comment">${esc(fb.comment)}</div>
-      <div class="fb-right">
-        <div class="fb-actions"><button class="fb-mini" data-nresolve="${fb.id}">Resolve</button><button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
-        ${filed ? `<div class="nt-filed">&#10003; Task filed — resolves when done</div>` : noteTaskCtrls(t, fb)}
-      </div>
+      <div class="fb-right">${filed ? `<div class="nt-filed">&#10003; Task filed — resolves when done</div>` : noteTaskCtrls(t, fb)}</div>
     </div>
   </div>`;
 }
@@ -1951,22 +1971,20 @@ function fbItemHTML(fb, t) {
         <button class="fb-time" data-seek="${fb.timestamp}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
         <span class="fb-when">${fmtWhen(fb.createdTime)}</span>
         <span class="fb-author">${esc(fb.author || "—")}</span>
+        <div class="fb-actions">
+          <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>
+          <button class="fb-mini" data-fbdel>&times;</button>
+        </div>
       </div>
       <div class="fb-body">
         <div class="fb-comment">${esc(fb.comment)}</div>
-        <div class="fb-right">
-          <div class="fb-actions">
-            <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>
-            <button class="fb-mini" data-fbdel>&times;</button>
-          </div>
-          ${right}
-        </div>
+        ${right ? `<div class="fb-right">${right}</div>` : ""}
       </div>
     </div>`;
 }
 // Timestamped feedback lives in its own modal (like the lyrics editor).
 let notesBarTrack = null;
-let preRoll = (() => { const v = Number(localStorage.getItem("megasPreroll")); return isFinite(v) && v >= 0 ? v : 5; })();
+let preRoll = (() => { const raw = localStorage.getItem("megasPreroll"); const v = Number(raw); return raw !== null && raw !== "" && isFinite(v) && v >= 0 ? v : 5; })();
 let notesTimeLocked = false;
 function positionNotesBar() {
   const bar = document.getElementById("notesbar"); if (!bar) return;
@@ -2005,7 +2023,7 @@ function renderNotesBar() {
   bar.querySelectorAll(".fb-item").forEach((item) => {
     const fid = item.dataset.fb;
     const tg = item.querySelector("[data-fbtoggle]"); if (tg) tg.onclick = async () => { const c = tg.dataset.fbtoggle; const r = await update("feedback", fid, { status: c === "Open" ? "Resolved" : "Open" }); if (r.ok) { toast("Updated"); await refresh(); renderNotesBar(); } };
-    const dl = item.querySelector("[data-fbdel]"); if (dl) dl.onclick = async () => { if (!confirm("Delete this note?")) return; const r = await deleteEntity("feedback", fid); if (r.ok) { toast("Deleted"); await refresh(); renderNotesBar(); } };
+    const dl = item.querySelector("[data-fbdel]"); if (dl) dl.onclick = async () => { if (!(await confirmDialog("Delete this note? This can\u2019t be undone.", { title: "Delete note", okText: "Delete", danger: true }))) return; const r = await deleteEntity("feedback", fid); if (r.ok) { toast("Deleted"); await refresh(); renderNotesBar(); } };
   });
   wireNoteCtrls(bar);
   notesTimeLocked = false;
@@ -2067,7 +2085,7 @@ function renderFeedback(t) {
       if (r.ok) { toast("Updated"); await refresh(); reRenderFeedback(t.id); }
     };
     item.querySelector("[data-fbdel]").onclick = async () => {
-      if (!confirm("Delete this feedback?")) return;
+      if (!(await confirmDialog("Delete this note? This can\u2019t be undone.", { title: "Delete note", okText: "Delete", danger: true }))) return;
       const r = await deleteEntity("feedback", id);
       if (r.ok) { toast("Deleted"); await refresh(); reRenderFeedback(t.id); }
     };

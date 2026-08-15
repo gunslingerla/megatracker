@@ -175,6 +175,9 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .add-btn:hover { filter: brightness(1.06); }
 .add-btn.ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-strong); }
 .add-btn.ghost:hover { border-color: var(--accent); filter: none; }
+.add-btn.danger { background: linear-gradient(140deg, #f0654f, #d23b57); color: #fff; }
+.cf-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+.cf-actions .add-btn { padding: 9px 18px; }
 .danger-btn {
   background: transparent; color: var(--danger); border: 1px solid var(--stroke-strong);
   padding: 9px 12px; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 600; width: 100%;
@@ -574,7 +577,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .nb-preroll input { width: 56px; }
 .fb-body { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-top: 4px; }
 .fb-comment { flex: 1 1 180px; min-width: 150px; }
-.fb-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; margin-left: auto; }
+.fb-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+.note-main .fb-actions, .fb-top .fb-actions { margin-left: auto; }
 .fb-right .fb-actions { display: flex; gap: 6px; }
 .fb-right .nt-ctrls { justify-content: flex-end; }
 .fb-right .nt-filed { text-align: right; }
