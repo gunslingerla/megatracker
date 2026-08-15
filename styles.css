@@ -736,7 +736,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .tp-editarea:focus { outline: none; border-color: var(--accent); }
 .tp-section { margin: 0 0 1.1em; max-width: none; }
 .tp-scroll.center .tp-section { text-align: center; }
-.tp-section .tp-lbl { color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.42em; margin-bottom: 0.25em; }
+.tp-section .tp-lbl { color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.42em; margin-bottom: 0.25em; user-select: none; -webkit-user-select: none; }
 .tp-section .tp-txt { white-space: pre-wrap; line-height: 1.32; font-weight: 700; }
 .tp-hl { background: var(--hl, #ffd54a); color: #0c0b10; border-radius: 3px; padding: 0 0.06em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .tp-ctl input[type="color"] { width: 40px; height: 26px; padding: 0; border: 1px solid rgba(255,255,255,0.16); border-radius: 6px; background: transparent; cursor: pointer; }

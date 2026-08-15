@@ -1724,7 +1724,7 @@ function openTeleprompter(id, secsOverride) {
       .sc{padding:8vh 3vw 60vh;font-size:46px;font-weight:700;line-height:1.32;scroll-behavior:smooth;height:100vh;overflow:auto}
       .sc.center .s{text-align:center}
       .s{margin:0 0 1.1em;max-width:none}
-      .l{color:#e5399f;text-transform:uppercase;letter-spacing:.12em;font-size:.42em;margin-bottom:.25em}
+      .l{color:#e5399f;text-transform:uppercase;letter-spacing:.12em;font-size:.42em;margin-bottom:.25em;user-select:none;-webkit-user-select:none}
       .x{white-space:pre-wrap}
       .x mark{background:${hlColor};color:#0c0b10;border-radius:3px;padding:0 .06em}
       .edwrap{display:none;position:fixed;inset:0;z-index:5;background:#0a0a0e;flex-direction:column;padding:3vh 5vw 14px}
