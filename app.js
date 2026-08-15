@@ -16,7 +16,9 @@ const state = {
 };
 const CANT_PLAY_EXT = ["aif", "aiff"]; // browsers (esp. Chrome) usually can't play AIFF
 const editingMembers = new Set();
-const expandedSubs = new Set(); // phases whose subtask checklist is open // Band cards in edit mode
+const expandedSubs = new Set(); // phases whose subtask checklist is open
+const collapsedSubs = new Set(); // phases the user explicitly collapsed
+let newlyAddedSub = null; // "phase:index" of a just-added subtask (for pop-in) // Band cards in edit mode
 const PALETTE = ["#6cb6ff", "#46dba0", "#ffab4a", "#f0654f", "#b58cff", "#4fd0e0", "#f078c0", "#e5c94a", "#8a9bff", "#5fd08a"];
 const memberById = (id) => (state.data && state.data.members ? state.data.members.find((m) => m.id === id) : null);
 // Normalize a title (or filename) for matching Dropbox audio to a track.
@@ -757,6 +759,8 @@ function openShell(html) {
 function openDrawer(id) {
   const t = state.data.tracks.find((x) => x.id === id);
   if (!t) return;
+  const _prevBody = (state.openTrackId === id) ? document.querySelector("#drawer .dbody") : null;
+  const _keepScroll = _prevBody ? _prevBody.scrollTop : 0;
   state.openTrackId = id;
   const members = state.data.members;
   const albums = state.data.albums;
@@ -772,18 +776,19 @@ function openDrawer(id) {
     const m = memberById(p.ownerIds[0]);
     const col = m && m.color ? m.color : "#6a6478";
     const custom = !canonPhases.includes(p.phase);
-    const ownerOpts = `<option value="">Unassigned</option>` + state.data.members.map((mm) => `<option value="${mm.id}"${p.ownerIds[0] === mm.id ? " selected" : ""}>${esc(mm.display)}</option>`).join("");
+    const ownerLabel = (p.owners && p.owners.length) ? esc(p.owners.join(", ")) : "Unassigned";
+    const ownerChecks = state.data.members.map((mm) => `<label class="owner-opt"><input type="checkbox" data-owner="${p.id}:${mm.id}" ${p.ownerIds.includes(mm.id) ? "checked" : ""} /> ${esc(mm.display)}</label>`).join("");
     const subs = Array.isArray(p.subtasks) ? p.subtasks : [];
     const sdone = subs.filter((x) => x.done).length;
-    const open = expandedSubs.has(p.id);
-    const subItems = subs.map((st, i) => `<label class="sub-item"><input type="checkbox" data-subchk="${p.id}:${i}" ${st.done ? "checked" : ""} /><span class="${st.done ? "done" : ""}">${esc(st.text)}</span><button class="sub-del" data-subdel="${p.id}:${i}" title="Delete">&times;</button></label>`).join("");
+    const open = !collapsedSubs.has(p.id) && (subs.length > 0 || expandedSubs.has(p.id));
+    const subItems = subs.map((st, i) => `<label class="sub-item${newlyAddedSub === p.id + ":" + i ? " just-added" : ""}"><input type="checkbox" data-subchk="${p.id}:${i}" ${st.done ? "checked" : ""} /><span class="${st.done ? "done" : ""}">${esc(st.text)}</span><button class="sub-del" data-subdel="${p.id}:${i}" title="Delete">&times;</button></label>`).join("");
     return `
       <div class="phase-block" style="--own:${col}">
         <div class="phase-row2 ${done ? "done" : ""}${custom ? " custom" : ""}" data-phase="${p.id}">
           <input type="checkbox" data-pf="done" ${done ? "checked" : ""} />
           <span class="pname2">${esc(p.phase)}${custom ? ` <span class="cust-tag">custom</span>` : ""}</span>
           <button class="sub-toggle${open ? " open" : ""}" data-subtoggle="${p.id}" title="Subtasks">&#9745; ${subs.length ? `${sdone}/${subs.length}` : "+"}</button>
-          <select class="powner-sel" data-pf="owner" title="Assign owner">${ownerOpts}</select>
+          <details class="powner-det"><summary class="powner-sum" title="Assign owner(s)"><span data-ownersum="${p.id}">${ownerLabel}</span></summary><div class="powner-menu">${ownerChecks}</div></details>
           <input type="date" class="pdue" data-pf="due" value="${p.due || ""}" title="Phase due date" />
           ${custom ? `<button class="pdel" data-pdel="${p.id}" title="Remove this phase">&times;</button>` : ""}
         </div>
@@ -880,12 +885,12 @@ function openDrawer(id) {
       const r = await update("phase", row.dataset.phase, { due: e.target.value || null });
       if (r.ok) toast(e.target.value ? "Phase date set" : "Phase date cleared");
     });
-    const ow = row.querySelector('[data-pf="owner"]');
-    if (ow) ow.addEventListener("change", async (e) => {
-      const v = e.target.value;
-      const r = await update("phase", row.dataset.phase, { ownerIds: v ? [v] : [] });
-      if (r.ok) { toast(v ? "Owner assigned" : "Owner cleared"); refresh(); }
-    });
+    row.querySelectorAll('[data-owner]').forEach((c) => c.addEventListener("change", async () => {
+      const pid = row.dataset.phase;
+      const ids = [...row.querySelectorAll('[data-owner]')].filter((x) => x.checked).map((x) => x.dataset.owner.slice(x.dataset.owner.indexOf(":") + 1));
+      const r = await update("phase", pid, { ownerIds: ids });
+      if (r.ok) { const sp = row.querySelector('[data-ownersum]'); if (sp) sp.textContent = ids.length ? ids.map((mid) => { const mm = memberById(mid); return mm ? mm.display : "?"; }).join(", ") : "Unassigned"; refresh(false); }
+    }));
   });
   { const ap = $("#addPhaseBtn"); if (ap) ap.onclick = async () => {
       const nm = ($("#newPhaseName").value || "").trim();
@@ -904,8 +909,8 @@ function openDrawer(id) {
   const saveSubs = async (pid, arr) => { expandedSubs.add(pid); const r = await update("phase", pid, { subtasks: JSON.stringify(arr) }); if (r.ok) { await refresh(false); openDrawer(id); } return r; };
   document.querySelectorAll("#drawer [data-subtoggle]").forEach((b) => b.onclick = () => {
     const pid = b.dataset.subtoggle; const panel = document.querySelector(`[data-subpanel="${pid}"]`);
-    const nowOpen = !expandedSubs.has(pid);
-    if (nowOpen) expandedSubs.add(pid); else expandedSubs.delete(pid);
+    const nowOpen = !(panel && panel.classList.contains("open"));
+    if (nowOpen) { expandedSubs.add(pid); collapsedSubs.delete(pid); } else { expandedSubs.delete(pid); collapsedSubs.add(pid); }
     b.classList.toggle("open", nowOpen); if (panel) panel.classList.toggle("open", nowOpen);
   });
   document.querySelectorAll("#drawer [data-subchk]").forEach((c) => c.addEventListener("change", async (e) => {
@@ -917,9 +922,13 @@ function openDrawer(id) {
     const arr = phaseArr(pid); arr.splice(i, 1); await saveSubs(pid, arr);
   });
   document.querySelectorAll("#drawer [data-subadd]").forEach((b) => b.onclick = async () => {
-    const pid = b.dataset.subadd; const inp = document.querySelector(`[data-subnew="${pid}"]`); const txt = ((inp && inp.value) || "").trim();
+    const pid = b.dataset.subadd; const inp = document.querySelector(`#drawer [data-subnew="${pid}"]`); const txt = ((inp && inp.value) || "").trim();
     if (!txt) { toast("Type a subtask first", true); return; }
-    const arr = phaseArr(pid); arr.push({ text: txt, done: false }); await saveSubs(pid, arr);
+    const arr = phaseArr(pid); arr.push({ text: txt, done: false });
+    newlyAddedSub = pid + ":" + (arr.length - 1);
+    await saveSubs(pid, arr);
+    newlyAddedSub = null;
+    const ninp = document.querySelector(`#drawer [data-subnew="${pid}"]`); if (ninp) ninp.focus();
   });
   document.querySelectorAll("#drawer [data-subnew]").forEach((inp) => inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const b = document.querySelector(`[data-subadd="${inp.dataset.subnew}"]`); if (b) b.click(); } }));
 
@@ -951,6 +960,7 @@ function openDrawer(id) {
     if (r.ok) { toast("Track deleted"); closeDrawer(); refresh(false); }
   });
   wireArt();
+  const _nb = document.querySelector("#drawer .dbody"); if (_nb && _keepScroll) _nb.scrollTop = _keepScroll;
 }
 
 /* ---- Drawer: album (edit) --------------------------------------------------*/

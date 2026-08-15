@@ -447,7 +447,14 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .plan-preview .plan-h { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .plan-preview .plan-row { display: flex; justify-content: space-between; font-size: 13px; padding: 5px 9px; border: 1px solid var(--stroke); border-radius: 8px; }
 .plan-preview .muted { color: var(--muted); }
-.phase-row2 .powner-sel { margin-left: auto; max-width: 150px; font-size: 12px; padding: 5px 8px; }
+.powner-det { margin-left: auto; position: relative; }
+.powner-sum { list-style: none; cursor: pointer; font-size: 12px; color: var(--text); background: var(--panel-2); border: 1px solid var(--stroke-strong); border-radius: 8px; padding: 5px 10px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.powner-sum::-webkit-details-marker { display: none; }
+.powner-det[open] > .powner-sum { border-color: var(--accent); }
+.powner-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 30; min-width: 170px; background: var(--bg-1); border: 1px solid var(--stroke-strong); border-radius: 10px; box-shadow: var(--shadow); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.owner-opt { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 8px; border-radius: 7px; cursor: pointer; }
+.owner-opt:hover { background: var(--panel-2); }
+.owner-opt input { width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
 .phase-row2 .pdue { margin-left: 8px; width: 132px; font-size: 12px; padding: 5px 8px; }
 .phase-row2 .pdel { flex: none; width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--stroke-strong); background: var(--panel-2); color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
 .phase-row2 .pdel:hover { border-color: var(--danger); color: var(--danger); }
@@ -461,12 +468,14 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .sub-item input { width: 15px; height: 15px; accent-color: var(--good); flex: none; }
 .sub-item span { flex: 1; }
 .sub-item span.done { color: var(--muted); text-decoration: line-through; }
+@keyframes subpop { from { opacity: 0; transform: translateY(-5px) scale(0.98); } to { opacity: 1; transform: none; } }
+.sub-item.just-added { animation: subpop .18s ease; }
 .sub-del { flex: none; background: transparent; border: none; color: var(--muted-2); cursor: pointer; font-size: 15px; line-height: 1; }
 .sub-del:hover { color: var(--danger); }
 .sub-empty { color: var(--muted-2); font-size: 12px; padding: 2px 0 6px; }
-.sub-add { display: flex; align-items: center; gap: 7px; margin-top: 2px; }
-.sub-add .sub-plus { color: var(--muted-2); font-size: 15px; line-height: 1; flex: none; }
-.sub-add input[type="text"] { flex: 1; background: transparent; border: none; padding: 4px 0; font-size: 12.5px; color: var(--text); }
+.sub-add { display: flex; align-items: center; gap: 5px; margin-top: 1px; }
+.sub-add .sub-plus { color: var(--muted-2); font-size: 12px; line-height: 1; flex: none; }
+.sub-add input[type="text"] { flex: 1; background: transparent; border: none; padding: 3px 0; font-size: 11px; color: var(--text); }
 .sub-add input[type="text"]:focus { outline: none; }
 .sub-add input::placeholder { color: var(--muted-2); }
 .sub-add .sub-addbtn { flex: none; opacity: 0; pointer-events: none; transition: opacity .12s; background: var(--panel-2); border: 1px solid var(--stroke-strong); color: var(--muted); border-radius: 7px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; }
