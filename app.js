@@ -2207,7 +2207,7 @@ function scratchSyncFromStorage(e) {
     const box = document.getElementById("scrHistBox"); if (box && !box.hidden) renderScratchHist(true);
   } catch {}
 }
-function openScratch() {
+function openScratch(notice) {
   const el = document.getElementById("scratch"); if (!el) return;
   const btn = document.getElementById("scratchBtn"); if (btn) btn.classList.add("active");
   if (el.classList.contains("open")) { const ta = document.getElementById("scrText"); if (ta) ta.focus(); return; }
@@ -2221,6 +2221,7 @@ function openScratch() {
       <button class="icon-btn" id="scrPop" title="Pop out into its own window">&#8599;</button>
       <button class="icon-btn" id="scrClose" title="Close">&times;</button>
     </div>
+    ${notice ? `<div class="scr-note">${esc(notice)}</div>` : ""}
     <textarea id="scrText" placeholder="Jot notes, lyrics, ideas… saves automatically."></textarea>
     <div class="scr-foot">
       <button class="fb-mini" id="scrSaveEntry" title="Snapshot the current text to history and start fresh">Save entry &amp; clear</button>
@@ -2315,7 +2316,12 @@ function wireChrome() {
   $("#newTrack").addEventListener("click", () => { closeMenu(); openCreateTrack(); });
   $("#newAlbum").addEventListener("click", () => { closeMenu(); openCreateAlbum(); });
   $("#whoami").addEventListener("click", () => { closeMenu(); pickIdentity(); });
-  $("#scratchBtn").addEventListener("click", () => { closeMenu(); const w = window.open("/scratch.html", "megasScratch", "width=380,height=560,menubar=no,toolbar=no,location=no,status=no"); if (w) w.focus(); });
+  $("#scratchBtn").addEventListener("click", () => {
+    closeMenu();
+    let w = null; try { w = window.open("/scratch.html", "megasScratch", "width=380,height=560,menubar=no,toolbar=no,location=no,status=no"); } catch {}
+    if (w && !w.closed) { w.focus(); }
+    else { openScratch("Pop-ups are blocked, so the scratchpad opened here. Allow pop-ups for this site and it’ll open in its own window next time."); }
+  });
   window.addEventListener("storage", scratchSyncFromStorage);
   window.addEventListener("beforeunload", scratchFlush);
   window.addEventListener("pagehide", scratchFlush);
