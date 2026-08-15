@@ -983,6 +983,7 @@ function openAlbumDrawer(id) {
       <div class="field"><label>Dashboard default</label><label class="owner-chip" style="margin-top:2px"><input type="checkbox" id="aCurrent" ${a.current ? "checked" : ""} /> Current album — the Dashboard opens to this on a fresh load</label></div>
       <div class="field"><label>Dropbox album folder</label><input id="aFolder" type="text" value="${esc(a.dropboxFolder)}" placeholder="/Your/Folder/Path  or  https://…share link" /><div class="gate-note ok" style="color:var(--muted)">A folder path works with your current scopes; a share link needs Dropbox 'sharing.read'.</div></div>
       <div class="field"><label>Project folder prefix</label><input id="aPrefix" type="text" value="${esc(a.trackPrefix)}" placeholder="e.g. The Belmonts" /><div class="gate-note ok" style="color:var(--muted)">Reads folders named PREFIX_##_Song, pulling audio from each song's “Bounces”.</div></div>
+      <div class="field"><label>Add a production phase to every track</label><div class="addphase"><input id="albPhaseName" type="text" placeholder="e.g. Orchestration" /><button class="add-btn ghost" id="albPhaseAdd">+ Add to all tracks</button></div><div class="gate-note ok" style="color:var(--muted)">Adds this phase to every song in the album (skips songs that already have it).</div></div>
       <div class="field"><label>Concept / Notes</label><textarea id="aNotes" style="min-height:200px">${esc(a.notes)}</textarea></div>
       <div class="drawer-actions"><button class="danger-btn" id="aDelete">Delete album</button></div>
     </div>`);
@@ -1003,6 +1004,15 @@ function openAlbumDrawer(id) {
   });
   saveFolder("#aFolder", "dropboxFolder");
   saveFolder("#aPrefix", "trackPrefix");
+  { const ab = $("#albPhaseAdd"); if (ab) ab.onclick = async () => {
+      const nm = ($("#albPhaseName").value || "").trim();
+      if (!nm) { toast("Name the phase first", true); return; }
+      ab.disabled = true; ab.textContent = "Adding…";
+      const r = await createEntity("albumphase", { albumId: id, phase: nm });
+      if (r.ok) { toast(`Added to ${r.added} track(s)` + (r.skipped ? `, ${r.skipped} already had it` : "")); await refresh(false); openAlbumDrawer(id); }
+      else { toast((r && r.error) || "Couldn't add", true); ab.disabled = false; ab.textContent = "+ Add to all tracks"; }
+    }; }
+  { const ai = $("#albPhaseName"); if (ai) ai.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#albPhaseAdd").click(); } }); }
   // Only one album can be Current — checking this one clears the flag on the others.
   $("#aCurrent").addEventListener("change", async (e) => {
     const on = e.target.checked;

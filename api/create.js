@@ -73,6 +73,18 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true, id: rec[0].id });
     }
 
+    if (entity === "albumphase") {
+      if (!fields.albumId) return res.status(400).json({ error: "albumId required" });
+      const label = (fields.phase || "New phase").toString().slice(0, 80);
+      const [tracksRaw, phasesRaw] = await Promise.all([listAll(T.tracks), listAll(T.phases)]);
+      const inAlbum = tracksRaw.filter((t) => (t.fields[F.track.album] || []).includes(fields.albumId)).map((t) => t.id);
+      const already = new Set(phasesRaw.filter((p) => (p.fields[F.phase.phase] || "") === label).map((p) => (p.fields[F.phase.track] || [])[0]));
+      const toCreate = inAlbum.filter((tid) => !already.has(tid));
+      const recs = toCreate.map((tid) => ({ fields: { [F.phase.name]: label, [F.phase.phase]: label, [F.phase.status]: "Not started", [F.phase.track]: [tid] } }));
+      for (let i = 0; i < recs.length; i += 10) await create(T.phases, recs.slice(i, i + 10));
+      return res.status(200).json({ ok: true, added: recs.length, skipped: inAlbum.length - recs.length });
+    }
+
     if (entity === "phase") {
       if (!fields.trackId) return res.status(400).json({ error: "trackId required" });
       const label = (fields.phase || fields.name || "New phase").toString().slice(0, 80);
