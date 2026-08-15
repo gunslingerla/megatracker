@@ -1579,11 +1579,34 @@ function openLyricsEditor(id) {
 }
 
 /* ---- Teleprompter ----------------------------------------------------------*/
+function renderHL(text, ranges) {
+  text = String(text == null ? "" : text);
+  if (!ranges || !ranges.length) return esc(text);
+  const rs = ranges.map((r) => [Math.max(0, r[0]), Math.min(text.length, r[1])]).filter((r) => r[1] > r[0]).sort((a, b) => a[0] - b[0]);
+  const m = [];
+  rs.forEach((r) => { if (m.length && r[0] <= m[m.length - 1][1]) m[m.length - 1][1] = Math.max(m[m.length - 1][1], r[1]); else m.push([r[0], r[1]]); });
+  let out = "", pos = 0;
+  m.forEach(([a, b]) => { out += esc(text.slice(pos, a)) + `<mark class="tp-hl">${esc(text.slice(a, b))}</mark>`; pos = b; });
+  out += esc(text.slice(pos));
+  return out;
+}
+function toggleRange(ranges, s, e) {
+  let rs = (ranges || []).map((r) => [r[0], r[1]]);
+  if (rs.some(([a, b]) => a <= s && b >= e)) {
+    const out = [];
+    rs.forEach(([a, b]) => { if (b <= s || a >= e) out.push([a, b]); else { if (a < s) out.push([a, s]); if (b > e) out.push([e, b]); } });
+    return out;
+  }
+  rs.push([s, e]); rs.sort((x, y) => x[0] - y[0]);
+  const m = []; rs.forEach((r) => { if (m.length && r[0] <= m[m.length - 1][1]) m[m.length - 1][1] = Math.max(m[m.length - 1][1], r[1]); else m.push([r[0], r[1]]); });
+  return m;
+}
 function openTeleprompter(id, secsOverride) {
   const t = state.data.tracks.find((x) => x.id === id);
   const secs = secsOverride || parseSections(t);
   const tp = $("#teleprompter");
   let font = 46, editing = (secs.length === 0), center = true, track = 0, showCtrl = false;
+  let hlColor = localStorage.getItem("megasHlColor") || "#ffd54a";
   function close() { document.removeEventListener("keydown", onKey); tp.classList.remove("open"); tp.innerHTML = ""; if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
   function onKey(e) { if (e.key === "Escape") { e.preventDefault(); if (editing) { editing = false; draw(); } else close(); } }
   function draw() {
@@ -1594,6 +1617,7 @@ function openTeleprompter(id, secsOverride) {
         <span class="tp-title">${esc(t.title)}</span>
         <div class="tp-row"><button id="tpMinus">A&minus;</button><button id="tpPlus">A+</button></div>
         <label class="tp-ctl"><span>Tracking</span><input type="range" id="tpTrack" min="0" max="10" step="0.5" value="${track}" title="Letter spacing" /></label>
+        <label class="tp-ctl"><span>Highlight</span><input type="color" id="tpHl" value="${hlColor}" title="Highlight color" /></label>
         <button id="tpAlign">${center ? "Left" : "Center"}</button>
         <button id="tpEdit">Edit</button>
         <button id="tpFull">Fullscreen</button>
@@ -1601,7 +1625,7 @@ function openTeleprompter(id, secsOverride) {
         <button id="tpClose">Exit</button>
       </div>
       <div class="tp-scroll${center ? " center" : ""}" id="tpScroll" style="font-size:${font}px;letter-spacing:${track}px">
-        ${secs.map((s) => `<div class="tp-section">${s.label ? `<div class="tp-lbl">${esc(s.label)}</div>` : ""}<div class="tp-txt">${esc(s.text)}</div></div>`).join("") || `<div class="tp-section"><div class="tp-txt">No lyrics yet.</div></div>`}
+        ${secs.map((s, i) => `<div class="tp-section" data-i="${i}">${s.label ? `<div class="tp-lbl">${esc(s.label)}</div>` : ""}<div class="tp-txt">${renderHL(s.text, s.hl)}</div></div>`).join("") || `<div class="tp-section"><div class="tp-txt">No lyrics yet.</div></div>`}
       </div>`;
     const sc = $("#tpScroll");
     $("#tpMenu").onclick = () => { showCtrl = !showCtrl; $("#tpBar").classList.toggle("open", showCtrl); $("#tpMenu").textContent = showCtrl ? "Close" : "Controls"; };
@@ -1612,6 +1636,24 @@ function openTeleprompter(id, secsOverride) {
     $("#tpAlign").onclick = () => { center = !center; sc.classList.toggle("center", center); $("#tpAlign").textContent = center ? "Left" : "Center"; };
     $("#tpEdit").onclick = () => { editing = true; draw(); };
     sc.addEventListener("dblclick", () => { editing = true; draw(); }); // double-click lyrics to edit
+    { const hc = $("#tpHl"); if (hc) hc.oninput = (e) => { hlColor = e.target.value; localStorage.setItem("megasHlColor", hlColor); tp.style.setProperty("--hl", hlColor); }; }
+    sc.addEventListener("mouseup", (e) => {
+      if (editing || e.detail > 1) return;
+      const selc = window.getSelection(); if (!selc || selc.isCollapsed || selc.rangeCount === 0) return;
+      const rg = selc.getRangeAt(0);
+      const box = (n) => (n && n.nodeType === 3 ? n.parentElement : n);
+      const el1 = box(rg.startContainer) && box(rg.startContainer).closest(".tp-txt");
+      const el2 = box(rg.endContainer) && box(rg.endContainer).closest(".tp-txt");
+      if (!el1 || el1 !== el2) return;
+      const pre = document.createRange(); pre.selectNodeContents(el1); pre.setEnd(rg.startContainer, rg.startOffset);
+      const start = pre.toString().length; const len = rg.toString().length; if (len <= 0) return;
+      const i = Number(el1.closest(".tp-section").dataset.i);
+      if (isNaN(i) || !secs[i]) return;
+      secs[i].hl = toggleRange(secs[i].hl, start, start + len);
+      selc.removeAllRanges();
+      update("track", id, { lyricsData: JSON.stringify(secs), lyrics: flattenSections(secs) });
+      draw();
+    });
     $("#tpFull").onclick = toggleFull;
     $("#tpPop").onclick = popOut;
   }
@@ -1664,6 +1706,7 @@ function openTeleprompter(id, secsOverride) {
       .s{margin:0 0 1.1em;max-width:none}
       .l{color:#e5399f;text-transform:uppercase;letter-spacing:.12em;font-size:.42em;margin-bottom:.25em}
       .x{white-space:pre-wrap}
+      .x mark{background:${hlColor};color:#0c0b10;border-radius:3px;padding:0 .06em}
       .edwrap{display:none;position:fixed;inset:0;z-index:5;background:#0a0a0e;flex-direction:column;padding:3vh 5vw 14px}
       .edwrap textarea{flex:1;width:100%;background:rgba(255,255,255,.03);color:#ede8f5;border:1px solid #34303f;border-radius:12px;padding:16px 18px;font-size:18px;line-height:1.5;resize:none;font-family:ui-monospace,Menlo,Consolas,monospace}
       .edbar{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
@@ -1683,13 +1726,14 @@ function openTeleprompter(id, secsOverride) {
         <div class="edbar"><button onclick="save()">Save</button><button onclick="cancelEd()">Cancel</button></div>
       </div>
       <script>
-        var TID=${JSON.stringify(id)}, secs=parse(${JSON.stringify(flattenSections(secs))});
+        var TID=${JSON.stringify(id)}, secs=${JSON.stringify(secs.map((s) => ({ label: s.label || "", text: s.text || "", hl: Array.isArray(s.hl) ? s.hl : [] })))};
         var font=46,sc=document.getElementById('sc');
         function esc(s){return String(s).replace(/[&<>]/g,function(c){return c==='&'?'&amp;':c==='<'?'&lt;':'&gt;';});}
         function parse(raw){var lines=String(raw).replace(/\\r/g,'').split('\\n'),out=[],cur=null;for(var i=0;i<lines.length;i++){var m=lines[i].match(/^\\s*\\[(.+?)\\]\\s*$/);if(m){cur={label:m[1].trim(),text:''};out.push(cur);}else{if(!cur){cur={label:'',text:''};out.push(cur);}cur.text+=(cur.text?'\\n':'')+lines[i];}}for(var j=0;j<out.length;j++){out[j].text=out[j].text.replace(/^\\n+|\\n+$/g,'');}return out.filter(function(s){return s.label||s.text.trim();});}
         function flat(a){return a.map(function(s){return (s.label?'['+s.label+']\\n':'')+s.text;}).join('\\n\\n');}
+        function hl(t,ranges){t=String(t==null?'':t);if(!ranges||!ranges.length)return esc(t);var rs=ranges.map(function(r){return [Math.max(0,r[0]),Math.min(t.length,r[1])];}).filter(function(r){return r[1]>r[0];}).sort(function(a,b){return a[0]-b[0];});var m=[];rs.forEach(function(r){if(m.length&&r[0]<=m[m.length-1][1])m[m.length-1][1]=Math.max(m[m.length-1][1],r[1]);else m.push([r[0],r[1]]);});var out='',pos=0;m.forEach(function(r){out+=esc(t.slice(pos,r[0]))+'<mark>'+esc(t.slice(r[0],r[1]))+'</mark>';pos=r[1];});out+=esc(t.slice(pos));return out;}
         function render(){
-          sc.innerHTML=secs.map(function(s){return '<div class="s">'+(s.label?'<div class="l">'+esc(s.label)+'</div>':'')+'<div class="x">'+esc(s.text)+'</div></div>';}).join('')||'<div class="s"><div class="x">No lyrics yet.</div></div>';
+          sc.innerHTML=secs.map(function(s){return '<div class="s">'+(s.label?'<div class="l">'+esc(s.label)+'</div>':'')+'<div class="x">'+hl(s.text,s.hl)+'</div></div>';}).join('')||'<div class="s"><div class="x">No lyrics yet.</div></div>';
         }
         function fz(d){font=Math.max(20,Math.min(160,font+d));sc.style.fontSize=font+'px';}
         function fs(){var e=document.documentElement;if(!document.fullscreenElement){(e.requestFullscreen||e.webkitRequestFullscreen||function(){}).call(e);}else{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}}
@@ -1709,6 +1753,7 @@ function openTeleprompter(id, secsOverride) {
     w.document.close();
   }
   tp.classList.add("open");
+  tp.style.setProperty("--hl", hlColor);
   document.addEventListener("keydown", onKey);
   draw();
 }

@@ -738,6 +738,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .tp-scroll.center .tp-section { text-align: center; }
 .tp-section .tp-lbl { color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.42em; margin-bottom: 0.25em; }
 .tp-section .tp-txt { white-space: pre-wrap; line-height: 1.32; font-weight: 700; }
+.tp-hl { background: var(--hl, #ffd54a); color: #0c0b10; border-radius: 3px; padding: 0 0.06em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.tp-ctl input[type="color"] { width: 40px; height: 26px; padding: 0; border: 1px solid rgba(255,255,255,0.16); border-radius: 6px; background: transparent; cursor: pointer; }
 
 /* ---- Mobile / responsive ---------------------------------------------------*/
 /* Tablet / narrow-desktop: header reflows to two rows, filter labels shrink,
