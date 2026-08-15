@@ -709,7 +709,7 @@ function wireBoard() {
     }));
   document.querySelectorAll("[data-asg]").forEach((b) => b.onclick = () => { asgGroup = b.dataset.asg; render(); });
   document.querySelectorAll("[data-asgme]").forEach((b) => b.onclick = () => { asgOnlyMe = !asgOnlyMe; render(); });
-  document.querySelectorAll("#main .note-time[data-nseek]").forEach((b) => b.onclick = () => seekTo(b.dataset.ntrack, Math.max(0, Number(b.dataset.nseek) - 5)));
+  document.querySelectorAll("#main .note-time[data-nseek]").forEach((b) => b.onclick = () => seekTo(b.dataset.ntrack, Math.max(0, Number(b.dataset.nseek) - preRoll)));
   document.querySelectorAll("#main [data-nresolve]").forEach((b) => b.onclick = async () => { const r = await update("feedback", b.dataset.nresolve, { status: "Resolved" }); if (r.ok) { toast("Resolved"); refresh(); } });
   document.querySelectorAll("#main [data-ndel]").forEach((b) => b.onclick = async () => { if (!confirm("Delete this note?")) return; const r = await deleteEntity("feedback", b.dataset.ndel); if (r.ok) { toast("Deleted"); refresh(); } });
   wireNoteCtrls(document.getElementById("main"));
@@ -1851,16 +1851,45 @@ function convertNoteToTask(trackId, note) {
 function noteHasTask(t, fbId) { return (t.phases || []).some((p) => (p.subtasks || []).some((st) => st.note === fbId)); }
 function fmtWhen(iso) { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
 // Inline controls to file a note as a task: phase + assignee (auto-filled from phase) + Add.
+function guessNoteTarget(t, comment) {
+  const c = " " + (comment || "").toLowerCase() + " ";
+  const phases = t.phases || [];
+  const has = (name) => phases.find((p) => p.phase === name);
+  const eric = /\beric\b/.test(c), josh = /\bjosh\b/.test(c);
+  let phase = null;
+  if (/\b(guitar|riff|lead|solo|strum|chord|tele|strat|amp|distortion)\b/.test(c)) {
+    phase = (josh && has("Josh Guitar")) || (eric && has("Eric Guitar")) || has("Eric Guitar") || has("Josh Guitar") || null;
+  } else if (/\b(vocal|vox|sing|sung|pitch|lyric|verse|chorus|melody|tune|harmon|falsetto|scream|ad-?lib)\b/.test(c)) {
+    if (/\b(backing|back-?up|harmon|bgv|choir|double|stack)\b/.test(c)) phase = has("Backing Vocals");
+    phase = phase || (josh && has("Josh Vocals")) || (eric && has("Eric Vocals")) || has("Eric Vocals") || has("Josh Vocals") || null;
+  }
+  if (!phase) {
+    const KW = [
+      [/\b(drum|kick|snare|hi-?hat|hat|cymbal|tom|beat|groove|fill|percussion|ride|crash)\b/, "Drums"],
+      [/\b(bass|low ?end|sub|808)\b/, "Bass"],
+      [/\b(synth|keys?|keyboard|pad|arp|organ|piano)\b/, "Synth"],
+      [/\b(reverb|delay|fx|effect|ambien|texture|foley|sound ?design|sfx|riser|whoosh|automation)\b/, "Sound Design"],
+    ];
+    for (const [re, name] of KW) { if (re.test(c)) { phase = has(name); if (phase) break; } }
+  }
+  const members = state.data.members || [];
+  let owner = null;
+  const named = members.find((m) => { const first = ((m.display || m.name || "").split(/\s+/)[0] || "").toLowerCase(); return first.length > 1 && c.indexOf(" " + first) >= 0; });
+  if (named) owner = named.id;
+  if (!owner && phase) owner = (phase.ownerIds || [])[0] || null;
+  return { phaseId: phase ? phase.id : null, ownerId: owner };
+}
 function noteTaskCtrls(t, fb) {
   const phases = t.phases || [];
   const stage = t.stage || "";
   const POST = ["Mixing", "Mastering"];
   const stagePhase = phases.find((p) => p.phase === stage);
   const canOfferStage = !!stage && stage !== "Production" && !stagePhase;
-  const defSel = stagePhase ? stagePhase.id : (POST.includes(stage) && canOfferStage) ? "__stage" : (phases[0] ? phases[0].id : (canOfferStage ? "__stage" : ""));
+  const guess = guessNoteTarget(t, fb.comment);
+  const defSel = guess.phaseId || (stagePhase ? stagePhase.id : (POST.includes(stage) && canOfferStage) ? "__stage" : (phases[0] ? phases[0].id : (canOfferStage ? "__stage" : "")));
   const stageOpt = canOfferStage ? `<option value="__stage"${defSel === "__stage" ? " selected" : ""}>New: ${esc(stage)}</option>` : "";
   const phaseOpts = phases.map((p) => `<option value="${p.id}"${p.id === defSel ? " selected" : ""}>${esc(p.phase)}</option>`).join("");
-  const defOwner = (defSel && defSel !== "__stage") ? (((phases.find((p) => p.id === defSel) || {}).ownerIds || [])[0] || "") : "";
+  const defOwner = guess.ownerId || ((defSel && defSel !== "__stage") ? (((phases.find((p) => p.id === defSel) || {}).ownerIds || [])[0] || "") : "");
   const ownerOpts = `<option value="">Unassigned</option>` + state.data.members.map((m) => `<option value="${m.id}"${m.id === defOwner ? " selected" : ""}>${esc(m.display)}</option>`).join("");
   const phaseInner = (stageOpt + phaseOpts) || `<option value="">No phases</option>`;
   return `<div class="nt-ctrls" data-ntfor="${t.id}:${fb.id}"><select class="nt-sel" data-ntphase>${phaseInner}</select><select class="nt-sel" data-ntowner>${ownerOpts}</select><button class="fb-mini nt-add" data-ntadd>Add task</button></div>`;
@@ -1887,18 +1916,21 @@ function wireNoteCtrls(root) {
   });
 }
 function noteRowHTML(t, fb) {
+  const filed = noteHasTask(t, fb.id);
   return `<div class="note-row" data-fb="${fb.id}">
     <div class="note-main">
       <span class="afb-song" data-open="${t.id}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
-      <button class="note-time" data-nseek="${fb.timestamp}" data-ntrack="${t.id}" title="Play from ~5s before">${mmss(fb.timestamp)}</button>
+      <button class="note-time" data-nseek="${fb.timestamp}" data-ntrack="${t.id}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
       <span class="note-when">${fmtWhen(fb.createdTime)}</span>
       <span class="note-author">${esc(fb.author || "")}</span>
-      <span style="flex:1"></span>
-      <button class="fb-mini" data-nresolve="${fb.id}">Resolve</button>
-      <button class="fb-mini" data-ndel="${fb.id}">&times;</button>
     </div>
-    <div class="note-comment">${esc(fb.comment)}</div>
-    ${noteHasTask(t, fb.id) ? `<div class="nt-filed">&#10003; Task filed — resolves when the task is done</div>` : noteTaskCtrls(t, fb)}
+    <div class="fb-body">
+      <div class="fb-comment">${esc(fb.comment)}</div>
+      <div class="fb-right">
+        <div class="fb-actions"><button class="fb-mini" data-nresolve="${fb.id}">Resolve</button><button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
+        ${filed ? `<div class="nt-filed">&#10003; Task filed — resolves when done</div>` : noteTaskCtrls(t, fb)}
+      </div>
+    </div>
   </div>`;
 }
 function notesHTML() {
@@ -1911,23 +1943,30 @@ function notesHTML() {
   return `<div class="notes-page"><div class="notes-head">Open notes<span class="asg-count">${rows.length}</span></div>${list}</div>`;
 }
 function fbItemHTML(fb, t) {
+  const showCtrls = fb.status === "Open" && t;
+  const right = showCtrls ? (noteHasTask(t, fb.id) ? `<div class="nt-filed">&#10003; Task filed</div>` : noteTaskCtrls(t, fb)) : "";
   return `
     <div class="fb-item ${fb.status === "Resolved" ? "resolved" : ""}" data-fb="${fb.id}">
       <div class="fb-top">
-        <button class="fb-time" data-seek="${fb.timestamp}" title="Play from ~5s before">${mmss(fb.timestamp)}</button>
+        <button class="fb-time" data-seek="${fb.timestamp}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
         <span class="fb-when">${fmtWhen(fb.createdTime)}</span>
         <span class="fb-author">${esc(fb.author || "—")}</span>
-        <div class="fb-actions">
-          <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>
-          <button class="fb-mini" data-fbdel>&times;</button>
+      </div>
+      <div class="fb-body">
+        <div class="fb-comment">${esc(fb.comment)}</div>
+        <div class="fb-right">
+          <div class="fb-actions">
+            <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>
+            <button class="fb-mini" data-fbdel>&times;</button>
+          </div>
+          ${right}
         </div>
       </div>
-      <div class="fb-comment">${esc(fb.comment)}</div>
-      ${fb.status === "Open" && t ? (noteHasTask(t, fb.id) ? `<div class="nt-filed">&#10003; Task filed</div>` : noteTaskCtrls(t, fb)) : ""}
     </div>`;
 }
 // Timestamped feedback lives in its own modal (like the lyrics editor).
 let notesBarTrack = null;
+let preRoll = (() => { const v = Number(localStorage.getItem("megasPreroll")); return isFinite(v) && v >= 0 ? v : 5; })();
 let notesTimeLocked = false;
 function positionNotesBar() {
   const bar = document.getElementById("notesbar"); if (!bar) return;
@@ -1935,7 +1974,7 @@ function positionNotesBar() {
   const shown = player && !player.classList.contains("hidden");
   bar.style.bottom = (shown ? player.offsetHeight : 0) + "px";
 }
-function closeNotesBar() { const bar = document.getElementById("notesbar"); if (!bar) return; bar.classList.remove("open"); bar.innerHTML = ""; notesBarTrack = null; }
+function closeNotesBar() { const bar = document.getElementById("notesbar"); if (!bar) return; bar.classList.remove("open"); notesBarTrack = null; setTimeout(() => { if (!bar.classList.contains("open")) bar.innerHTML = ""; }, 380); }
 function openNotesBar(id) { const t = trackById(id); if (!t) return; notesBarTrack = id; notesTimeLocked = false; document.getElementById("notesbar").classList.add("open"); renderNotesBar(); }
 function renderNotesBar() {
   const bar = document.getElementById("notesbar"); if (!bar || !notesBarTrack) return;
@@ -1945,6 +1984,9 @@ function renderNotesBar() {
   const playing = state.audio.currentId === t.id;
   const curT = playing ? Math.floor(audioEl().currentTime || 0) : 0;
   const rows = list.length ? list.map((fb) => fbItemHTML(fb, t)).join("") : `<div class="empty">No notes on the current version yet.</div>`;
+  const older = (t.feedback || []).filter((fb) => (fb.version || "") !== (cur || ""));
+  const olderByVer = {}; older.forEach((fb) => { const k = fb.version || "(no version)"; (olderByVer[k] = olderByVer[k] || []).push(fb); });
+  const olderHTML = Object.keys(olderByVer).length ? `<details class="fb-older"><summary>Previous versions (${older.length})</summary>${Object.entries(olderByVer).map(([v, l]) => `<div class="fb-vergroup"><div class="fb-verhd">${esc(v)}</div>${l.map((fb) => fbItemHTML(fb, t)).join("")}</div>`).join("")}</details>` : "";
   bar.innerHTML = `
     <div class="nb-head">
       <span class="nb-title">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
@@ -1952,13 +1994,14 @@ function renderNotesBar() {
       <span style="flex:1"></span>
       <button class="icon-btn" id="nbClose" title="Close">&times;</button>
     </div>
-    <div class="nb-list">${rows}</div>
+    <div class="nb-preroll">Pre-roll <input type="number" id="nbPreroll" min="0" max="30" step="1" value="${preRoll}" /> s before each note</div>
+    <div class="nb-list">${rows}${olderHTML}</div>
     <div class="nb-add">
       <button class="nb-time" id="nbTime" title="${playing ? "Live time — click to resync; locks when you type" : "Timestamp"}">${mmss(curT)}</button>
       <input type="text" id="nbText" placeholder="Add a note${playing ? " here" : ""}…" />
       <button class="add-btn" id="nbAdd">Add note</button>
     </div>`;
-  bar.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Math.max(0, Number(s.dataset.seek) - 5)));
+  bar.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Math.max(0, Number(s.dataset.seek) - preRoll)));
   bar.querySelectorAll(".fb-item").forEach((item) => {
     const fid = item.dataset.fb;
     const tg = item.querySelector("[data-fbtoggle]"); if (tg) tg.onclick = async () => { const c = tg.dataset.fbtoggle; const r = await update("feedback", fid, { status: c === "Open" ? "Resolved" : "Open" }); if (r.ok) { toast("Updated"); await refresh(); renderNotesBar(); } };
@@ -1970,6 +2013,7 @@ function renderNotesBar() {
   const lock = () => { notesTimeLocked = true; };
   textEl.addEventListener("focus", lock); textEl.addEventListener("input", lock);
   document.getElementById("nbTime").onclick = () => { if (state.audio.currentId === t.id) { document.getElementById("nbTime").textContent = mmss(Math.floor(audioEl().currentTime || 0)); notesTimeLocked = false; } };
+  { const pr = document.getElementById("nbPreroll"); if (pr) pr.onchange = () => { const v = Number(pr.value); preRoll = isFinite(v) && v >= 0 ? Math.min(30, v) : 5; localStorage.setItem("megasPreroll", preRoll); pr.value = preRoll; }; }
   document.getElementById("nbClose").onclick = closeNotesBar;
   document.getElementById("nbAdd").onclick = async () => {
     const comment = textEl.value.trim(); if (!comment) { toast("Write a note first", true); return; }
@@ -2014,7 +2058,7 @@ function renderFeedback(t) {
       <div class="fb-addrow"><button class="add-btn" id="fbAdd">Add note</button></div>
     </div>
     ${olderHTML}`;
-  el.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Math.max(0, Number(s.dataset.seek) - 5)));
+  el.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Math.max(0, Number(s.dataset.seek) - preRoll)));
   el.querySelectorAll(".fb-item").forEach((item) => {
     const id = item.dataset.fb;
     item.querySelector("[data-fbtoggle]").onclick = async () => {
@@ -2133,4 +2177,6 @@ function wireChrome() {
   await refresh(false);
   await fetchPlaylist();
   render(); // re-render so play buttons appear once the playlist is known
+  // First-time on this browser: ask who "you" are so notes/assignments are tagged correctly.
+  if (!getMe() && (state.data.members || []).length) pickIdentity();
 })();

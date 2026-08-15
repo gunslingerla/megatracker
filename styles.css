@@ -560,7 +560,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .nt-ctrls .nt-sel { font-size: 12px; padding: 4px 6px; max-width: 150px; }
 .fb-when { color: var(--muted-2); font-size: 11px; margin-left: 8px; }
 .fb-time { cursor: pointer; }
-.notesbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 55; background: var(--bg-1); border-top: 1px solid var(--stroke-strong); box-shadow: 0 -14px 34px rgba(0,0,0,0.45); transform: translateY(110%); transition: transform .22s ease; max-height: 58vh; display: flex; flex-direction: column; }
+.notesbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 54; background: var(--bg-1); border-top: 1px solid var(--stroke-strong); box-shadow: 0 -14px 34px rgba(0,0,0,0.45); transform: translateY(110%); transition: transform .34s ease; max-height: 58vh; display: flex; flex-direction: column; }
 .notesbar.open { transform: none; }
 .notesbar .nb-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--stroke); }
 .notesbar .nb-title { font-weight: 800; font-size: 14px; }
@@ -570,6 +570,15 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .notesbar .nb-time { background: var(--accent-soft); color: var(--accent-2); border: 1px solid var(--accent-soft); border-radius: 8px; padding: 7px 12px; font-weight: 800; cursor: pointer; flex: none; font-variant-numeric: tabular-nums; }
 .notesbar .nb-time:hover { border-color: var(--accent); }
 .notesbar .nb-add input { flex: 1; }
+.nb-preroll { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 8px 16px 0; }
+.nb-preroll input { width: 56px; }
+.fb-body { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-top: 4px; }
+.fb-comment { flex: 1 1 180px; min-width: 150px; }
+.fb-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; margin-left: auto; }
+.fb-right .fb-actions { display: flex; gap: 6px; }
+.fb-right .nt-ctrls { justify-content: flex-end; }
+.fb-right .nt-filed { text-align: right; }
+.note-row .fb-body { margin-top: 8px; }
 .fb-item .nt-ctrls { margin-top: 8px; }
 .nt-filed { font-size: 12px; color: var(--good); font-weight: 600; margin-top: 8px; }
 .ver-item.offline { opacity: 0.75; }
