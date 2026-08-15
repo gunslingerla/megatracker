@@ -65,10 +65,11 @@ const createEntity = (entity, fields) => post("/api/create", { entity, fields })
 const deleteEntity = (entity, id) => post("/api/delete", { entity, id });
 async function toggleSub(pid, i, checked) {
   const ph = (state.data.phases || []).find((p) => p.id === pid); if (!ph) return;
-  const arr = (ph.subtasks || []).map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null }));
+  const arr = (ph.subtasks || []).map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null, note: x.note || null }));
   if (!arr[i]) return; arr[i].done = checked;
+  const note = arr[i].note;
   const r = await update("phase", pid, { subtasks: JSON.stringify(arr) });
-  if (r.ok) refresh();
+  if (r.ok) { if (note) await update("feedback", note, { status: checked ? "Resolved" : "Open" }); refresh(); }
 }
 
 /* ---- Art upload ------------------------------------------------------------*/
@@ -681,7 +682,7 @@ function wireBoard() {
   document.querySelectorAll(".lyr-btn[data-lyr]").forEach((b) =>
     b.addEventListener("click", (e) => { e.stopPropagation(); openTeleprompter(b.dataset.lyr); }));
   document.querySelectorAll(".lyr-btn[data-fb]").forEach((b) =>
-    b.addEventListener("click", (e) => { e.stopPropagation(); openFeedbackModal(b.dataset.fb); }));
+    b.addEventListener("click", (e) => { e.stopPropagation(); const id = b.dataset.fb; if (state.audio.currentId && state.audio.currentId !== id && audioFor(trackById(id))) { if (confirm("Play this song instead?")) playTrack(id); } openNotesBar(id); }));
 
   document.querySelectorAll("[data-playalbum]").forEach((b) => b.onclick = () => playAlbum(b.dataset.playalbum));
   document.querySelectorAll(".trow[data-tid]").forEach((r) =>
@@ -979,7 +980,7 @@ function openDrawer(id) {
     if (r.ok) { toast("Phase removed"); await refresh(false); openDrawer(id); } else toast((r && r.error) || "Couldn't remove", true);
   });
   // Subtasks (stored as JSON on each phase)
-  const phaseArr = (pid) => { const ph = (state.data.phases || []).find((p) => p.id === pid); return Array.isArray(ph && ph.subtasks) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null })) : []; };
+  const phaseArr = (pid) => { const ph = (state.data.phases || []).find((p) => p.id === pid); return Array.isArray(ph && ph.subtasks) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null, note: x.note || null })) : []; };
   const saveSubs = async (pid, arr) => { expandedSubs.add(pid); const r = await update("phase", pid, { subtasks: JSON.stringify(arr) }); if (r.ok) { await refresh(false); openDrawer(id); } return r; };
   document.querySelectorAll("#drawer [data-subtoggle]").forEach((b) => b.onclick = () => {
     const pid = b.dataset.subtoggle; const panel = document.querySelector(`[data-subpanel="${pid}"]`);
@@ -989,7 +990,7 @@ function openDrawer(id) {
   });
   document.querySelectorAll("#drawer [data-subchk]").forEach((c) => c.addEventListener("change", async (e) => {
     const ix = c.dataset.subchk.lastIndexOf(":"); const pid = c.dataset.subchk.slice(0, ix), i = +c.dataset.subchk.slice(ix + 1);
-    const arr = phaseArr(pid); if (arr[i]) { arr[i].done = e.target.checked; await saveSubs(pid, arr); }
+    const arr = phaseArr(pid); if (arr[i]) { const note = arr[i].note; arr[i].done = e.target.checked; await saveSubs(pid, arr); if (note) await update("feedback", note, { status: e.target.checked ? "Resolved" : "Open" }); }
   }));
   document.querySelectorAll("#drawer [data-subdel]").forEach((b) => b.onclick = async () => {
     const ix = b.dataset.subdel.lastIndexOf(":"); const pid = b.dataset.subdel.slice(0, ix), i = +b.dataset.subdel.slice(ix + 1);
@@ -1031,7 +1032,7 @@ function openDrawer(id) {
     const r = await post("/api/makefolders", { trackId: id });
     if (r.ok) { toast(r.created && r.created.length ? "Folder created" : "Folder already exists"); await refresh(false); await fetchPlaylist(); openDrawer(id); }
   };
-  $("#dFbBtn").addEventListener("click", () => openFeedbackModal(t.id));
+  $("#dFbBtn").addEventListener("click", () => openNotesBar(t.id));
 
   $("#dDelete").addEventListener("click", async () => {
     if (!confirm(`Delete "${t.title}" and its 5 phases? This can't be undone.`)) return;
@@ -1280,41 +1281,17 @@ function renderPlayer() {
     </div>
     <div class="ptime" id="pTime">0:00 / 0:00</div>
     ${warn}
-    <button class="fb-mini" id="pFbBtn" title="Add a note at current time">Note</button>
-    <button class="pclose" id="pClose" title="Close">&times;</button>
-    <div class="pfb hidden" id="pFbForm">
-      <span class="ptime">@ <span id="pFbTime">0:00</span></span>
-      <input type="text" id="pFbText" placeholder="Add a note at this moment…" />
-      <button class="fb-mini" id="pFbSend">Add note</button>
-      <button class="fb-mini" id="pFbClose" title="Close">&times;</button>
-    </div>`;
+    <button class="fb-mini" id="pFbBtn" title="Notes for this song">Notes</button>
+    <button class="pclose" id="pClose" title="Close">&times;</button>`;
   document.getElementById("pToggle").onclick = () => (a.paused ? a.play().catch(() => {}) : a.pause());
   document.getElementById("pPrev").onclick = () => playNext(-1);
   document.getElementById("pNext").onclick = () => playNext(1);
-  document.getElementById("pClose").onclick = () => { a.pause(); state.audio.currentId = null; el.className = "player hidden"; updatePlayButtons(); };
+  document.getElementById("pClose").onclick = () => { a.pause(); state.audio.currentId = null; el.className = "player hidden"; updatePlayButtons(); positionNotesBar(); };
   const seek = document.getElementById("pSeek");
   seek.oninput = () => { if (a.duration) a.currentTime = (seek.value / 1000) * a.duration; };
 
-  // Quick timestamped feedback from the play bar.
-  let fbStamp = 0;
-  document.getElementById("pFbBtn").onclick = () => {
-    const form = document.getElementById("pFbForm");
-    if (!form.classList.contains("hidden")) { form.classList.add("hidden"); return; }
-    fbStamp = Math.floor(a.currentTime || 0);
-    document.getElementById("pFbTime").textContent = fmt(fbStamp);
-    form.classList.remove("hidden");
-    document.getElementById("pFbText").focus();
-  };
-  const sendFb = async () => {
-    const text = document.getElementById("pFbText").value.trim();
-    if (!text) { toast("Write a note first", true); return; }
-    const me = await ensureMe();
-    const r = await createEntity("feedback", { trackId: state.audio.currentId, timestamp: fbStamp, comment: text, authorId: me ? me.id : undefined, version: currentVersion(trackById(state.audio.currentId)) });
-    if (r.ok) { toast("Feedback added"); document.getElementById("pFbText").value = ""; document.getElementById("pFbForm").classList.add("hidden"); await refresh(); renderMarkers(); }
-  };
-  document.getElementById("pFbSend").onclick = sendFb;
-  document.getElementById("pFbClose").onclick = () => document.getElementById("pFbForm").classList.add("hidden");
-  document.getElementById("pFbText").addEventListener("keydown", (e) => { if (e.key === "Enter") sendFb(); });
+  document.getElementById("pFbBtn").onclick = () => { if (state.audio.currentId) openNotesBar(state.audio.currentId); };
+  if (document.getElementById("notesbar") && document.getElementById("notesbar").classList.contains("open")) { if (notesBarTrack === state.audio.currentId) renderNotesBar(); positionNotesBar(); }
   renderMarkers();
 }
 
@@ -1345,6 +1322,7 @@ function wireAudio() {
     const seek = document.getElementById("pSeek"), time = document.getElementById("pTime");
     if (seek && a.duration) seek.value = String((a.currentTime / a.duration) * 1000);
     if (time) time.textContent = `${fmt(a.currentTime)} / ${fmt(a.duration)}`;
+    if (!notesTimeLocked && notesBarTrack && notesBarTrack === state.audio.currentId) { const tb = document.getElementById("nbTime"); if (tb) tb.textContent = mmss(Math.floor(a.currentTime || 0)); }
   });
   a.addEventListener("error", async () => {
     const item = audioFor(trackById(state.audio.currentId));
@@ -1870,6 +1848,7 @@ function convertNoteToTask(trackId, note) {
     openFeedbackModal(trackId);
   };
 }
+function noteHasTask(t, fbId) { return (t.phases || []).some((p) => (p.subtasks || []).some((st) => st.note === fbId)); }
 function fmtWhen(iso) { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
 // Inline controls to file a note as a task: phase + assignee (auto-filled from phase) + Add.
 function noteTaskCtrls(t, fb) {
@@ -1898,13 +1877,12 @@ function wireNoteCtrls(root) {
       if (phaseId === "__stage") { const rc = await createEntity("phase", { trackId: tid, phase: t.stage || "" }); if (!rc.ok) { toast((rc && rc.error) || "Couldn't create phase", true); return; } phaseId = rc.id; await refresh(false); }
       if (!phaseId) { toast("Pick a phase", true); return; }
       const ph = (state.data.phases || []).find((p) => p.id === phaseId);
-      const arr = (ph && Array.isArray(ph.subtasks)) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null })) : [];
-      arr.push({ text: `[${mmss(fb.timestamp)}] ${fb.comment || ""}`, done: false, owner: (ownerSel ? ownerSel.value : "") || null });
+      const arr = (ph && Array.isArray(ph.subtasks)) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null, note: x.note || null })) : [];
+      arr.push({ text: `[${mmss(fb.timestamp)}] ${fb.comment || ""}`, done: false, owner: (ownerSel ? ownerSel.value : "") || null, note: fid });
       const r2 = await update("phase", phaseId, { subtasks: JSON.stringify(arr) });
       if (!r2.ok) { toast((r2 && r2.error) || "Couldn't add task", true); return; }
-      await update("feedback", fid, { status: "Resolved" });
-      toast("Task added"); await refresh(false);
-      if (document.getElementById("dFeedback")) reRenderFeedback(tid); else render();
+      toast("Task filed — the note resolves when it's done"); await refresh(false);
+      if (document.getElementById("dFeedback")) reRenderFeedback(tid); else if (document.getElementById("notesbar") && document.getElementById("notesbar").classList.contains("open")) renderNotesBar(); else render();
     };
   });
 }
@@ -1920,7 +1898,7 @@ function noteRowHTML(t, fb) {
       <button class="fb-mini" data-ndel="${fb.id}">&times;</button>
     </div>
     <div class="note-comment">${esc(fb.comment)}</div>
-    ${noteTaskCtrls(t, fb)}
+    ${noteHasTask(t, fb.id) ? `<div class="nt-filed">&#10003; Task filed — resolves when the task is done</div>` : noteTaskCtrls(t, fb)}
   </div>`;
 }
 function notesHTML() {
@@ -1945,10 +1923,63 @@ function fbItemHTML(fb, t) {
         </div>
       </div>
       <div class="fb-comment">${esc(fb.comment)}</div>
-      ${fb.status === "Open" && t ? noteTaskCtrls(t, fb) : ""}
+      ${fb.status === "Open" && t ? (noteHasTask(t, fb.id) ? `<div class="nt-filed">&#10003; Task filed</div>` : noteTaskCtrls(t, fb)) : ""}
     </div>`;
 }
 // Timestamped feedback lives in its own modal (like the lyrics editor).
+let notesBarTrack = null;
+let notesTimeLocked = false;
+function positionNotesBar() {
+  const bar = document.getElementById("notesbar"); if (!bar) return;
+  const player = document.getElementById("player");
+  const shown = player && !player.classList.contains("hidden");
+  bar.style.bottom = (shown ? player.offsetHeight : 0) + "px";
+}
+function closeNotesBar() { const bar = document.getElementById("notesbar"); if (!bar) return; bar.classList.remove("open"); bar.innerHTML = ""; notesBarTrack = null; }
+function openNotesBar(id) { const t = trackById(id); if (!t) return; notesBarTrack = id; notesTimeLocked = false; document.getElementById("notesbar").classList.add("open"); renderNotesBar(); }
+function renderNotesBar() {
+  const bar = document.getElementById("notesbar"); if (!bar || !notesBarTrack) return;
+  const t = trackById(notesBarTrack); if (!t) { closeNotesBar(); return; }
+  const cur = currentVersion(t);
+  const list = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "")).sort((a, b) => a.timestamp - b.timestamp);
+  const playing = state.audio.currentId === t.id;
+  const curT = playing ? Math.floor(audioEl().currentTime || 0) : 0;
+  const rows = list.length ? list.map((fb) => fbItemHTML(fb, t)).join("") : `<div class="empty">No notes on the current version yet.</div>`;
+  bar.innerHTML = `
+    <div class="nb-head">
+      <span class="nb-title">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
+      ${cur ? `<span class="nb-ver" title="Notes are pinned to this bounce">${esc(cur)}</span>` : ""}
+      <span style="flex:1"></span>
+      <button class="icon-btn" id="nbClose" title="Close">&times;</button>
+    </div>
+    <div class="nb-list">${rows}</div>
+    <div class="nb-add">
+      <button class="nb-time" id="nbTime" title="${playing ? "Live time — click to resync; locks when you type" : "Timestamp"}">${mmss(curT)}</button>
+      <input type="text" id="nbText" placeholder="Add a note${playing ? " here" : ""}…" />
+      <button class="add-btn" id="nbAdd">Add note</button>
+    </div>`;
+  bar.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Math.max(0, Number(s.dataset.seek) - 5)));
+  bar.querySelectorAll(".fb-item").forEach((item) => {
+    const fid = item.dataset.fb;
+    const tg = item.querySelector("[data-fbtoggle]"); if (tg) tg.onclick = async () => { const c = tg.dataset.fbtoggle; const r = await update("feedback", fid, { status: c === "Open" ? "Resolved" : "Open" }); if (r.ok) { toast("Updated"); await refresh(); renderNotesBar(); } };
+    const dl = item.querySelector("[data-fbdel]"); if (dl) dl.onclick = async () => { if (!confirm("Delete this note?")) return; const r = await deleteEntity("feedback", fid); if (r.ok) { toast("Deleted"); await refresh(); renderNotesBar(); } };
+  });
+  wireNoteCtrls(bar);
+  notesTimeLocked = false;
+  const textEl = document.getElementById("nbText");
+  const lock = () => { notesTimeLocked = true; };
+  textEl.addEventListener("focus", lock); textEl.addEventListener("input", lock);
+  document.getElementById("nbTime").onclick = () => { if (state.audio.currentId === t.id) { document.getElementById("nbTime").textContent = mmss(Math.floor(audioEl().currentTime || 0)); notesTimeLocked = false; } };
+  document.getElementById("nbClose").onclick = closeNotesBar;
+  document.getElementById("nbAdd").onclick = async () => {
+    const comment = textEl.value.trim(); if (!comment) { toast("Write a note first", true); return; }
+    const me = await ensureMe();
+    const ts = parseTime(document.getElementById("nbTime").textContent);
+    const r = await createEntity("feedback", { trackId: t.id, timestamp: ts, comment, authorId: me ? me.id : undefined, version: cur });
+    if (r.ok) { toast("Note added"); await refresh(); renderNotesBar(); if (state.audio.currentId === t.id) renderMarkers(); }
+  };
+  positionNotesBar();
+}
 function openFeedbackModal(id) {
   const t = trackById(id);
   if (!t) return;
@@ -2027,14 +2058,22 @@ async function loadVersions(t) {
     const u = "/api/versions?folder=" + encodeURIComponent(alb.dropboxFolder) + "&prefix=" + encodeURIComponent(alb.trackPrefix || "") + "&order=" + effOrder(t);
     const r = await fetch(u);
     const j = await r.json();
-    if (!j.items || !j.items.length) { el.innerHTML = `<div class="empty">No audio files found for this track.</div>`; return; }
+    if (!j.items || !j.items.length) {
+      const offline = [...new Set((t.feedback || []).map((fb) => fb.version).filter(Boolean))];
+      if (!offline.length) { el.innerHTML = `<div class="empty">No audio files found for this track.</div>`; return; }
+      el.innerHTML = `<div class="ver-list">${offline.map((ver) => { const n = (t.feedback || []).filter((fb) => fb.version === ver).length; return `<div class="ver-item offline"><span class="vlabel">${esc(ver)}</span><span class="vmeta">Offline — file not in Dropbox</span><span class="vtag">${n} note(s)</span></div>`; }).join("")}</div>`;
+      return;
+    }
+    const live = new Set((j.items || []).map((v) => v.version));
+    const offline = [...new Set((t.feedback || []).map((fb) => fb.version).filter((v) => v && !live.has(v)))];
+    const offlineHTML = offline.map((ver) => { const n = (t.feedback || []).filter((fb) => fb.version === ver).length; return `<div class="ver-item offline"><span class="vlabel">${esc(ver)}</span><span class="vmeta">Offline — file not in Dropbox</span><span class="vtag">${n} note(s)</span></div>`; }).join("");
     el.innerHTML = `<div class="ver-list">${j.items.map((v) => `
       <div class="ver-item ${v.current ? "current" : ""}">
         <span class="vlabel">${esc(v.version || "—")}</span>
         <span class="vmeta">${esc(v.ext.toUpperCase())} &middot; ${new Date(v.modified).toLocaleDateString()}</span>
         <span class="vtag">${v.current ? "current" : (v.previous ? "previous" : "")}</span>
         <button class="fb-mini" data-vurl="${esc(v.url)}" title="Play this version">Play</button>
-      </div>`).join("")}</div>`;
+      </div>`).join("")}${offlineHTML}</div>`;
     el.querySelectorAll("[data-vurl]").forEach((b) => b.onclick = () => {
       const a = audioEl(); state.audio.currentId = null; a.src = b.dataset.vurl; a.play().catch(() => {});
       toast("Playing selected version");
@@ -2084,7 +2123,7 @@ function wireChrome() {
   $("#scrim").addEventListener("click", closeDrawer);
   $("#mscrim").addEventListener("click", closeModal);
   $("#lightbox").addEventListener("click", closeLightbox);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { const tpEl = document.getElementById("teleprompter"); if (tpEl && tpEl.classList.contains("open")) return; closeLightbox(); closeDrawer(); closeModal(); closeMenu(); closeNav(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { const tpEl = document.getElementById("teleprompter"); if (tpEl && tpEl.classList.contains("open")) return; closeNotesBar(); closeLightbox(); closeDrawer(); closeModal(); closeMenu(); closeNav(); } });
 }
 
 (async function boot() {
