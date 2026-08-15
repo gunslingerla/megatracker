@@ -19,7 +19,8 @@ const editingMembers = new Set();
 const expandedSubs = new Set(); // phases whose subtask checklist is open
 const collapsedSubs = new Set(); // phases the user explicitly collapsed
 let newlyAddedSub = null; // "phase:index" of a just-added subtask (for pop-in)
-let asgGroup = "phase"; // Assignments grouping: "phase" or "song" // Band cards in edit mode
+let asgGroup = "phase";
+let asgOnlyMe = false; // Assignments grouping: "phase" or "song" // Band cards in edit mode
 const PALETTE = ["#6cb6ff", "#46dba0", "#ffab4a", "#f0654f", "#b58cff", "#4fd0e0", "#f078c0", "#e5c94a", "#8a9bff", "#5fd08a"];
 const memberById = (id) => (state.data && state.data.members ? state.data.members.find((m) => m.id === id) : null);
 // Normalize a title (or filename) for matching Dropbox audio to a track.
@@ -163,6 +164,7 @@ function render() {
   if (state.view === "tracks") main.innerHTML = boardHTML(visibleTracks()) + albumsSectionHTML();
   else if (state.view === "preview") main.innerHTML = previewHTML();
   else if (state.view === "members") main.innerHTML = membersHTML();
+  else if (state.view === "notes") main.innerHTML = notesHTML();
   else if (state.view === "calendar") main.innerHTML = calendarHTML();
   else if (state.view === "hold") main.innerHTML = holdHTML();
   else if (state.view === "roster") main.innerHTML = rosterHTML();
@@ -171,7 +173,7 @@ function render() {
   wireArtView();
   // The header strip switcher shows on album-scoped views; on Preview each section
   // header is its own switcher, so the strip is hidden there.
-  const showStrip = ["tracks", "members", "calendar"].includes(state.view);
+  const showStrip = ["tracks", "members", "calendar", "notes"].includes(state.view);
   $("#albumStrip").style.display = showStrip ? "" : "none";
 }
 
@@ -309,7 +311,7 @@ function cardHTML(t) {
       <div class="footer">
         <span class="prog-num">${t.phasesDone}/${t.phasesTotal} phases</span>
         <button class="lyr-btn" data-lyr="${t.id}" title="Lyrics & teleprompter">Lyrics</button>
-        <button class="lyr-btn" data-fb="${t.id}" title="Timestamped feedback (resolved/total on current version)">Feedback${fbLabel(t)}</button>
+        <button class="lyr-btn" data-fb="${t.id}" title="Notes (resolved/total on current version)">Notes${fbLabel(t)}</button>
       </div>
       ${waitBanner}
     </div>`;
@@ -458,7 +460,8 @@ function membersHTML() {
     const d = dueCmp(a.nextDue, b.nextDue); if (d) return d;
     return b.count - a.count;
   });
-  const cards = entries.map(({ member, items, count }) => {
+  const shownEntries = (asgOnlyMe && me) ? entries.filter((e) => e.member.id === me.id) : entries;
+  const cards = shownEntries.map(({ member, items, count }) => {
     let body;
     if (!items.length) {
       body = `<div class="empty">All caught up</div>`;
@@ -490,8 +493,8 @@ function membersHTML() {
         ${body}
       </div>`;
   }).join("");
-  const toolbar = `<div class="asg-bar"><span class="asg-lbl">Group by</span><div class="asg-toggle"><button class="${asgGroup === "phase" ? "on" : ""}" data-asg="phase">Phase</button><button class="${asgGroup === "song" ? "on" : ""}" data-asg="song">Song</button></div></div>`;
-  return `${toolbar}${assignmentsFeedbackBox()}<div class="members">${cards}</div>`;
+  const toolbar = `<div class="asg-bar"><span class="asg-lbl">Group by</span><div class="asg-toggle"><button class="${asgGroup === "phase" ? "on" : ""}" data-asg="phase">Phase</button><button class="${asgGroup === "song" ? "on" : ""}" data-asg="song">Song</button></div><span style="flex:1"></span>${me ? `<button class="asg-mebtn${asgOnlyMe ? " on" : ""}" data-asgme>${asgOnlyMe ? "Showing you" : "Only me"}</button>` : ""}</div>`;
+  return `${toolbar}<div class="members">${cards}</div>`;
 }
 
 /* ---- Band (member info) ----------------------------------------------------*/
@@ -704,8 +707,11 @@ function wireBoard() {
       openDrawer(card.dataset.song);
     }));
   document.querySelectorAll("[data-asg]").forEach((b) => b.onclick = () => { asgGroup = b.dataset.asg; render(); });
-  document.querySelectorAll("[data-afbtask]").forEach((b) => b.onclick = () => { const ix = b.dataset.afbtask.indexOf(":"); const tid = b.dataset.afbtask.slice(0, ix), fid = b.dataset.afbtask.slice(ix + 1); const t = trackById(tid); const fb = t && (t.feedback || []).find((x) => x.id === fid); if (fb) convertNoteToTask(tid, fb); });
-  document.querySelectorAll("[data-afbresolve]").forEach((b) => b.onclick = async () => { const ix = b.dataset.afbresolve.indexOf(":"); const fid = b.dataset.afbresolve.slice(ix + 1); const r = await update("feedback", fid, { status: "Resolved" }); if (r.ok) { toast("Resolved"); refresh(); } });
+  document.querySelectorAll("[data-asgme]").forEach((b) => b.onclick = () => { asgOnlyMe = !asgOnlyMe; render(); });
+  document.querySelectorAll("#main .note-time[data-nseek]").forEach((b) => b.onclick = () => seekTo(b.dataset.ntrack, Math.max(0, Number(b.dataset.nseek) - 5)));
+  document.querySelectorAll("#main [data-nresolve]").forEach((b) => b.onclick = async () => { const r = await update("feedback", b.dataset.nresolve, { status: "Resolved" }); if (r.ok) { toast("Resolved"); refresh(); } });
+  document.querySelectorAll("#main [data-ndel]").forEach((b) => b.onclick = async () => { if (!confirm("Delete this note?")) return; const r = await deleteEntity("feedback", b.dataset.ndel); if (r.ok) { toast("Deleted"); refresh(); } });
+  wireNoteCtrls(document.getElementById("main"));
 
   document.querySelectorAll(".mcard[data-member]").forEach((card) => {
     const id = card.dataset.member;
@@ -912,7 +918,7 @@ function openDrawer(id) {
           <button class="add-btn ghost" id="dTele">Open lyrics / teleprompter</button>
         </div>
       </div>
-      <div class="field"><label>Timestamped feedback</label><button class="add-btn ghost" id="dFbBtn">Open feedback${fbLabel(t)}</button></div>
+      <div class="field"><label>Notes</label><button class="add-btn ghost" id="dFbBtn">Open notes${fbLabel(t)}</button></div>
       <div class="field"><label>Versions (from Dropbox)</label><div id="dVersions"><button class="fb-mini" id="dVerLoad">Show version history</button></div></div>
       <div class="field"><label>Dropbox project folder</label><button class="add-btn ghost" id="dMakeFolder">Create this song's folder</button></div>
       <div class="drawer-actions">
@@ -1274,12 +1280,13 @@ function renderPlayer() {
     </div>
     <div class="ptime" id="pTime">0:00 / 0:00</div>
     ${warn}
-    <button class="fb-mini" id="pFbBtn" title="Add feedback at current time">Note</button>
+    <button class="fb-mini" id="pFbBtn" title="Add a note at current time">Note</button>
     <button class="pclose" id="pClose" title="Close">&times;</button>
     <div class="pfb hidden" id="pFbForm">
       <span class="ptime">@ <span id="pFbTime">0:00</span></span>
       <input type="text" id="pFbText" placeholder="Add a note at this moment…" />
       <button class="fb-mini" id="pFbSend">Add note</button>
+      <button class="fb-mini" id="pFbClose" title="Close">&times;</button>
     </div>`;
   document.getElementById("pToggle").onclick = () => (a.paused ? a.play().catch(() => {}) : a.pause());
   document.getElementById("pPrev").onclick = () => playNext(-1);
@@ -1306,6 +1313,7 @@ function renderPlayer() {
     if (r.ok) { toast("Feedback added"); document.getElementById("pFbText").value = ""; document.getElementById("pFbForm").classList.add("hidden"); await refresh(); renderMarkers(); }
   };
   document.getElementById("pFbSend").onclick = sendFb;
+  document.getElementById("pFbClose").onclick = () => document.getElementById("pFbForm").classList.add("hidden");
   document.getElementById("pFbText").addEventListener("keydown", (e) => { if (e.key === "Enter") sendFb(); });
   renderMarkers();
 }
@@ -1862,19 +1870,82 @@ function convertNoteToTask(trackId, note) {
     openFeedbackModal(trackId);
   };
 }
-function fbItemHTML(fb) {
+function fmtWhen(iso) { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
+// Inline controls to file a note as a task: phase + assignee (auto-filled from phase) + Add.
+function noteTaskCtrls(t, fb) {
+  const phases = t.phases || [];
+  const stage = t.stage || "";
+  const POST = ["Mixing", "Mastering"];
+  const stagePhase = phases.find((p) => p.phase === stage);
+  const canOfferStage = !!stage && stage !== "Production" && !stagePhase;
+  const defSel = stagePhase ? stagePhase.id : (POST.includes(stage) && canOfferStage) ? "__stage" : (phases[0] ? phases[0].id : (canOfferStage ? "__stage" : ""));
+  const stageOpt = canOfferStage ? `<option value="__stage"${defSel === "__stage" ? " selected" : ""}>New: ${esc(stage)}</option>` : "";
+  const phaseOpts = phases.map((p) => `<option value="${p.id}"${p.id === defSel ? " selected" : ""}>${esc(p.phase)}</option>`).join("");
+  const defOwner = (defSel && defSel !== "__stage") ? (((phases.find((p) => p.id === defSel) || {}).ownerIds || [])[0] || "") : "";
+  const ownerOpts = `<option value="">Unassigned</option>` + state.data.members.map((m) => `<option value="${m.id}"${m.id === defOwner ? " selected" : ""}>${esc(m.display)}</option>`).join("");
+  const phaseInner = (stageOpt + phaseOpts) || `<option value="">No phases</option>`;
+  return `<div class="nt-ctrls" data-ntfor="${t.id}:${fb.id}"><select class="nt-sel" data-ntphase>${phaseInner}</select><select class="nt-sel" data-ntowner>${ownerOpts}</select><button class="fb-mini nt-add" data-ntadd>Add task</button></div>`;
+}
+function wireNoteCtrls(root) {
+  (root || document).querySelectorAll(".nt-ctrls").forEach((boxEl) => {
+    const sep = boxEl.dataset.ntfor.indexOf(":"); const tid = boxEl.dataset.ntfor.slice(0, sep), fid = boxEl.dataset.ntfor.slice(sep + 1);
+    const phaseSel = boxEl.querySelector("[data-ntphase]"); const ownerSel = boxEl.querySelector("[data-ntowner]");
+    if (phaseSel) phaseSel.addEventListener("change", () => { const t = trackById(tid); const ph = t && (t.phases || []).find((p) => p.id === phaseSel.value); if (ownerSel) ownerSel.value = ph ? ((ph.ownerIds || [])[0] || "") : ""; });
+    const addBtn = boxEl.querySelector("[data-ntadd]");
+    if (addBtn) addBtn.onclick = async () => {
+      const t = trackById(tid); const fb = t && (t.feedback || []).find((x) => x.id === fid); if (!t || !fb) return;
+      let phaseId = phaseSel ? phaseSel.value : "";
+      if (phaseId === "__stage") { const rc = await createEntity("phase", { trackId: tid, phase: t.stage || "" }); if (!rc.ok) { toast((rc && rc.error) || "Couldn't create phase", true); return; } phaseId = rc.id; await refresh(false); }
+      if (!phaseId) { toast("Pick a phase", true); return; }
+      const ph = (state.data.phases || []).find((p) => p.id === phaseId);
+      const arr = (ph && Array.isArray(ph.subtasks)) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null })) : [];
+      arr.push({ text: `[${mmss(fb.timestamp)}] ${fb.comment || ""}`, done: false, owner: (ownerSel ? ownerSel.value : "") || null });
+      const r2 = await update("phase", phaseId, { subtasks: JSON.stringify(arr) });
+      if (!r2.ok) { toast((r2 && r2.error) || "Couldn't add task", true); return; }
+      await update("feedback", fid, { status: "Resolved" });
+      toast("Task added"); await refresh(false);
+      if (document.getElementById("dFeedback")) reRenderFeedback(tid); else render();
+    };
+  });
+}
+function noteRowHTML(t, fb) {
+  return `<div class="note-row" data-fb="${fb.id}">
+    <div class="note-main">
+      <span class="afb-song" data-open="${t.id}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
+      <button class="note-time" data-nseek="${fb.timestamp}" data-ntrack="${t.id}" title="Play from ~5s before">${mmss(fb.timestamp)}</button>
+      <span class="note-when">${fmtWhen(fb.createdTime)}</span>
+      <span class="note-author">${esc(fb.author || "")}</span>
+      <span style="flex:1"></span>
+      <button class="fb-mini" data-nresolve="${fb.id}">Resolve</button>
+      <button class="fb-mini" data-ndel="${fb.id}">&times;</button>
+    </div>
+    <div class="note-comment">${esc(fb.comment)}</div>
+    ${noteTaskCtrls(t, fb)}
+  </div>`;
+}
+function notesHTML() {
+  const alb = currentAlbum();
+  const inScope = (t) => !t.onHold && (!alb || t.albumId === alb.id);
+  const rows = [];
+  state.data.tracks.filter(inScope).forEach((t) => { const cur = currentVersion(t); (t.feedback || []).filter((fb) => fb.status === "Open" && (fb.version || "") === (cur || "")).forEach((fb) => rows.push({ t, fb })); });
+  rows.sort((a, b) => (effOrder(a.t) - effOrder(b.t)) || (a.fb.timestamp - b.fb.timestamp));
+  const list = rows.length ? rows.map(({ t, fb }) => noteRowHTML(t, fb)).join("") : `<div class="empty" style="padding:24px">No open notes${alb ? " for this album" : ""}.</div>`;
+  return `<div class="notes-page"><div class="notes-head">Open notes<span class="asg-count">${rows.length}</span></div>${list}</div>`;
+}
+function fbItemHTML(fb, t) {
   return `
     <div class="fb-item ${fb.status === "Resolved" ? "resolved" : ""}" data-fb="${fb.id}">
       <div class="fb-top">
-        <span class="fb-time" data-seek="${fb.timestamp}">${mmss(fb.timestamp)}</span>
+        <button class="fb-time" data-seek="${fb.timestamp}" title="Play from ~5s before">${mmss(fb.timestamp)}</button>
+        <span class="fb-when">${fmtWhen(fb.createdTime)}</span>
         <span class="fb-author">${esc(fb.author || "—")}</span>
         <div class="fb-actions">
-          <button class="fb-mini" data-fbtask title="Turn into a task">&#8594; Task</button>
           <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>
           <button class="fb-mini" data-fbdel>&times;</button>
         </div>
       </div>
       <div class="fb-comment">${esc(fb.comment)}</div>
+      ${fb.status === "Open" && t ? noteTaskCtrls(t, fb) : ""}
     </div>`;
 }
 // Timestamped feedback lives in its own modal (like the lyrics editor).
@@ -1882,7 +1953,7 @@ function openFeedbackModal(id) {
   const t = trackById(id);
   if (!t) return;
   openModal(`
-    <div class="mhd"><h2>Feedback &middot; ${esc(t.title)}</h2><span style="flex:1"></span><button class="icon-btn close" id="mClose">&times;</button></div>
+    <div class="mhd"><h2>Notes &middot; ${esc(t.title)}</h2><span style="flex:1"></span><button class="icon-btn close" id="mClose">&times;</button></div>
     <div class="mbd"><div id="dFeedback"></div></div>`);
   $("#mClose").onclick = closeModal;
   renderFeedback(t);
@@ -1895,13 +1966,13 @@ function renderFeedback(t) {
   const older = all.filter((fb) => (fb.version || "") !== (cur || ""));
   const olderByVer = {};
   older.forEach((fb) => { const k = fb.version || "(no version)"; (olderByVer[k] = olderByVer[k] || []).push(fb); });
-  const curRows = curList.length ? curList.map(fbItemHTML).join("") : `<div class="empty">No feedback on the current version yet.</div>`;
+  const curRows = curList.length ? curList.map((fb) => fbItemHTML(fb, t)).join("") : `<div class="empty">No notes on the current version yet.</div>`;
   const olderHTML = Object.keys(olderByVer).length
-    ? `<details class="fb-older"><summary>Earlier versions (${older.length})</summary>${Object.entries(olderByVer).map(([v, list]) => `<div class="fb-vergroup"><div class="fb-verhd">${esc(v)}</div>${list.map(fbItemHTML).join("")}</div>`).join("")}</details>`
+    ? `<details class="fb-older"><summary>Earlier versions (${older.length})</summary>${Object.entries(olderByVer).map(([v, list]) => `<div class="fb-vergroup"><div class="fb-verhd">${esc(v)}</div>${list.map((fb) => fbItemHTML(fb, t)).join("")}</div>`).join("")}</details>`
     : "";
   const curT = state.audio.currentId === t.id ? Math.floor(audioEl().currentTime || 0) : 0;
   el.innerHTML = `
-    ${cur ? `<div class="fb-vercur" title="Feedback is pinned to this bounce">Current version: ${esc(cur)}</div>` : ""}
+    ${cur ? `<div class="fb-vercur" title="Notes are pinned to this bounce">Current version: ${esc(cur)}</div>` : ""}
     <div class="fb-list">${curRows}</div>
     <div class="fb-add" style="margin-top:8px">
       <div class="fb-atwrap"><span style="color:var(--muted);font-size:12px">At</span>
@@ -1909,10 +1980,10 @@ function renderFeedback(t) {
         <button class="fb-mini" id="fbNow">Use current time</button>
       </div>
       <textarea id="fbComment" placeholder="Add a note at this time…"></textarea>
-      <div class="fb-addrow"><button class="add-btn" id="fbAdd">Add feedback</button><label class="owner-chip fb-astask"><input type="checkbox" id="fbAsTask" /> also make it a task</label></div>
+      <div class="fb-addrow"><button class="add-btn" id="fbAdd">Add note</button></div>
     </div>
     ${olderHTML}`;
-  el.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Number(s.dataset.seek)));
+  el.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Math.max(0, Number(s.dataset.seek) - 5)));
   el.querySelectorAll(".fb-item").forEach((item) => {
     const id = item.dataset.fb;
     item.querySelector("[data-fbtoggle]").onclick = async () => {
@@ -1925,8 +1996,8 @@ function renderFeedback(t) {
       const r = await deleteEntity("feedback", id);
       if (r.ok) { toast("Deleted"); await refresh(); reRenderFeedback(t.id); }
     };
-    { const tk = item.querySelector("[data-fbtask]"); if (tk) tk.onclick = () => { const fb = (t.feedback || []).find((x) => x.id === id); if (fb) convertNoteToTask(t.id, fb); }; }
   });
+  wireNoteCtrls(el);
   $("#fbNow").onclick = () => {
     if (state.audio.currentId === t.id) $("#fbTime").value = mmss(Math.floor(audioEl().currentTime || 0));
     else toast("Play this track first", true);
@@ -1935,13 +2006,8 @@ function renderFeedback(t) {
     const comment = $("#fbComment").value.trim();
     if (!comment) { toast("Write a note first", true); return; }
     const me = await ensureMe();
-    const asTask = !!($("#fbAsTask") && $("#fbAsTask").checked);
     const r = await createEntity("feedback", { trackId: t.id, timestamp: parseTime($("#fbTime").value), comment, authorId: me ? me.id : undefined, version: cur });
-    if (r.ok) {
-      toast("Feedback added"); await refresh();
-      if (asTask) { const nt = trackById(t.id); const fb = ((nt && nt.feedback) || []).find((x) => x.id === r.id); if (fb) { convertNoteToTask(t.id, fb); return; } }
-      reRenderFeedback(t.id);
-    }
+    if (r.ok) { toast("Note added"); await refresh(); reRenderFeedback(t.id); }
   };
 }
 // After data reloads, repaint the feedback list in the open modal (if any).
