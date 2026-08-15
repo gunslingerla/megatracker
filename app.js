@@ -18,7 +18,8 @@ const CANT_PLAY_EXT = ["aif", "aiff"]; // browsers (esp. Chrome) usually can't p
 const editingMembers = new Set();
 const expandedSubs = new Set(); // phases whose subtask checklist is open
 const collapsedSubs = new Set(); // phases the user explicitly collapsed
-let newlyAddedSub = null; // "phase:index" of a just-added subtask (for pop-in) // Band cards in edit mode
+let newlyAddedSub = null; // "phase:index" of a just-added subtask (for pop-in)
+let asgGroup = "phase"; // Assignments grouping: "phase" or "song" // Band cards in edit mode
 const PALETTE = ["#6cb6ff", "#46dba0", "#ffab4a", "#f0654f", "#b58cff", "#4fd0e0", "#f078c0", "#e5c94a", "#8a9bff", "#5fd08a"];
 const memberById = (id) => (state.data && state.data.members ? state.data.members.find((m) => m.id === id) : null);
 // Normalize a title (or filename) for matching Dropbox audio to a track.
@@ -384,13 +385,34 @@ function albumsSectionHTML() {
 }
 
 /* ---- Members: Who's Up Next ------------------------------------------------*/
+// One phase-on-a-song row for the Assignments list. mode "phase" => show the song name
+// (and open it on click); mode "song" => show the phase name.
+function assignItemHTML(it, mode) {
+  const subs = it.subs || [];
+  const subList = subs.length ? `<div class="song-subs">${subs.map((st) => `<label class="song-sub"><input type="checkbox" data-subchk="${it.phaseId}:${st.idx}" ${st.done ? "checked" : ""} /><span class="${st.done ? "done" : ""}">${esc(st.text)}</span></label>`).join("")}</div>` : "";
+  const meta = `${subs.length ? `<span class="sub-count">${subs.length}</span>` : ""}${it.due ? `<span class="due-tag sm">${fmtDay(it.due)}</span>` : ""}${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}`;
+  const main = mode === "phase"
+    ? `<span class="stp" data-open="${it.songId}">${it.songNum !== "" ? `<span class="tnum">${it.songNum}</span> ` : ""}${esc(it.songTitle)}</span>`
+    : `<span class="stp">${esc(it.phase)}</span>`;
+  let head;
+  if (it.ownsPhase) {
+    head = mode === "phase"
+      ? `<div class="song-task-main"><input type="checkbox" data-phasechk /> ${main}${meta}</div>`
+      : `<label class="song-task-main"><input type="checkbox" data-phasechk /> ${main}${meta}</label>`;
+  } else {
+    head = `<div class="song-task-main no-own">${main}<span class="ctx-tag">subtask</span>${it.due ? `<span class="due-tag sm">${fmtDay(it.due)}</span>` : ""}</div>`;
+  }
+  return `<div class="song-task" data-phase="${it.phaseId}">${head}${subList}</div>`;
+}
 function membersHTML() {
   const alb = currentAlbum();
   const tracks = state.data.tracks.filter((t) => (!alb || t.albumId === alb.id) && !t.onHold);
   const me = getMe();
-  const byMember = {};
-  state.data.members.forEach((m) => (byMember[m.id] = { member: m, songs: {}, count: 0, nextDue: null }));
+  const canon = state.data.phaseNames || [];
   const earlier = (a, b) => (a == null ? b : b == null ? a : (a < b ? a : b));
+  const dueCmp = (a, b) => (a && b) ? (a < b ? -1 : a > b ? 1 : 0) : (a ? -1 : b ? 1 : 0);
+  const byMember = {};
+  state.data.members.forEach((m) => (byMember[m.id] = { member: m, items: [], count: 0, nextDue: null }));
   tracks.forEach((t) => {
     t.phases.filter((p) => p.status !== "Done").forEach((p) => {
       const phaseOwners = p.ownerIds || [];
@@ -402,25 +424,38 @@ function membersHTML() {
         const ownsPhase = phaseOwners.includes(mid);
         const mySubs = subs.filter((st) => !st.done && (st.owner === mid || (!st.owner && ownsPhase)));
         if (!ownsPhase && mySubs.length === 0) return;
-        const song = (rec.songs[t.id] = rec.songs[t.id] || { id: t.id, title: t.title, order: effOrder(t), num: dispNum(t), nextDue: null, items: [] });
-        song.items.push({ phaseId: p.id, phase: p.phase, status: p.status, due: p.due || null, subs: mySubs, ownsPhase });
-        if (p.due) { song.nextDue = earlier(song.nextDue, p.due); rec.nextDue = earlier(rec.nextDue, p.due); }
+        rec.items.push({ songId: t.id, songTitle: t.title, songNum: dispNum(t), songOrder: effOrder(t), phaseId: p.id, phase: p.phase, status: p.status, due: p.due || null, subs: mySubs, ownsPhase });
+        if (p.due) rec.nextDue = earlier(rec.nextDue, p.due);
         rec.count++;
       });
     });
   });
-  const byDue = (a, b) => (a.nextDue && b.nextDue) ? (a.nextDue < b.nextDue ? -1 : a.nextDue > b.nextDue ? 1 : 0) : (a.nextDue ? -1 : b.nextDue ? 1 : 0);
   const entries = Object.values(byMember).sort((a, b) => {
     if (me) { if (a.member.id === me.id) return -1; if (b.member.id === me.id) return 1; }
-    const d = byDue(a, b); if (d) return d;
+    const d = dueCmp(a.nextDue, b.nextDue); if (d) return d;
     return b.count - a.count;
   });
-  const cards = entries.map(({ member, songs, count }) => {
-    const songCards = Object.values(songs).sort((a, b) => { const d = byDue(a, b); return d || (a.order - b.order); }).map((s) => `
-      <div class="song-card" data-song="${s.id}">
-        <div class="song-title" data-songopen="${s.id}">${s.num !== "" ? `<span class="tnum">${s.num}</span> ` : ""}${esc(s.title)}${s.nextDue ? `<span class="due-tag">${fmtDay(s.nextDue)}</span>` : ""}</div>
-        ${s.items.map((it) => { const subs = it.subs || []; const subList = subs.length ? `<div class="song-subs">${subs.map((st) => `<label class="song-sub"><input type="checkbox" data-subchk="${it.phaseId}:${st.idx}" ${st.done ? "checked" : ""} /><span class="${st.done ? "done" : ""}">${esc(st.text)}</span></label>`).join("")}</div>` : ""; const head = it.ownsPhase ? `<label class="song-task-main"><input type="checkbox" data-phasechk /> <span class="stp">${esc(it.phase)}</span>${subs.length ? `<span class="sub-count">${subs.length}</span>` : ""}${it.due ? `<span class="due-tag sm">${fmtDay(it.due)}</span>` : ""}${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}</label>` : `<div class="song-task-main no-own"><span class="stp">${esc(it.phase)}</span><span class="ctx-tag">subtask</span>${it.due ? `<span class="due-tag sm">${fmtDay(it.due)}</span>` : ""}</div>`; return `<div class="song-task" data-phase="${it.phaseId}">${head}${subList}</div>`; }).join("")}
-      </div>`).join("") || `<div class="empty">All caught up</div>`;
+  const cards = entries.map(({ member, items, count }) => {
+    let body;
+    if (!items.length) {
+      body = `<div class="empty">All caught up</div>`;
+    } else if (asgGroup === "phase") {
+      const groups = {};
+      items.forEach((it) => (groups[it.phase] = groups[it.phase] || []).push(it));
+      const order = Object.keys(groups).sort((a, b) => { const ia = canon.indexOf(a), ib = canon.indexOf(b); return ((ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib)) || a.localeCompare(b); });
+      body = order.map((pn) => {
+        const its = groups[pn].sort((a, b) => dueCmp(a.due, b.due) || (a.songOrder - b.songOrder));
+        return `<div class="asg-group"><div class="asg-head">${esc(pn)}<span class="asg-count">${its.length}</span></div>${its.map((it) => assignItemHTML(it, "phase")).join("")}</div>`;
+      }).join("");
+    } else {
+      const songs = {};
+      items.forEach((it) => { const s = songs[it.songId] = songs[it.songId] || { id: it.songId, title: it.songTitle, num: it.songNum, order: it.songOrder, nextDue: null, its: [] }; s.its.push(it); if (it.due) s.nextDue = earlier(s.nextDue, it.due); });
+      body = Object.values(songs).sort((a, b) => dueCmp(a.nextDue, b.nextDue) || (a.order - b.order)).map((s) => `
+        <div class="song-card" data-song="${s.id}">
+          <div class="song-title" data-songopen="${s.id}">${s.num !== "" ? `<span class="tnum">${s.num}</span> ` : ""}${esc(s.title)}${s.nextDue ? `<span class="due-tag">${fmtDay(s.nextDue)}</span>` : ""}</div>
+          ${s.its.map((it) => assignItemHTML(it, "song")).join("")}
+        </div>`).join("");
+    }
     const meCls = me && member.id === me.id ? " me" : "";
     return `
       <div class="mcard${meCls}">
@@ -429,10 +464,11 @@ function membersHTML() {
           <div><div class="mname">${esc(member.display)}</div><div class="mrole">${esc(member.role)}</div></div>
           <div style="margin-left:auto;color:var(--muted);font-weight:700">${count}</div>
         </div>
-        ${songCards}
+        ${body}
       </div>`;
   }).join("");
-  return `<div class="members">${cards}</div>`;
+  const toolbar = `<div class="asg-bar"><span class="asg-lbl">Group by</span><div class="asg-toggle"><button class="${asgGroup === "phase" ? "on" : ""}" data-asg="phase">Phase</button><button class="${asgGroup === "song" ? "on" : ""}" data-asg="song">Song</button></div></div>`;
+  return `${toolbar}<div class="members">${cards}</div>`;
 }
 
 /* ---- Band (member info) ----------------------------------------------------*/
@@ -644,6 +680,7 @@ function wireBoard() {
       if (e.target.closest(".song-task")) return;
       openDrawer(card.dataset.song);
     }));
+  document.querySelectorAll("[data-asg]").forEach((b) => b.onclick = () => { asgGroup = b.dataset.asg; render(); });
 
   document.querySelectorAll(".mcard[data-member]").forEach((card) => {
     const id = card.dataset.member;
