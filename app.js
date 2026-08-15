@@ -1604,6 +1604,7 @@ function toggleRange(ranges, s, e) {
 function openTeleprompter(id, secsOverride) {
   const t = state.data.tracks.find((x) => x.id === id);
   const secs = secsOverride || parseSections(t);
+  secs.forEach((s) => { if (s && typeof s.text === "string" && s.text.indexOf("\r") >= 0) s.text = s.text.replace(/\r/g, ""); });
   const tp = $("#teleprompter");
   let font = 46, editing = (secs.length === 0), center = true, track = 0, showCtrl = false;
   let hlColor = localStorage.getItem("megasHlColor") || "#ffd54a";
@@ -1641,18 +1642,33 @@ function openTeleprompter(id, secsOverride) {
       if (editing || e.detail > 1) return;
       const selc = window.getSelection(); if (!selc || selc.isCollapsed || selc.rangeCount === 0) return;
       const rg = selc.getRangeAt(0);
-      const box = (n) => (n && n.nodeType === 3 ? n.parentElement : n);
-      const el1 = box(rg.startContainer) && box(rg.startContainer).closest(".tp-txt");
-      const el2 = box(rg.endContainer) && box(rg.endContainer).closest(".tp-txt");
-      if (!el1 || el1 !== el2) return;
-      const pre = document.createRange(); pre.selectNodeContents(el1); pre.setEnd(rg.startContainer, rg.startOffset);
-      const start = pre.toString().length; const len = rg.toString().length; if (len <= 0) return;
+      // Find the section (tp-txt) for the selection, robust to element-level range boundaries.
+      const txts = Array.from(document.querySelectorAll("#tpScroll .tp-txt"));
+      let el1 = txts.find((el) => el === rg.startContainer || el.contains(rg.startContainer));
+      if (!el1) { try { el1 = txts.find((el) => rg.intersectsNode(el)); } catch (_) {} }
+      if (!el1) return;
+      const plain = el1.textContent;
+      const offOf = (container, offset) => {
+        if (!el1.contains(container) && container !== el1) return null;
+        const pre = document.createRange(); pre.selectNodeContents(el1); pre.setEnd(container, offset);
+        return pre.toString().length;
+      };
+      let start = offOf(rg.startContainer, rg.startOffset); if (start == null) start = 0;
+      let end = offOf(rg.endContainer, rg.endOffset); if (end == null) end = plain.length;
+      if (end <= start) return;
       const i = Number(el1.closest(".tp-section").dataset.i);
       if (isNaN(i) || !secs[i]) return;
-      secs[i].hl = toggleRange(secs[i].hl, start, start + len);
+      secs[i].text = plain; // keep stored text identical to the measured DOM text
+      // Single highlight at a time: a new selection replaces the old; re-selecting it clears it.
+      const target = JSON.stringify([[start, end]]);
+      const isSame = JSON.stringify(secs[i].hl || []) === target && secs.every((sec, k) => k === i || !(sec.hl && sec.hl.length));
+      secs.forEach((sec) => { sec.hl = []; });
+      if (!isSame) secs[i].hl = [[start, end]];
       selc.removeAllRanges();
+      const top = sc.scrollTop;
       update("track", id, { lyricsData: JSON.stringify(secs), lyrics: flattenSections(secs) });
       draw();
+      const nsc = document.getElementById("tpScroll"); if (nsc) nsc.scrollTop = top;
     });
     $("#tpFull").onclick = toggleFull;
     $("#tpPop").onclick = popOut;
