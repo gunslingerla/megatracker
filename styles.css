@@ -458,7 +458,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .phase-row2 .pdue { margin-left: 8px; width: 132px; font-size: 12px; padding: 5px 8px; }
 .phase-row2 .pdel { flex: none; width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--stroke-strong); background: var(--panel-2); color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
 .phase-row2 .pdel:hover { border-color: var(--danger); color: var(--danger); }
-.cust-tag { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-2); background: var(--accent-soft); border-radius: 999px; padding: 1px 6px; margin-left: 6px; }
+.pname2.is-custom { font-style: italic; }
+.cust-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent-2); opacity: 0.5; vertical-align: middle; margin-left: 3px; }
 .phase-block + .phase-block { margin-top: 5px; }
 .sub-toggle { flex: none; background: var(--panel-2); border: 1px solid var(--stroke-strong); color: var(--muted); border-radius: 7px; padding: 4px 8px; font-size: 11px; font-weight: 700; cursor: pointer; }
 .sub-toggle:hover, .sub-toggle.open { color: var(--text); border-color: var(--accent); }
@@ -468,6 +469,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .sub-item input { width: 15px; height: 15px; accent-color: var(--good); flex: none; }
 .sub-item span { flex: 1; }
 .sub-item span.done { color: var(--muted); text-decoration: line-through; }
+.sub-item .sub-owner { flex: none; font-size: 11px; padding: 3px 6px; max-width: 110px; }
 @keyframes subpop { from { opacity: 0; transform: translateY(-5px) scale(0.98); } to { opacity: 1; transform: none; } }
 .sub-item.just-added { animation: subpop .18s ease; }
 .sub-del { flex: none; background: transparent; border: none; color: var(--muted-2); cursor: pointer; font-size: 15px; line-height: 1; }
@@ -522,6 +524,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .song-task-main input { width: 16px; height: 16px; accent-color: var(--good); flex: none; }
 .song-task-main .stp { font-weight: 600; }
 .song-task-main .badge.prog { margin-left: auto; color: var(--warn); border-color: var(--warn); }
+.song-task-main.no-own { color: var(--muted); }
+.ctx-tag { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-2); background: var(--accent-soft); border-radius: 999px; padding: 1px 7px; }
 .sub-count { font-size: 10px; font-weight: 700; color: var(--accent-2); background: var(--accent-soft); border-radius: 999px; padding: 0 6px; }
 .song-subs { margin: 0 0 5px 24px; display: flex; flex-direction: column; gap: 2px; }
 .song-sub { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); cursor: pointer; }

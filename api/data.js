@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
       ownerIds: arr(r.fields[F.phase.owner]),
       owners: arr(r.fields[F.phase.owner]).map((id) => memberName[id] || "?"),
       due: r.fields[F.phase.due] || null,
-      subtasks: (() => { try { const d = JSON.parse(r.fields[F.phase.subtasks] || "[]"); return Array.isArray(d) ? d.filter((x) => x && typeof x.text === "string").map((x) => ({ text: String(x.text), done: !!x.done })) : []; } catch { return []; } })(),
+      subtasks: (() => { try { const d = JSON.parse(r.fields[F.phase.subtasks] || "[]"); return Array.isArray(d) ? d.filter((x) => x && typeof x.text === "string").map((x) => ({ text: String(x.text), done: !!x.done, owner: (typeof x.owner === "string" && x.owner) ? x.owner : null })) : []; } catch { return []; } })(),
     }));
     const phasesByTrack = {};
     phases.forEach((p) => {

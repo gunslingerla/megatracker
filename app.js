@@ -61,7 +61,7 @@ const createEntity = (entity, fields) => post("/api/create", { entity, fields })
 const deleteEntity = (entity, id) => post("/api/delete", { entity, id });
 async function toggleSub(pid, i, checked) {
   const ph = (state.data.phases || []).find((p) => p.id === pid); if (!ph) return;
-  const arr = (ph.subtasks || []).map((x) => ({ text: x.text, done: !!x.done }));
+  const arr = (ph.subtasks || []).map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null }));
   if (!arr[i]) return; arr[i].done = checked;
   const r = await update("phase", pid, { subtasks: JSON.stringify(arr) });
   if (r.ok) refresh();
@@ -393,10 +393,17 @@ function membersHTML() {
   const earlier = (a, b) => (a == null ? b : b == null ? a : (a < b ? a : b));
   tracks.forEach((t) => {
     t.phases.filter((p) => p.status !== "Done").forEach((p) => {
-      p.ownerIds.forEach((oid) => {
-        const rec = byMember[oid]; if (!rec) return;
+      const phaseOwners = p.ownerIds || [];
+      const subs = (Array.isArray(p.subtasks) ? p.subtasks : []).map((st, idx) => ({ text: st.text, done: !!st.done, owner: st.owner || null, idx }));
+      const memberSet = new Set(phaseOwners);
+      subs.forEach((st) => { if (st.owner) memberSet.add(st.owner); });
+      memberSet.forEach((mid) => {
+        const rec = byMember[mid]; if (!rec) return;
+        const ownsPhase = phaseOwners.includes(mid);
+        const mySubs = subs.filter((st) => !st.done && (st.owner === mid || (!st.owner && ownsPhase)));
+        if (!ownsPhase && mySubs.length === 0) return;
         const song = (rec.songs[t.id] = rec.songs[t.id] || { id: t.id, title: t.title, order: effOrder(t), num: dispNum(t), nextDue: null, items: [] });
-        song.items.push({ phaseId: p.id, phase: p.phase, status: p.status, due: p.due || null, subtasks: Array.isArray(p.subtasks) ? p.subtasks : [] });
+        song.items.push({ phaseId: p.id, phase: p.phase, status: p.status, due: p.due || null, subs: mySubs, ownsPhase });
         if (p.due) { song.nextDue = earlier(song.nextDue, p.due); rec.nextDue = earlier(rec.nextDue, p.due); }
         rec.count++;
       });
@@ -412,7 +419,7 @@ function membersHTML() {
     const songCards = Object.values(songs).sort((a, b) => { const d = byDue(a, b); return d || (a.order - b.order); }).map((s) => `
       <div class="song-card" data-song="${s.id}">
         <div class="song-title" data-songopen="${s.id}">${s.num !== "" ? `<span class="tnum">${s.num}</span> ` : ""}${esc(s.title)}${s.nextDue ? `<span class="due-tag">${fmtDay(s.nextDue)}</span>` : ""}</div>
-        ${s.items.map((it) => { const subs = it.subtasks || []; const sd = subs.filter((x) => x.done).length; const subList = subs.length ? `<div class="song-subs">${subs.map((st, i) => `<label class="song-sub"><input type="checkbox" data-subchk="${it.phaseId}:${i}" ${st.done ? "checked" : ""} /><span class="${st.done ? "done" : ""}">${esc(st.text)}</span></label>`).join("")}</div>` : ""; return `<div class="song-task" data-phase="${it.phaseId}"><label class="song-task-main"><input type="checkbox" /> <span class="stp">${esc(it.phase)}</span>${subs.length ? `<span class="sub-count">${sd}/${subs.length}</span>` : ""}${it.due ? `<span class="due-tag sm">${fmtDay(it.due)}</span>` : ""}${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}</label>${subList}</div>`; }).join("")}
+        ${s.items.map((it) => { const subs = it.subs || []; const subList = subs.length ? `<div class="song-subs">${subs.map((st) => `<label class="song-sub"><input type="checkbox" data-subchk="${it.phaseId}:${st.idx}" ${st.done ? "checked" : ""} /><span class="${st.done ? "done" : ""}">${esc(st.text)}</span></label>`).join("")}</div>` : ""; const head = it.ownsPhase ? `<label class="song-task-main"><input type="checkbox" data-phasechk /> <span class="stp">${esc(it.phase)}</span>${subs.length ? `<span class="sub-count">${subs.length}</span>` : ""}${it.due ? `<span class="due-tag sm">${fmtDay(it.due)}</span>` : ""}${it.status === "In progress" ? '<span class="badge prog">In progress</span>' : ""}</label>` : `<div class="song-task-main no-own"><span class="stp">${esc(it.phase)}</span><span class="ctx-tag">subtask</span>${it.due ? `<span class="due-tag sm">${fmtDay(it.due)}</span>` : ""}</div>`; return `<div class="song-task" data-phase="${it.phaseId}">${head}${subList}</div>`; }).join("")}
       </div>`).join("") || `<div class="empty">All caught up</div>`;
     const meCls = me && member.id === me.id ? " me" : "";
     return `
@@ -618,14 +625,14 @@ function wireBoard() {
   document.querySelectorAll(".trow[data-tid]").forEach((r) =>
     r.addEventListener("click", () => { const t = state.data.tracks.find((x) => x.id === r.dataset.tid); if (t) openDrawer(t.id); }));
 
-  document.querySelectorAll(".song-task[data-phase]").forEach((l) =>
-    l.querySelector("input").addEventListener("change", async (e) => {
-      const done = e.target.checked;
-      const fields = { status: done ? "Done" : "Not started" };
-      if (!done) { const ph = (state.data.phases || []).find((p) => p.id === l.dataset.phase); if (ph && !ph.due) fields.due = todayISO(); }
-      const r = await update("phase", l.dataset.phase, fields);
-      if (r.ok) { toast("Updated"); refresh(); } else { e.target.checked = !e.target.checked; }
-    }));
+  document.querySelectorAll(".song-task-main input[data-phasechk]").forEach((c) => c.addEventListener("change", async (e) => {
+    const l = c.closest(".song-task"); const pid = l.dataset.phase;
+    const done = e.target.checked;
+    const fields = { status: done ? "Done" : "Not started" };
+    if (!done) { const ph = (state.data.phases || []).find((p) => p.id === pid); if (ph && !ph.due) fields.due = todayISO(); }
+    const r = await update("phase", pid, fields);
+    if (r.ok) { toast("Updated"); refresh(); } else { e.target.checked = !e.target.checked; }
+  }));
   document.querySelectorAll(".song-sub input[data-subchk]").forEach((c) => c.addEventListener("change", (e) => {
     const key = c.dataset.subchk; const ix = key.lastIndexOf(":"); toggleSub(key.slice(0, ix), +key.slice(ix + 1), e.target.checked);
   }));
@@ -781,12 +788,12 @@ function openDrawer(id) {
     const subs = Array.isArray(p.subtasks) ? p.subtasks : [];
     const sdone = subs.filter((x) => x.done).length;
     const open = !collapsedSubs.has(p.id) && (subs.length > 0 || expandedSubs.has(p.id));
-    const subItems = subs.map((st, i) => `<label class="sub-item${newlyAddedSub === p.id + ":" + i ? " just-added" : ""}"><input type="checkbox" data-subchk="${p.id}:${i}" ${st.done ? "checked" : ""} /><span class="${st.done ? "done" : ""}">${esc(st.text)}</span><button class="sub-del" data-subdel="${p.id}:${i}" title="Delete">&times;</button></label>`).join("");
+    const subItems = subs.map((st, i) => `<div class="sub-item${newlyAddedSub === p.id + ":" + i ? " just-added" : ""}"><input type="checkbox" data-subchk="${p.id}:${i}" ${st.done ? "checked" : ""} /><span class="st-text${st.done ? " done" : ""}">${esc(st.text)}</span><select class="sub-owner" data-subowner="${p.id}:${i}" title="Assign subtask"><option value="">\u2014</option>${state.data.members.map((mm) => `<option value="${mm.id}"${st.owner === mm.id ? " selected" : ""}>${esc(mm.display)}</option>`).join("")}</select><button class="sub-del" data-subdel="${p.id}:${i}" title="Delete">&times;</button></div>`).join("");
     return `
       <div class="phase-block" style="--own:${col}">
         <div class="phase-row2 ${done ? "done" : ""}${custom ? " custom" : ""}" data-phase="${p.id}">
           <input type="checkbox" data-pf="done" ${done ? "checked" : ""} />
-          <span class="pname2">${esc(p.phase)}${custom ? ` <span class="cust-tag">custom</span>` : ""}</span>
+          <span class="pname2${custom ? " is-custom" : ""}">${esc(p.phase)}${custom ? ` <span class="cust-dot" title="Custom phase — unique to this song"></span>` : ""}</span>
           <button class="sub-toggle${open ? " open" : ""}" data-subtoggle="${p.id}" title="Subtasks">&#9745; ${subs.length ? `${sdone}/${subs.length}` : "+"}</button>
           <details class="powner-det"><summary class="powner-sum" title="Assign owner(s)"><span data-ownersum="${p.id}">${ownerLabel}</span></summary><div class="powner-menu">${ownerChecks}</div></details>
           <input type="date" class="pdue" data-pf="due" value="${p.due || ""}" title="Phase due date" />
@@ -905,7 +912,7 @@ function openDrawer(id) {
     if (r.ok) { toast("Phase removed"); await refresh(false); openDrawer(id); } else toast((r && r.error) || "Couldn't remove", true);
   });
   // Subtasks (stored as JSON on each phase)
-  const phaseArr = (pid) => { const ph = (state.data.phases || []).find((p) => p.id === pid); return Array.isArray(ph && ph.subtasks) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done })) : []; };
+  const phaseArr = (pid) => { const ph = (state.data.phases || []).find((p) => p.id === pid); return Array.isArray(ph && ph.subtasks) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null })) : []; };
   const saveSubs = async (pid, arr) => { expandedSubs.add(pid); const r = await update("phase", pid, { subtasks: JSON.stringify(arr) }); if (r.ok) { await refresh(false); openDrawer(id); } return r; };
   document.querySelectorAll("#drawer [data-subtoggle]").forEach((b) => b.onclick = () => {
     const pid = b.dataset.subtoggle; const panel = document.querySelector(`[data-subpanel="${pid}"]`);
@@ -924,13 +931,19 @@ function openDrawer(id) {
   document.querySelectorAll("#drawer [data-subadd]").forEach((b) => b.onclick = async () => {
     const pid = b.dataset.subadd; const inp = document.querySelector(`#drawer [data-subnew="${pid}"]`); const txt = ((inp && inp.value) || "").trim();
     if (!txt) { toast("Type a subtask first", true); return; }
-    const arr = phaseArr(pid); arr.push({ text: txt, done: false });
+    const arr = phaseArr(pid);
+    const ph0 = (state.data.phases || []).find((p) => p.id === pid);
+    arr.push({ text: txt, done: false, owner: (ph0 && ph0.ownerIds && ph0.ownerIds[0]) || null });
     newlyAddedSub = pid + ":" + (arr.length - 1);
     await saveSubs(pid, arr);
     newlyAddedSub = null;
     const ninp = document.querySelector(`#drawer [data-subnew="${pid}"]`); if (ninp) ninp.focus();
   });
   document.querySelectorAll("#drawer [data-subnew]").forEach((inp) => inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const b = document.querySelector(`[data-subadd="${inp.dataset.subnew}"]`); if (b) b.click(); } }));
+  document.querySelectorAll("#drawer [data-subowner]").forEach((sel) => sel.addEventListener("change", async (e) => {
+    const key = sel.dataset.subowner; const ix = key.lastIndexOf(":"); const pid = key.slice(0, ix), i = +key.slice(ix + 1);
+    const arr = phaseArr(pid); if (arr[i]) { arr[i].owner = e.target.value || null; const r = await update("phase", pid, { subtasks: JSON.stringify(arr) }); if (r.ok) refresh(false); }
+  }));
 
   $("#dAlbum").addEventListener("change", async (e) => {
     const r = await update("track", id, { albumId: e.target.value || "" });
