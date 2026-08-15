@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scratchpad — The Megas</title>
+<style>
+  :root {
+    --accent:#e5399f; --accent-2:#f057ac; --bg-1:#100e16; --panel:#15131d; --panel-2:#1b1826;
+    --stroke:#2c2740; --stroke-strong:#3a3350; --text:#f3eef8; --muted:#b3a7c4;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg-1); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; }
+  .head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--stroke); background: var(--panel-2); }
+  .title { font-weight: 700; font-size: 13px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .save { font-size: 10px; color: var(--muted); min-width: 34px; text-align: right; }
+  .ibtn { background: none; border: none; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+  .ibtn:hover { color: var(--text); background: var(--panel); }
+  textarea { flex: 1; border: none; outline: none; resize: none; padding: 12px; font-size: 13.5px; line-height: 1.5; background: var(--bg-1); color: var(--text); font-family: inherit; }
+  .foot { display: flex; justify-content: flex-end; padding: 8px 10px; border-top: 1px solid var(--stroke); }
+  .btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-strong); border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .history { border-top: 1px solid var(--stroke); max-height: 45%; overflow-y: auto; padding: 6px; background: var(--panel); }
+  .history[hidden] { display: none; }
+  .hitem { padding: 7px 9px; border-radius: 8px; cursor: pointer; }
+  .hitem:hover { background: var(--panel-2); }
+  .hmeta { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: var(--muted); }
+  .hdel { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+  .hdel:hover { color: var(--accent-2); }
+  .hprev { font-size: 12px; color: var(--text); white-space: pre-wrap; opacity: 0.85; margin-top: 2px; }
+  .hempty { padding: 10px; font-size: 11.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="head">
+    <span class="title" id="title">Scratchpad</span>
+    <span class="save" id="save"></span>
+    <button class="ibtn" id="histBtn" title="Session history">&#9776;</button>
+  </div>
+  <textarea id="text" placeholder="Jot notes, lyrics, ideas… saves automatically."></textarea>
+  <div class="foot"><button class="btn" id="saveEntry" title="Snapshot the current text to history and start fresh">Save entry &amp; clear</button></div>
+  <div class="history" id="hist" hidden></div>
+
+<script>
+(function () {
+  function getMe() { try { return JSON.parse(localStorage.getItem("megasMe") || "null"); } catch (e) { return null; } }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, function (c) { return c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"; }); }
+  function fmtWhen(t) { var d = new Date(t); return isNaN(d) ? "" : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
+  function norm(d) { if (!d || typeof d !== "object") d = {}; if (typeof d.current !== "string") d.current = ""; if (!Array.isArray(d.history)) d.history = []; return d; }
+
+  var me = getMe();
+  var cacheKey = "megasScratch:" + (me ? me.id : "anon");
+  var ta = document.getElementById("text");
+  var saveEl = document.getElementById("save");
+  var histBox = document.getElementById("hist");
+  document.getElementById("title").textContent = "Scratchpad" + (me ? " — " + me.name : "");
+  document.title = "Scratchpad" + (me ? " — " + me.name : "");
+
+  function load() { var d = null; try { d = JSON.parse(localStorage.getItem(cacheKey) || "null"); } catch (e) {} return norm(d); }
+  var data = load();
+  ta.value = data.current;
+
+  var saveTimer = null;
+  function status(t) { saveEl.textContent = t; }
+  function persist(immediate) {
+    try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch (e) {}
+    if (!me) { status("Saved on device"); setTimeout(function () { status(""); }, 1400); return; }
+    clearTimeout(saveTimer);
+    function doSave() {
+      status("Saving…");
+      fetch("/api/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "member", id: me.id, fields: { scratch: JSON.stringify(data) } }) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { status(j && j.ok ? "Saved" : "Save failed — kept on device"); setTimeout(function () { status(""); }, 1600); })
+        .catch(function () { status("Save failed — kept on device"); setTimeout(function () { status(""); }, 1600); });
+    }
+    if (immediate) doSave(); else saveTimer = setTimeout(doSave, 900);
+  }
+
+  ta.addEventListener("input", function () { data.current = ta.value; status("Saving…"); persist(false); });
+  function flush() {
+    data.current = ta.value;
+    try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch (e) {}
+    if (me && navigator.sendBeacon) {
+      try { navigator.sendBeacon("/api/update", new Blob([JSON.stringify({ entity: "member", id: me.id, fields: { scratch: JSON.stringify(data) } })], { type: "application/json" })); } catch (e) {}
+    }
+  }
+  window.addEventListener("beforeunload", flush);
+  window.addEventListener("pagehide", flush);
+
+  document.getElementById("saveEntry").addEventListener("click", function () {
+    var txt = ta.value.trim();
+    if (!txt) { status("Nothing to save"); setTimeout(function () { status(""); }, 1200); return; }
+    data.history.unshift({ t: Date.now(), text: ta.value });
+    data.history = data.history.slice(0, 50);
+    data.current = ""; ta.value = "";
+    persist(true);
+    if (!histBox.hidden) renderHist();
+    ta.focus();
+  });
+
+  document.getElementById("histBtn").addEventListener("click", function () {
+    if (!histBox.hidden) { histBox.hidden = true; return; }
+    histBox.hidden = false; renderHist();
+  });
+
+  function renderHist() {
+    var h = data.history || [];
+    histBox.innerHTML = h.length ? h.map(function (e, i) {
+      return '<div class="hitem" data-i="' + i + '">' +
+        '<div class="hmeta"><span>' + esc(fmtWhen(e.t)) + '</span><button class="hdel" data-hdel="' + i + '" title="Delete">&times;</button></div>' +
+        '<div class="hprev">' + esc((e.text || "").slice(0, 160)) + ((e.text || "").length > 160 ? "…" : "") + '</div></div>';
+    }).join("") : '<div class="hempty">No saved entries yet. Use “Save entry &amp; clear” to snapshot the current note.</div>';
+    Array.prototype.forEach.call(histBox.querySelectorAll(".hitem"), function (it) {
+      it.addEventListener("click", function (ev) {
+        if (ev.target.closest("[data-hdel]")) return;
+        var e = (data.history || [])[Number(it.getAttribute("data-i"))]; if (!e) return;
+        var cur = ta.value.trim();
+        ta.value = cur ? (cur + "\n\n" + e.text) : e.text; data.current = ta.value; persist(true);
+        status("Restored"); setTimeout(function () { status(""); }, 1200); ta.focus();
+      });
+    });
+    Array.prototype.forEach.call(histBox.querySelectorAll("[data-hdel]"), function (b) {
+      b.addEventListener("click", function (ev) {
+        ev.stopPropagation(); data.history.splice(Number(b.getAttribute("data-hdel")), 1); persist(true); renderHist();
+      });
+    });
+  }
+
+  window.addEventListener("storage", function (e) {
+    if (e.key !== cacheKey || e.newValue == null) return;
+    try { data = norm(JSON.parse(e.newValue)); if (document.activeElement !== ta) ta.value = data.current; if (!histBox.hidden) renderHist(); } catch (err) {}
+  });
+
+  if (me) {
+    fetch("/api/data").then(function (r) { return r.json(); }).then(function (j) {
+      var mem = (j.members || []).find(function (m) { return m.id === me.id; });
+      if (mem && mem.scratch && document.activeElement !== ta) {
+        try { var sd = norm(JSON.parse(mem.scratch)); data = sd; ta.value = data.current; localStorage.setItem(cacheKey, JSON.stringify(data)); if (!histBox.hidden) renderHist(); } catch (e) {}
+      }
+    }).catch(function () {});
+  }
+
+  ta.focus();
+})();
+</script>
+</body>
+</html>

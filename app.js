@@ -2160,6 +2160,7 @@ function toast(msg, bad = false) {
 /* ---- Scratchpad (private, per-member, autosaving) --------------------------*/
 let scratchData = { current: "", history: [] };
 let scratchSaveTimer = null;
+let scratchDirty = false;
 function scratchCacheKey() { const me = getMe(); return "megasScratch:" + (me ? me.id : "anon"); }
 function scratchMemberRec() { const me = getMe(); return me ? (state.data.members || []).find((m) => m.id === me.id) : null; }
 function scratchNormalize(d) { if (!d || typeof d !== "object") d = {}; if (typeof d.current !== "string") d.current = ""; if (!Array.isArray(d.history)) d.history = []; return d; }
@@ -2182,10 +2183,29 @@ function scratchSave(immediate) {
     let ok = false;
     try { const r = await update("member", me.id, { scratch: json }); ok = !!(r && r.ok); } catch {}
     const mem = scratchMemberRec(); if (mem) mem.scratch = json;
+    if (ok) scratchDirty = false;
     scratchStatus(ok ? "Saved" : "Save failed — kept on device");
     setTimeout(() => scratchStatus(""), 1600);
   };
   if (immediate) doSave(); else scratchSaveTimer = setTimeout(doSave, 900);
+}
+function scratchFlush() {
+  if (!scratchDirty) return;
+  const me = getMe(); if (!me) return;
+  const ta = document.getElementById("scrText"); if (ta) scratchData.current = ta.value;
+  const json = JSON.stringify(scratchData);
+  try { localStorage.setItem("megasScratch:" + me.id, json); } catch {}
+  try { if (navigator.sendBeacon) navigator.sendBeacon("/api/update", new Blob([JSON.stringify({ entity: "member", id: me.id, fields: { scratch: json } })], { type: "application/json" })); } catch {}
+  scratchDirty = false;
+}
+function scratchSyncFromStorage(e) {
+  const me = getMe(); if (!me || !e || e.key !== "megasScratch:" + me.id || e.newValue == null) return;
+  try {
+    scratchData = scratchNormalize(JSON.parse(e.newValue));
+    const mem = scratchMemberRec(); if (mem) mem.scratch = e.newValue;
+    const ta = document.getElementById("scrText"); if (ta && document.activeElement !== ta) ta.value = scratchData.current;
+    const box = document.getElementById("scrHistBox"); if (box && !box.hidden) renderScratchHist(true);
+  } catch {}
 }
 function openScratch() {
   const el = document.getElementById("scratch"); if (!el) return;
@@ -2198,6 +2218,7 @@ function openScratch() {
       <span class="scr-title">Scratchpad${me ? " — " + esc(me.name) : ""}</span>
       <span class="scr-save" id="scrSave"></span>
       <button class="icon-btn" id="scrHist" title="Session history">&#9776;</button>
+      <button class="icon-btn" id="scrPop" title="Pop out into its own window">&#8599;</button>
       <button class="icon-btn" id="scrClose" title="Close">&times;</button>
     </div>
     <textarea id="scrText" placeholder="Jot notes, lyrics, ideas… saves automatically."></textarea>
@@ -2209,9 +2230,10 @@ function openScratch() {
   const ta = document.getElementById("scrText");
   ta.value = scratchData.current;
   if (!me) scratchStatus("Set “You” to sync");
-  ta.oninput = () => { scratchData.current = ta.value; scratchStatus("Saving…"); scratchSave(false); };
+  ta.oninput = () => { scratchData.current = ta.value; scratchDirty = true; scratchStatus("Saving…"); scratchSave(false); };
   document.getElementById("scrClose").onclick = () => { scratchData.current = ta.value; scratchSave(true); closeScratch(); };
   document.getElementById("scrHist").onclick = () => renderScratchHist();
+  document.getElementById("scrPop").onclick = () => { scratchData.current = ta.value; scratchSave(true); window.open("/scratch.html", "megasScratch", "width=380,height=560,menubar=no,toolbar=no,location=no,status=no"); closeScratch(); };
   document.getElementById("scrSaveEntry").onclick = () => {
     const txt = ta.value.trim();
     if (!txt) { scratchStatus("Nothing to save"); setTimeout(() => scratchStatus(""), 1200); return; }
@@ -2294,6 +2316,9 @@ function wireChrome() {
   $("#newAlbum").addEventListener("click", () => { closeMenu(); openCreateAlbum(); });
   $("#whoami").addEventListener("click", () => { closeMenu(); pickIdentity(); });
   $("#scratchBtn").addEventListener("click", () => { closeMenu(); openScratch(); });
+  window.addEventListener("storage", scratchSyncFromStorage);
+  window.addEventListener("beforeunload", scratchFlush);
+  window.addEventListener("pagehide", scratchFlush);
   $("#refresh").addEventListener("click", async () => { closeMenu(); await refresh(false); await fetchPlaylist(); render(); });
   $("#logout").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); location.href = "/login.html"; });
   $("#scrim").addEventListener("click", closeDrawer);
