@@ -2018,7 +2018,8 @@ function renderNotesBar() {
       <button class="nb-time" id="nbTime" title="${playing ? "Live time — click to resync; locks when you type" : "Timestamp"}">${mmss(curT)}</button>
       <input type="text" id="nbText" placeholder="Add a note${playing ? " here" : ""}…" />
       <button class="add-btn" id="nbAdd">Add note</button>
-    </div>`;
+    </div>
+    <div class="nb-hint">${playing ? "The time ticks with the song and locks in when you start typing — click it to resync." : "Type a note, then Add note to pin it to this timestamp."}</div>`;
   bar.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Math.max(0, Number(s.dataset.seek) - preRoll)));
   bar.querySelectorAll(".fb-item").forEach((item) => {
     const fid = item.dataset.fb;
