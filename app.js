@@ -1584,7 +1584,8 @@ function openTeleprompter(id, secsOverride) {
   const secs = secsOverride || parseSections(t);
   const tp = $("#teleprompter");
   let font = 46, editing = (secs.length === 0), center = true, track = 0, showCtrl = false;
-  function close() { tp.classList.remove("open"); tp.innerHTML = ""; if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
+  function close() { document.removeEventListener("keydown", onKey); tp.classList.remove("open"); tp.innerHTML = ""; if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
+  function onKey(e) { if (e.key === "Escape") { e.preventDefault(); if (editing) { editing = false; draw(); } else close(); } }
   function draw() {
     if (editing) { drawEdit(); return; }
     tp.innerHTML = `
@@ -1708,6 +1709,7 @@ function openTeleprompter(id, secsOverride) {
     w.document.close();
   }
   tp.classList.add("open");
+  document.addEventListener("keydown", onKey);
   draw();
 }
 
@@ -1874,7 +1876,7 @@ function wireChrome() {
   $("#scrim").addEventListener("click", closeDrawer);
   $("#mscrim").addEventListener("click", closeModal);
   $("#lightbox").addEventListener("click", closeLightbox);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeLightbox(); closeDrawer(); closeModal(); closeMenu(); closeNav(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { const tpEl = document.getElementById("teleprompter"); if (tpEl && tpEl.classList.contains("open")) return; closeLightbox(); closeDrawer(); closeModal(); closeMenu(); closeNav(); } });
 }
 
 (async function boot() {
