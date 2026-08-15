@@ -83,6 +83,7 @@ const F = {
     nickname: "fldlqmdVveUp6Ndto",
     color: "fldjGoImeca6pSVMA",
     phases: "fldW5lVAr3vWuzlyl", // "Default Phases" (multipleSelects of phase names)
+    scratch: "fldyWXSAh8XltptYe", // "Scratchpad" (multilineText JSON, per-member)
   },
 };
 

@@ -43,7 +43,7 @@ const MAP = {
   },
   member: {
     table: T.members,
-    fields: { name: F.member.name, nickname: F.member.nickname, role: F.member.role, email: F.member.email, color: F.member.color, phases: F.member.phases },
+    fields: { name: F.member.name, nickname: F.member.nickname, role: F.member.role, email: F.member.email, color: F.member.color, phases: F.member.phases, scratch: F.member.scratch },
     links: [],
   },
   phase: {

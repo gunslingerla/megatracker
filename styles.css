@@ -133,6 +133,9 @@ button { font-family: inherit; }
   line-height: 1; flex: none; padding-bottom: 3px;
 }
 .menu-btn:hover { border-color: var(--accent); }
+.scratch-btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-strong); width: 40px; height: 36px; border-radius: 9px; cursor: pointer; font-size: 18px; line-height: 1; flex: none; }
+.scratch-btn:hover { border-color: var(--accent); color: var(--accent-2); }
+.scratch-btn.active { border-color: var(--accent); color: var(--accent-2); }
 
 /* Filter bar below the header */
 .filterbar {
@@ -855,3 +858,21 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   .fb-mini, .icon-btn { min-height: 32px; }
   .play-btn { width: 32px; height: 32px; min-height: 0; } /* keep it a circle, not a squished oval */
 }
+
+/* Scratchpad */
+.scratch { position: fixed; right: 18px; bottom: 84px; width: 320px; max-width: calc(100vw - 24px); z-index: 58; background: var(--bg-1); border: 1px solid var(--stroke-strong); border-radius: 14px; box-shadow: 0 18px 44px rgba(0,0,0,0.5); display: none; flex-direction: column; overflow: hidden; }
+.scratch.open { display: flex; }
+.scr-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--stroke); cursor: move; background: var(--panel-2); user-select: none; }
+.scr-title { font-weight: 700; font-size: 13px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scr-save { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; }
+.scr-head .icon-btn { font-size: 15px; line-height: 1; }
+.scratch textarea { border: none; outline: none; resize: vertical; min-height: 200px; max-height: 55vh; padding: 12px; font-size: 13.5px; line-height: 1.5; background: var(--bg-1); color: var(--text); font-family: inherit; }
+.scr-foot { display: flex; justify-content: flex-end; padding: 8px 10px; border-top: 1px solid var(--stroke); }
+.scr-history { border-top: 1px solid var(--stroke); max-height: 40vh; overflow-y: auto; padding: 6px; background: var(--panel); }
+.scr-hitem { padding: 7px 9px; border-radius: 8px; cursor: pointer; }
+.scr-hitem:hover { background: var(--panel-2); }
+.scr-hmeta { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: var(--muted); }
+.scr-hdel { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+.scr-hdel:hover { color: var(--accent-2); }
+.scr-hprev { font-size: 12px; color: var(--text); white-space: pre-wrap; opacity: 0.85; margin-top: 2px; overflow: hidden; }
+.scr-hempty { padding: 10px; font-size: 11.5px; color: var(--muted); }

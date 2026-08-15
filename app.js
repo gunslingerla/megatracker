@@ -1349,25 +1349,27 @@ function updateWhoami() {
   b.title = me ? `You: ${me.name} (click to change)` : "Set your name";
   b.innerHTML = me ? esc(initials(me.name)) : "You";
 }
-function pickIdentity() {
+function pickIdentity(required) {
   return new Promise((resolve) => {
     const members = state.data.members;
+    identityLock = !!required;
     openModal(`
-      <div class="mhd"><h2>Who are you?</h2><button class="icon-btn close" id="mClose">&times;</button></div>
+      <div class="mhd"><h2>${required ? "Identify yourself, stranger." : "Who are you?"}</h2>${required ? "" : `<button class="icon-btn close" id="mClose">&times;</button>`}</div>
       <div class="mbd">
-        <p style="color:var(--muted);margin:0">Pick your name — saved on this device so your feedback is tagged to you.</p>
+        <p style="color:var(--muted);margin:0">${required ? "Choose your name to start — this tags your notes and assignments to you. Saved on this device; change it anytime with the “You” button." : "Pick your name — saved on this device so your feedback is tagged to you."}</p>
         <div class="owner-picker" id="idPick">${members.map((m) => `<label class="owner-chip"><input type="radio" name="idp" value="${m.id}"/> ${esc(m.display)}</label>`).join("")}</div>
       </div>`);
-    $("#mClose").onclick = () => { closeModal(); resolve(getMe()); };
+    const closeBtn = $("#mClose"); if (closeBtn) closeBtn.onclick = () => { closeModal(); resolve(getMe()); };
     document.querySelectorAll("#idPick input").forEach((i) =>
-      i.addEventListener("change", () => { const m = members.find((x) => x.id === i.value); setMe({ id: m.id, name: m.display }); closeModal(); resolve(getMe()); }));
+      i.addEventListener("change", () => { const m = members.find((x) => x.id === i.value); identityLock = false; setMe({ id: m.id, name: m.display }); closeModal(); resolve(getMe()); }));
   });
 }
 async function ensureMe() { return getMe() || (await pickIdentity()); }
 
 /* ---- Modal helpers ---------------------------------------------------------*/
 function openModal(html) { const m = $("#modal"); m.innerHTML = html; $("#mscrim").classList.add("open"); m.classList.add("open"); }
-function closeModal() { $("#mscrim").classList.remove("open"); $("#modal").classList.remove("open"); }
+let identityLock = false;
+function closeModal() { if (identityLock) return; $("#mscrim").classList.remove("open"); $("#modal").classList.remove("open"); }
 function confirmDialog(message, opts = {}) {
   const okText = opts.okText || "Confirm", cancelText = opts.cancelText || "Cancel";
   const danger = opts.danger === true, title = opts.title || "Are you sure?";
@@ -2154,6 +2156,116 @@ function toast(msg, bad = false) {
 }
 
 /* ---- Boot ------------------------------------------------------------------*/
+
+/* ---- Scratchpad (private, per-member, autosaving) --------------------------*/
+let scratchData = { current: "", history: [] };
+let scratchSaveTimer = null;
+function scratchCacheKey() { const me = getMe(); return "megasScratch:" + (me ? me.id : "anon"); }
+function scratchMemberRec() { const me = getMe(); return me ? (state.data.members || []).find((m) => m.id === me.id) : null; }
+function scratchNormalize(d) { if (!d || typeof d !== "object") d = {}; if (typeof d.current !== "string") d.current = ""; if (!Array.isArray(d.history)) d.history = []; return d; }
+function scratchLoad() {
+  const mem = scratchMemberRec();
+  let d = null;
+  if (mem && mem.scratch) { try { d = JSON.parse(mem.scratch); } catch {} }
+  if (!d) { try { d = JSON.parse(localStorage.getItem(scratchCacheKey()) || "null"); } catch {} }
+  return scratchNormalize(d);
+}
+function scratchStatus(t) { const s = document.getElementById("scrSave"); if (s) s.textContent = t; }
+function scratchSave(immediate) {
+  try { localStorage.setItem(scratchCacheKey(), JSON.stringify(scratchData)); } catch {}
+  const me = getMe();
+  if (!me) { scratchStatus("Saved on device — set “You” to sync"); setTimeout(() => scratchStatus(""), 1600); return; }
+  clearTimeout(scratchSaveTimer);
+  const doSave = async () => {
+    scratchStatus("Saving…");
+    const json = JSON.stringify(scratchData);
+    let ok = false;
+    try { const r = await update("member", me.id, { scratch: json }); ok = !!(r && r.ok); } catch {}
+    const mem = scratchMemberRec(); if (mem) mem.scratch = json;
+    scratchStatus(ok ? "Saved" : "Save failed — kept on device");
+    setTimeout(() => scratchStatus(""), 1600);
+  };
+  if (immediate) doSave(); else scratchSaveTimer = setTimeout(doSave, 900);
+}
+function openScratch() {
+  const el = document.getElementById("scratch"); if (!el) return;
+  const btn = document.getElementById("scratchBtn"); if (btn) btn.classList.add("active");
+  if (el.classList.contains("open")) { const ta = document.getElementById("scrText"); if (ta) ta.focus(); return; }
+  const me = getMe();
+  scratchData = scratchLoad();
+  el.innerHTML = `
+    <div class="scr-head" id="scrHead">
+      <span class="scr-title">Scratchpad${me ? " — " + esc(me.name) : ""}</span>
+      <span class="scr-save" id="scrSave"></span>
+      <button class="icon-btn" id="scrHist" title="Session history">&#9776;</button>
+      <button class="icon-btn" id="scrClose" title="Close">&times;</button>
+    </div>
+    <textarea id="scrText" placeholder="Jot notes, lyrics, ideas… saves automatically."></textarea>
+    <div class="scr-foot">
+      <button class="fb-mini" id="scrSaveEntry" title="Snapshot the current text to history and start fresh">Save entry &amp; clear</button>
+    </div>
+    <div class="scr-history" id="scrHistBox" hidden></div>`;
+  el.classList.add("open");
+  const ta = document.getElementById("scrText");
+  ta.value = scratchData.current;
+  if (!me) scratchStatus("Set “You” to sync");
+  ta.oninput = () => { scratchData.current = ta.value; scratchStatus("Saving…"); scratchSave(false); };
+  document.getElementById("scrClose").onclick = () => { scratchData.current = ta.value; scratchSave(true); closeScratch(); };
+  document.getElementById("scrHist").onclick = () => renderScratchHist();
+  document.getElementById("scrSaveEntry").onclick = () => {
+    const txt = ta.value.trim();
+    if (!txt) { scratchStatus("Nothing to save"); setTimeout(() => scratchStatus(""), 1200); return; }
+    scratchData.history.unshift({ t: Date.now(), text: ta.value });
+    scratchData.history = scratchData.history.slice(0, 50);
+    scratchData.current = ""; ta.value = "";
+    scratchSave(true);
+    const box = document.getElementById("scrHistBox"); if (box && !box.hidden) renderScratchHist(true);
+    ta.focus();
+  };
+  makeDraggable(el, document.getElementById("scrHead"));
+  ta.focus();
+}
+function closeScratch() { const el = document.getElementById("scratch"); if (el) { el.classList.remove("open"); el.innerHTML = ""; } const btn = document.getElementById("scratchBtn"); if (btn) btn.classList.remove("active"); }
+function renderScratchHist(keepOpen) {
+  const box = document.getElementById("scrHistBox"); if (!box) return;
+  if (!keepOpen && !box.hidden) { box.hidden = true; return; }
+  box.hidden = false;
+  const h = scratchData.history || [];
+  box.innerHTML = h.length ? h.map((e, i) => `
+    <div class="scr-hitem" data-i="${i}">
+      <div class="scr-hmeta"><span>${esc(fmtWhen(new Date(e.t).toISOString()))}</span><button class="scr-hdel" data-hdel="${i}" title="Delete">&times;</button></div>
+      <div class="scr-hprev">${esc((e.text || "").slice(0, 160))}${(e.text || "").length > 160 ? "…" : ""}</div>
+    </div>`).join("") : `<div class="scr-hempty">No saved entries yet. Use “Save entry &amp; clear” to snapshot the current note.</div>`;
+  box.querySelectorAll(".scr-hitem").forEach((it) => it.addEventListener("click", (ev) => {
+    if (ev.target.closest("[data-hdel]")) return;
+    const e = (scratchData.history || [])[Number(it.dataset.i)]; if (!e) return;
+    const ta = document.getElementById("scrText"); if (!ta) return;
+    const cur = ta.value.trim();
+    ta.value = cur ? (cur + "\n\n" + e.text) : e.text; scratchData.current = ta.value; scratchSave(true);
+    scratchStatus("Restored"); setTimeout(() => scratchStatus(""), 1200);
+    ta.focus();
+  }));
+  box.querySelectorAll("[data-hdel]").forEach((b) => b.addEventListener("click", (ev) => {
+    ev.stopPropagation(); scratchData.history.splice(Number(b.dataset.hdel), 1); scratchSave(true); renderScratchHist(true);
+  }));
+}
+function makeDraggable(panel, handle) {
+  if (!handle) return;
+  handle.onpointerdown = (e) => {
+    if (e.target.closest("button")) return;
+    const r = panel.getBoundingClientRect();
+    const ox = e.clientX - r.left, oy = e.clientY - r.top;
+    panel.style.right = "auto"; panel.style.bottom = "auto";
+    const move = (ev) => {
+      const x = Math.max(4, Math.min(window.innerWidth - r.width - 4, ev.clientX - ox));
+      const y = Math.max(4, Math.min(window.innerHeight - 40, ev.clientY - oy));
+      panel.style.left = x + "px"; panel.style.top = y + "px";
+    };
+    const up = () => { document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); };
+    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
+  };
+}
+
 function wireChrome() {
   // Lets a popped-out teleprompter window trigger a data refresh after saving edits.
   window.__tpRefresh = () => refresh(false);
@@ -2181,6 +2293,7 @@ function wireChrome() {
   $("#newTrack").addEventListener("click", () => { closeMenu(); openCreateTrack(); });
   $("#newAlbum").addEventListener("click", () => { closeMenu(); openCreateAlbum(); });
   $("#whoami").addEventListener("click", () => { closeMenu(); pickIdentity(); });
+  $("#scratchBtn").addEventListener("click", () => { closeMenu(); openScratch(); });
   $("#refresh").addEventListener("click", async () => { closeMenu(); await refresh(false); await fetchPlaylist(); render(); });
   $("#logout").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); location.href = "/login.html"; });
   $("#scrim").addEventListener("click", closeDrawer);
@@ -2197,5 +2310,5 @@ function wireChrome() {
   await fetchPlaylist();
   render(); // re-render so play buttons appear once the playlist is known
   // First-time on this browser: ask who "you" are so notes/assignments are tagged correctly.
-  if (!getMe() && (state.data.members || []).length) pickIdentity();
+  if (!getMe() && (state.data.members || []).length) pickIdentity(true);
 })();
