@@ -649,8 +649,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   background: linear-gradient(140deg, var(--accent), var(--accent-2)); color: var(--accent-text);
   font-size: 15px; display: grid; place-items: center;
 }
-.player .pbtn.mini { width: 30px; height: 30px; background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-strong); position: relative; font-size: 22px; }
-.player .pbtn .p10 { position: absolute; inset: 0; display: grid; place-items: center; font-size: 8.5px; font-weight: 800; letter-spacing: 0; pointer-events: none; }
+.player .pbtn.mini { width: 30px; height: 30px; background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-strong); font-size: 16px; }
+.player .pbtn svg { display: block; }
 .player .pinfo { min-width: 180px; max-width: 260px; }
 .player .pinfo .pt { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player .pinfo .ps { color: var(--muted); font-size: 11.5px; }

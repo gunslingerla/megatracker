@@ -1272,9 +1272,9 @@ function renderPlayer() {
   el.innerHTML = `
     <div class="pctrl">
       <button class="pbtn mini" id="pPrev" title="Previous">&#9198;&#xFE0E;</button>
-      <button class="pbtn mini" id="pBack10" title="Back 10 seconds">&#8634;<span class="p10">10</span></button>
+      <button class="pbtn mini" id="pBack10" title="Back 10 seconds"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/><text x="12" y="12.5" text-anchor="middle" dominant-baseline="central" font-size="8.5" stroke="none" fill="currentColor" font-weight="700">10</text></svg></button>
       <button class="pbtn" id="pToggle" title="Play/Pause">${a.paused ? "&#9654;&#xFE0E;" : "&#9208;&#xFE0E;"}</button>
-      <button class="pbtn mini" id="pFwd10" title="Forward 10 seconds">&#8635;<span class="p10">10</span></button>
+      <button class="pbtn mini" id="pFwd10" title="Forward 10 seconds"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/><text x="12" y="12.5" text-anchor="middle" dominant-baseline="central" font-size="8.5" stroke="none" fill="currentColor" font-weight="700">10</text></svg></button>
       <button class="pbtn mini" id="pNext" title="Next">&#9197;&#xFE0E;</button>
     </div>
     <div class="pinfo"><div class="pt">${esc(t.title)}</div><div class="ps">${esc(t.inspiredBy || "")}${item.ext ? " &middot; " + item.ext.toUpperCase() : ""}</div></div>
