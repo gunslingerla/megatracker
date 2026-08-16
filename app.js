@@ -389,13 +389,15 @@ function boardHTML(tracks) {
   const active = holdView ? tracks.slice() : tracks.filter((t) => !t.onHold && t.stage !== "Released");
   const shown = stages.filter((s) => active.some((t) => t.stage === s));
   if (!shown.length) return `<div class="loading">No tracks here yet.</div>`;
-  // Distribute cards row-major across sub-columns of up to 5, so track order reads
-  // left-to-right across the columns first, then down.
+  // Split into contiguous sub-columns of ~5 (col 1 = earliest track numbers, etc.).
+  // Contiguous chunks read in track order whether the columns sit side-by-side
+  // (desktop) or stack vertically (mobile).
   const spread = (arr) => {
     const n = Math.max(1, Math.ceil(arr.length / 5));
-    const out = Array.from({ length: n }, () => []);
-    arr.forEach((item, i) => out[i % n].push(item));
-    return out;
+    const per = Math.ceil(arr.length / n);
+    const out = [];
+    for (let i = 0; i < arr.length; i += per) out.push(arr.slice(i, i + per));
+    return out.length ? out : [[]];
   };
   const cols = shown.map((s) => {
     const inCol = active.filter((t) => t.stage === s).sort((a, b) => effOrder(a) - effOrder(b));
