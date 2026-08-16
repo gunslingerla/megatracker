@@ -1,8 +1,8 @@
 # The Megas — Album Tracker
 
-A visual production board for the band's albums, backed by the **The Megas** Airtable base
-(`app8R88gFzgjBftgo`). Deploys to Vercel; any band member opens the URL, signs in with the
-shared band password, and sees live data.
+A visual production board for the band's albums, backed by the **The Megas** Airtable base.
+Deploys to Vercel; any band member opens the URL, signs in with the shared band password,
+and sees live data.
 
 ## What it does
 
@@ -38,7 +38,7 @@ fallback, so you don't even need `DROPBOX_SHARED_LINK` unless the folder moves. 
 | Variable         | Required | What it is |
 |------------------|----------|------------|
 | `AIRTABLE_TOKEN` | yes      | Airtable Personal Access Token (see below). Never exposed to the browser. |
-| `AIRTABLE_BASE`  | no       | Defaults to `app8R88gFzgjBftgo` (The Megas). |
+| `AIRTABLE_BASE`  | no       | The Megas Airtable base ID. Defaults to the value baked into the server config. |
 | `APP_PASSWORD`   | yes      | The shared password band members type to sign in. If left blank, the site is open. |
 | `AUTH_SECRET`    | yes      | Any long random string — signs the login cookie. |
 | `DROPBOX_SHARED_LINK` | for playlist | The shared link to the "Songs in Progress" folder. |
