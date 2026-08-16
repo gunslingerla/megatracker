@@ -1299,7 +1299,7 @@ function renderPlayer() {
   seek.onpointerdown = () => { seeking = true; const up = () => { seeking = false; document.removeEventListener("pointerup", up); }; document.addEventListener("pointerup", up); };
   seek.onchange = () => { seeking = false; };
 
-  document.getElementById("pFbBtn").onclick = () => { if (state.audio.currentId) openNotesBar(state.audio.currentId); };
+  document.getElementById("pFbBtn").onclick = () => { if (state.audio.currentId) openNotesBar(state.audio.currentId, true); };
   if (document.getElementById("notesbar") && document.getElementById("notesbar").classList.contains("open")) { if (notesBarTrack === state.audio.currentId) renderNotesBar(); positionNotesBar(); }
   renderMarkers();
 }
@@ -2002,7 +2002,7 @@ function positionNotesBar() {
   bar.style.bottom = (shown ? player.offsetHeight : 0) + "px";
 }
 function closeNotesBar() { const bar = document.getElementById("notesbar"); if (!bar) return; bar.classList.remove("open"); notesBarTrack = null; setTimeout(() => { if (!bar.classList.contains("open")) bar.innerHTML = ""; }, 380); }
-function openNotesBar(id) { const t = trackById(id); if (!t) return; notesBarTrack = id; notesTimeLocked = false; document.getElementById("notesbar").classList.add("open"); renderNotesBar(); }
+function openNotesBar(id, lockNow) { const t = trackById(id); if (!t) return; notesBarTrack = id; notesTimeLocked = false; document.getElementById("notesbar").classList.add("open"); renderNotesBar(); if (lockNow) notesTimeLocked = true; }
 function renderNotesBar() {
   const bar = document.getElementById("notesbar"); if (!bar || !notesBarTrack) return;
   const t = trackById(notesBarTrack); if (!t) { closeNotesBar(); return; }
