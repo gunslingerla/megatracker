@@ -122,6 +122,37 @@ async function refresh(keepDrawer = true) {
   if (refreshQueued) { refreshQueued = false; refresh(keepDrawer); }
 }
 
+// Live notes: while a notes bar is open, quietly poll for notes added by other
+// members and fold them in without disturbing an in-progress draft.
+function fbSig(t) {
+  return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${(fb.comment || "").length}`).sort().join("|");
+}
+let notesPollTimer = null;
+function startNotesPoll() { if (!notesPollTimer) notesPollTimer = setInterval(pollNotes, 12000); }
+async function pollNotes() {
+  const bar = document.getElementById("notesbar");
+  if (!bar || !bar.classList.contains("open") || !notesBarTrack) return;
+  if (document.hidden || refreshing) return;
+  const before = (() => { const t = trackById(notesBarTrack); return t ? fbSig(t) : ""; })();
+  const d = await loadData();
+  if (!d) return;
+  if (!bar.classList.contains("open") || !notesBarTrack) return; // closed while awaiting
+  state.data = d;
+  const t = trackById(notesBarTrack);
+  if (!t || fbSig(t) === before) return; // nothing changed for this track
+  const ta = document.getElementById("nbText");
+  const draft = ta ? ta.value : "";
+  const focused = document.activeElement === ta;
+  const locked = notesTimeLocked;
+  const timeText = (document.getElementById("nbTime") || {}).textContent;
+  renderNotesBar();
+  const ta2 = document.getElementById("nbText");
+  if (ta2) { ta2.value = draft; if (focused) { ta2.focus(); try { ta2.setSelectionRange(draft.length, draft.length); } catch {} } }
+  notesTimeLocked = locked;
+  if (locked && timeText && document.getElementById("nbTime")) document.getElementById("nbTime").textContent = timeText;
+  if (state.audio.currentId === notesBarTrack) renderMarkers();
+}
+
 /* ---- Helpers over state ----------------------------------------------------*/
 function currentAlbum() {
   const id = state.filters.albumId;
@@ -327,7 +358,7 @@ function openVersionTransfer(trackId) {
     render();
   };
 }
-function cardHTML(t) {
+function cardHTML(t, ord) {
   // Small phase chips tinted by the owner's color: bright while open/in-progress,
   // dark + struck through once Done.
   const segs = t.phases.map((p) => {
@@ -365,7 +396,7 @@ function cardHTML(t) {
     : "";
   const num = dispNum(t);
   return `
-    <div class="card" draggable="true" data-id="${t.id}">
+    <div class="card" draggable="true" data-id="${t.id}"${ord != null ? ` style="order:${ord}"` : ""}>
       <div class="top">
         ${t.cover && t.cover[0] ? `<div class="card-art" data-artview="${esc(t.cover[0].url)}" title="View art" style="background-image:url('${t.cover[0].thumb}')"></div>` : ""}
         <div class="title-wrap">${playBtn}${num !== "" ? `<span class="tnum">${num}</span>` : ""}<div class="title">${esc(t.title)}</div></div>
@@ -389,21 +420,22 @@ function boardHTML(tracks) {
   const active = holdView ? tracks.slice() : tracks.filter((t) => !t.onHold && t.stage !== "Released");
   const shown = stages.filter((s) => active.some((t) => t.stage === s));
   if (!shown.length) return `<div class="loading">No tracks here yet.</div>`;
-  // Split into contiguous sub-columns of ~5 (col 1 = earliest track numbers, etc.).
-  // Contiguous chunks read in track order whether the columns sit side-by-side
-  // (desktop) or stack vertically (mobile).
+  // Desktop: round-robin into side-by-side sub-columns so the top row reads
+  // left-to-right in track order. Mobile: each card carries its track index as a
+  // CSS "order", and .cardcol collapses (display:contents) so all cards become one
+  // column ordered top-to-bottom by track number.
   const spread = (arr) => {
     const n = Math.max(1, Math.ceil(arr.length / 5));
-    const per = Math.ceil(arr.length / n);
-    const out = [];
-    for (let i = 0; i < arr.length; i += per) out.push(arr.slice(i, i + per));
-    return out.length ? out : [[]];
+    const out = Array.from({ length: n }, () => []);
+    arr.forEach((item, i) => out[i % n].push(item));
+    return out;
   };
   const cols = shown.map((s) => {
     const inCol = active.filter((t) => t.stage === s).sort((a, b) => effOrder(a) - effOrder(b));
     const locked = stages.indexOf(s) > PROD_IDX;
-    const groups = spread(inCol); // extra columns of ~5, filled left-to-right by track number
-    const cards = `<div class="cards${groups.length > 1 ? " multi" : ""}">${groups.map((g) => `<div class="cardcol">${g.map(cardHTML).join("")}</div>`).join("")}</div>`;
+    const ord = new Map(inCol.map((t, i) => [t.id, i]));
+    const groups = spread(inCol); // side-by-side sub-columns, round-robin by track number
+    const cards = `<div class="cards${groups.length > 1 ? " multi" : ""}">${groups.map((g) => `<div class="cardcol">${g.map((t) => cardHTML(t, ord.get(t.id))).join("")}</div>`).join("")}</div>`;
     return `
       <div class="col${locked ? " locked-target" : ""}" data-stage="${esc(s)}">
         <h3><span class="dot" style="background:${STAGE_COLOR[s]}"></span>${esc(s)}<span class="count">${inCol.length}</span></h3>
@@ -2427,4 +2459,5 @@ function wireChrome() {
   // First-time on this browser: ask who "you" are so notes/assignments are tagged correctly.
   if (!getMe() && (state.data.members || []).length) pickIdentity(true);
   else if (getMe()) maybeVersionPrompt();
+  startNotesPoll();
 })();

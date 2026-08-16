@@ -833,7 +833,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   .board { display: flex; flex-direction: column; gap: 12px; padding: 14px; overflow: visible; }
   .col { width: 100%; }
   .col .cards { min-height: 0; flex-direction: column; }
-  .cardcol { width: 100%; }
+  .cardcol { display: contents; }
+  .col .cards > .card { width: 100%; }
 
   .drawer { width: 96vw; max-height: 92vh; }
   .row2 { grid-template-columns: 1fr; }
