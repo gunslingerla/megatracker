@@ -122,24 +122,31 @@ async function refresh(keepDrawer = true) {
   if (refreshQueued) { refreshQueued = false; refresh(keepDrawer); }
 }
 
-// Live notes: while a notes bar is open, quietly poll for notes added by other
-// members and fold them in without disturbing an in-progress draft.
+// ---- Live sync: poll Airtable so the tracker stays current without manual refresh.
+// Two cadences: a snappy 12s pass that keeps an open notes bar live, and a 60s
+// sitewide pass that refreshes every view. Both bail out while you are mid-edit.
 function fbSig(t) {
   return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${(fb.comment || "").length}`).sort().join("|");
 }
-let notesPollTimer = null;
-function startNotesPoll() { if (!notesPollTimer) notesPollTimer = setInterval(pollNotes, 12000); }
-async function pollNotes() {
-  const bar = document.getElementById("notesbar");
-  if (!bar || !bar.classList.contains("open") || !notesBarTrack) return;
-  if (document.hidden || refreshing) return;
-  const before = (() => { const t = trackById(notesBarTrack); return t ? fbSig(t) : ""; })();
-  const d = await loadData();
-  if (!d) return;
-  if (!bar.classList.contains("open") || !notesBarTrack) return; // closed while awaiting
-  state.data = d;
-  const t = trackById(notesBarTrack);
-  if (!t || fbSig(t) === before) return; // nothing changed for this track
+function dataSig(d) {
+  try {
+    const tr = (d.tracks || []).map((t) => `${t.id}:${t.stage}:${t.order}:${t.onHold ? 1 : 0}:${(t.phases || []).map((p) => p.id + p.status + (Array.isArray(p.subtasks) ? p.subtasks.filter((s) => s.done).length + "/" + p.subtasks.length : "")).join(",")}:${fbSig(t)}`).join("|");
+    const al = (d.albums || []).map((a) => `${a.id}:${a.stage}:${a.current}`).join("|");
+    const mb = (d.members || []).map((m) => `${m.id}:${(m.phases || []).join(",")}`).join("|");
+    return tr + "||" + al + "||" + mb;
+  } catch { return String(Math.random()); }
+}
+// True when the user is actively editing something a re-render would clobber.
+function pollBusy() {
+  const tp = document.getElementById("teleprompter"); if (tp && tp.classList.contains("open")) return true;
+  if (typeof identityLock !== "undefined" && identityLock) return true;
+  if (document.querySelector(".card.dragging")) return true;
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable) && ae.closest("#main, #drawer, #modal")) return true;
+  return false;
+}
+// Re-render the open notes bar without losing an in-progress draft / locked time.
+function renderNotesBarPreserving() {
   const ta = document.getElementById("nbText");
   const draft = ta ? ta.value : "";
   const focused = document.activeElement === ta;
@@ -150,7 +157,47 @@ async function pollNotes() {
   if (ta2) { ta2.value = draft; if (focused) { ta2.focus(); try { ta2.setSelectionRange(draft.length, draft.length); } catch {} } }
   notesTimeLocked = locked;
   if (locked && timeText && document.getElementById("nbTime")) document.getElementById("nbTime").textContent = timeText;
+}
+let polling = false;
+let lastSiteSig = "";
+let notesPollTimer = null, sitePollTimer = null;
+function startLiveSync() {
+  if (!notesPollTimer) notesPollTimer = setInterval(pollNotes, 12000);
+  if (!sitePollTimer) sitePollTimer = setInterval(pollSite, 60000);
+}
+async function pollNotes() {
+  const bar = document.getElementById("notesbar");
+  if (!bar || !bar.classList.contains("open") || !notesBarTrack) return;
+  if (document.hidden || refreshing || polling) return;
+  const before = (() => { const t = trackById(notesBarTrack); return t ? fbSig(t) : ""; })();
+  polling = true;
+  let d; try { d = await loadData(); } finally { polling = false; }
+  if (!d) return;
+  if (!bar.classList.contains("open") || !notesBarTrack) return; // closed while awaiting
+  state.data = d; lastSiteSig = dataSig(d);
+  const t = trackById(notesBarTrack);
+  if (!t || fbSig(t) === before) return; // nothing changed for this track
+  renderNotesBarPreserving();
   if (state.audio.currentId === notesBarTrack) renderMarkers();
+}
+async function pollSite() {
+  if (document.hidden || refreshing || polling || pollBusy()) return;
+  polling = true;
+  let d; try { d = await loadData(); } finally { polling = false; }
+  if (!d) return;
+  const sig = dataSig(d);
+  if (sig === lastSiteSig) return; // nothing changed anywhere
+  lastSiteSig = sig;
+  state.data = d;
+  await fetchPlaylist();
+  const board = document.querySelector(".board"); const bl = board ? board.scrollLeft : 0;
+  const sx = window.scrollX, sy = window.scrollY;
+  render();
+  const nb = document.querySelector(".board"); if (nb) nb.scrollLeft = bl; window.scrollTo(sx, sy);
+  if (state.openTrackId) { const dr = document.getElementById("drawer"); if (dr && dr.classList.contains("open")) openDrawer(state.openTrackId); }
+  const nbar = document.getElementById("notesbar");
+  if (nbar && nbar.classList.contains("open") && notesBarTrack) renderNotesBarPreserving();
+  if (state.audio.currentId != null) renderMarkers();
 }
 
 /* ---- Helpers over state ----------------------------------------------------*/
@@ -2459,5 +2506,6 @@ function wireChrome() {
   // First-time on this browser: ask who "you" are so notes/assignments are tagged correctly.
   if (!getMe() && (state.data.members || []).length) pickIdentity(true);
   else if (getMe()) maybeVersionPrompt();
-  startNotesPoll();
+  lastSiteSig = dataSig(state.data || {});
+  startLiveSync();
 })();
