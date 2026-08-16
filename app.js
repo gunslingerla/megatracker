@@ -1290,11 +1290,13 @@ function playQueue() {
 const fmt = (s) => (isNaN(s) ? "0:00" : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`);
 
 let triedRelink = false;
-function playTrack(id) {
+let albumRoll = false;
+function playTrack(id, keepRoll) {
   const item = audioFor(trackById(id));
   if (!item) return;
   const a = audioEl();
   if (state.audio.currentId === id) { a.paused ? a.play().catch(() => {}) : a.pause(); return; }
+  if (!keepRoll) albumRoll = false;
   state.audio.currentId = id;
   if (!state.audio.queue || !state.audio.queue.includes(id)) state.audio.queue = playQueue();
   triedRelink = false;
@@ -1308,13 +1310,14 @@ function playNext(dir = 1) {
   const q = (state.audio.queue && state.audio.queue.length) ? state.audio.queue : playQueue();
   const i = q.indexOf(state.audio.currentId);
   const ni = i < 0 ? 0 : i + dir;
-  if (ni >= 0 && ni < q.length) playTrack(q[ni]);
+  if (ni >= 0 && ni < q.length) playTrack(q[ni], true);
 }
 function playAlbum(albumId) {
   const q = state.data.tracks.filter((t) => t.albumId === albumId && audioFor(t)).sort((a, b) => effOrder(a) - effOrder(b)).map((t) => t.id);
   if (!q.length) { toast("No audio in this album yet", true); return; }
   state.audio.queue = q;
-  playTrack(q[0]);
+  albumRoll = true;
+  playTrack(q[0], true);
 }
 
 function updatePlayButtons() {
@@ -1391,7 +1394,11 @@ function wireAudio() {
   const a = audioEl();
   a.addEventListener("play", () => { state.audio.playing = true; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9208;&#xFE0E;"; });
   a.addEventListener("pause", () => { state.audio.playing = false; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9654;&#xFE0E;"; });
-  a.addEventListener("ended", () => playNext(1));
+  a.addEventListener("ended", () => {
+    if (albumRoll) { playNext(1); return; }
+    state.audio.playing = false; updatePlayButtons();
+    const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9654;&#xFE0E;";
+  });
   a.addEventListener("loadedmetadata", renderMarkers);
   a.addEventListener("durationchange", renderMarkers);
   a.addEventListener("timeupdate", () => {
