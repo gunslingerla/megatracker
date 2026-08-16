@@ -2050,6 +2050,7 @@ function renderNotesBar() {
     const r = await createEntity("feedback", { trackId: t.id, timestamp: ts, comment, authorId: me ? me.id : undefined, version: cur });
     if (r.ok) { toast("Note added"); await refresh(); renderNotesBar(); if (state.audio.currentId === t.id) renderMarkers(); }
   };
+  textEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("nbAdd").click(); } });
   positionNotesBar();
 }
 function openFeedbackModal(id) {
