@@ -878,3 +878,18 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .scr-hdel:hover { color: var(--accent-2); }
 .scr-hprev { font-size: 12px; color: var(--text); white-space: pre-wrap; opacity: 0.85; margin-top: 2px; overflow: hidden; }
 .scr-hempty { padding: 10px; font-size: 11.5px; color: var(--muted); }
+
+/* New-version / outstanding-notes transfer */
+.ver-alert { display: block; width: 100%; margin-top: 8px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent-2); font-size: 11.5px; font-weight: 700; cursor: pointer; text-align: left; }
+.ver-alert:hover { background: rgba(229,57,159,0.24); }
+.vx-list { display: flex; flex-direction: column; gap: 12px; max-height: 52vh; overflow-y: auto; }
+.vx-group { border: 1px solid var(--stroke); border-radius: 10px; padding: 8px 10px; }
+.vx-verhd { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.vx-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-top: 1px solid var(--stroke); font-size: 13px; cursor: pointer; }
+.vx-group .vx-row:first-of-type { border-top: none; }
+.vx-time { font-variant-numeric: tabular-nums; color: var(--accent-2); font-weight: 700; flex: none; }
+.vx-comment { flex: 1; min-width: 0; }
+.vx-author { color: var(--muted); font-size: 11px; flex: none; }
+.vx-resolve { flex: none; }
+.vx-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.vx-all { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }

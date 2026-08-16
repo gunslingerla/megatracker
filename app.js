@@ -263,6 +263,70 @@ function ipTagHTML(t) {
   return `<div class="ip" tabindex="0">${esc(t.inspiredBy)}<div class="ip-pop"><div class="ip-pop-h">Also inspired by ${esc(t.inspiredBy)}</div>${list}</div></div>`;
 }
 
+function outstandingNotes(t) {
+  const cur = currentVersion(t);
+  if (!cur) return [];
+  return (t.feedback || []).filter((fb) => fb.status === "Open" && fb.version && fb.version !== cur);
+}
+function verSeen(tid) { try { return (JSON.parse(localStorage.getItem("megasVerSeen") || "{}"))[tid] || null; } catch { return null; } }
+function markVerSeen(tid, ver) { try { const o = JSON.parse(localStorage.getItem("megasVerSeen") || "{}"); o[tid] = ver; localStorage.setItem("megasVerSeen", JSON.stringify(o)); } catch {} }
+function maybeVersionPrompt() {
+  const m = document.getElementById("modal"); if (m && m.classList.contains("open")) return;
+  for (const t of (state.data.tracks || [])) {
+    const cur = currentVersion(t);
+    if (cur && outstandingNotes(t).length && verSeen(t.id) !== cur) { openVersionTransfer(t.id); return; }
+  }
+}
+function openVersionTransfer(trackId) {
+  const t = trackById(trackId); if (!t) return;
+  const cur = currentVersion(t);
+  markVerSeen(trackId, cur);
+  const notes = outstandingNotes(t).slice().sort((a, b) => (a.version || "").localeCompare(b.version || "") || a.timestamp - b.timestamp);
+  if (!notes.length) { closeModal(); return; }
+  const byVer = {}; notes.forEach((fb) => { (byVer[fb.version || "—"] = byVer[fb.version || "—"] || []).push(fb); });
+  const groups = Object.entries(byVer).map(([ver, list]) => `
+    <div class="vx-group">
+      <div class="vx-verhd">From ${esc(ver)}</div>
+      ${list.map((fb) => `
+        <label class="vx-row">
+          <input type="checkbox" class="vx-chk" data-vid="${fb.id}" checked />
+          <span class="vx-time">${mmss(fb.timestamp)}</span>
+          <span class="vx-comment">${esc(fb.comment)}</span>
+          <span class="vx-author">${esc(fb.author || "")}</span>
+          <button class="fb-mini vx-resolve" data-vresolve="${fb.id}" title="Mark resolved instead of moving">Resolve</button>
+        </label>`).join("")}
+    </div>`).join("");
+  openModal(`
+    <div class="mhd"><h2>New version detected</h2><button class="icon-btn close" id="mClose">&times;</button></div>
+    <div class="mbd">
+      <p style="margin:0;color:var(--muted)">&ldquo;${esc(t.title)}&rdquo; has a newer bounce: <strong style="color:var(--text)">${esc(cur || "—")}</strong>. These notes are still open on earlier versions — carry over any that still apply.</p>
+      <div class="vx-list">${groups}</div>
+      <div class="vx-actions">
+        <label class="vx-all"><input type="checkbox" id="vxAll" checked /> Select all</label>
+        <span style="flex:1"></span>
+        <button class="add-btn ghost" id="vxClose2">Not now</button>
+        <button class="add-btn" id="vxGo">Move selected to ${esc(cur || "current")}</button>
+      </div>
+    </div>`);
+  $("#mClose").onclick = closeModal;
+  $("#vxClose2").onclick = closeModal;
+  $("#vxAll").onchange = (e) => { document.querySelectorAll(".vx-chk").forEach((c) => (c.checked = e.target.checked)); };
+  document.querySelectorAll("[data-vresolve]").forEach((b) => b.onclick = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const r = await update("feedback", b.dataset.vresolve, { status: "Resolved" });
+    if (r.ok) { toast("Resolved"); await refresh(); const left = outstandingNotes(trackById(trackId) || {}); if (left.length) openVersionTransfer(trackId); else { closeModal(); render(); } }
+  });
+  $("#vxGo").onclick = async () => {
+    const ids = [...document.querySelectorAll(".vx-chk")].filter((c) => c.checked).map((c) => c.dataset.vid);
+    if (!ids.length) { toast("Select at least one note", true); return; }
+    const btn = $("#vxGo"); btn.disabled = true; btn.textContent = "Moving…";
+    for (const id of ids) { await update("feedback", id, { version: cur }); }
+    toast(`Moved ${ids.length} note${ids.length > 1 ? "s" : ""} to ${cur}`);
+    await refresh(); closeModal();
+    if (document.getElementById("notesbar") && document.getElementById("notesbar").classList.contains("open") && notesBarTrack === trackId) renderNotesBar();
+    render();
+  };
+}
 function cardHTML(t) {
   // Small phase chips tinted by the owner's color: bright while open/in-progress,
   // dark + struck through once Done.
@@ -314,6 +378,7 @@ function cardHTML(t) {
         <button class="lyr-btn" data-lyr="${t.id}" title="Lyrics & teleprompter">Lyrics</button>
         <button class="lyr-btn" data-fb="${t.id}" title="Notes (resolved/total on current version)">Notes${fbLabel(t)}</button>
       </div>
+      ${outstandingNotes(t).length ? `<button class="ver-alert" data-verxfer="${t.id}" title="Notes from an earlier bounce are still open">New version detected &middot; ${outstandingNotes(t).length} note${outstandingNotes(t).length > 1 ? "s" : ""} outstanding</button>` : ""}
       ${waitBanner}
     </div>`;
 }
@@ -683,6 +748,8 @@ function wireBoard() {
     b.addEventListener("click", (e) => { e.stopPropagation(); openTeleprompter(b.dataset.lyr); }));
   document.querySelectorAll(".lyr-btn[data-fb]").forEach((b) =>
     b.addEventListener("click", async (e) => { e.stopPropagation(); const id = b.dataset.fb; if (state.audio.currentId && state.audio.currentId !== id && audioFor(trackById(id))) { if (await confirmDialog("Another song is playing. Play this one instead?", { title: "Switch song?", okText: "Play it" })) playTrack(id); } openNotesBar(id); }));
+  document.querySelectorAll("[data-verxfer]").forEach((b) =>
+    b.addEventListener("click", (e) => { e.stopPropagation(); openVersionTransfer(b.dataset.verxfer); }));
 
   document.querySelectorAll("[data-playalbum]").forEach((b) => b.onclick = () => playAlbum(b.dataset.playalbum));
   document.querySelectorAll(".trow[data-tid]").forEach((r) =>
@@ -2350,4 +2417,5 @@ function wireChrome() {
   render(); // re-render so play buttons appear once the playlist is known
   // First-time on this browser: ask who "you" are so notes/assignments are tagged correctly.
   if (!getMe() && (state.data.members || []).length) pickIdentity(true);
+  else if (getMe()) maybeVersionPrompt();
 })();

@@ -38,7 +38,7 @@ const MAP = {
   },
   feedback: {
     table: T.feedback,
-    fields: { status: F.feedback.status, comment: F.feedback.comment, ownerIds: F.feedback.author },
+    fields: { status: F.feedback.status, comment: F.feedback.comment, ownerIds: F.feedback.author, version: F.feedback.version },
     links: ["ownerIds"],
   },
   member: {
