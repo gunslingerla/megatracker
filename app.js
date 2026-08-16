@@ -1258,6 +1258,7 @@ function updatePlayButtons() {
   });
 }
 
+let seeking = false;
 function renderPlayer() {
   const el = document.getElementById("player");
   const id = state.audio.currentId;
@@ -1271,7 +1272,9 @@ function renderPlayer() {
   el.innerHTML = `
     <div class="pctrl">
       <button class="pbtn mini" id="pPrev" title="Previous">&#9198;&#xFE0E;</button>
+      <button class="pbtn mini" id="pBack10" title="Back 10 seconds">&#8634;<span class="p10">10</span></button>
       <button class="pbtn" id="pToggle" title="Play/Pause">${a.paused ? "&#9654;&#xFE0E;" : "&#9208;&#xFE0E;"}</button>
+      <button class="pbtn mini" id="pFwd10" title="Forward 10 seconds">&#8635;<span class="p10">10</span></button>
       <button class="pbtn mini" id="pNext" title="Next">&#9197;&#xFE0E;</button>
     </div>
     <div class="pinfo"><div class="pt">${esc(t.title)}</div><div class="ps">${esc(t.inspiredBy || "")}${item.ext ? " &middot; " + item.ext.toUpperCase() : ""}</div></div>
@@ -1289,8 +1292,12 @@ function renderPlayer() {
   document.getElementById("pPrev").onclick = () => playNext(-1);
   document.getElementById("pNext").onclick = () => playNext(1);
   document.getElementById("pClose").onclick = () => { a.pause(); state.audio.currentId = null; el.className = "player hidden"; updatePlayButtons(); positionNotesBar(); };
+  document.getElementById("pBack10").onclick = () => { a.currentTime = Math.max(0, (a.currentTime || 0) - 10); };
+  document.getElementById("pFwd10").onclick = () => { const d = (a.duration && isFinite(a.duration)) ? a.duration : (a.currentTime || 0) + 10; a.currentTime = Math.min(d, (a.currentTime || 0) + 10); };
   const seek = document.getElementById("pSeek");
-  seek.oninput = () => { if (a.duration) a.currentTime = (seek.value / 1000) * a.duration; };
+  seek.oninput = () => { seeking = true; if (a.duration) { a.currentTime = (seek.value / 1000) * a.duration; const tEl = document.getElementById("pTime"); if (tEl) tEl.textContent = `${fmt(a.currentTime)} / ${fmt(a.duration)}`; } };
+  seek.onpointerdown = () => { seeking = true; const up = () => { seeking = false; document.removeEventListener("pointerup", up); }; document.addEventListener("pointerup", up); };
+  seek.onchange = () => { seeking = false; };
 
   document.getElementById("pFbBtn").onclick = () => { if (state.audio.currentId) openNotesBar(state.audio.currentId); };
   if (document.getElementById("notesbar") && document.getElementById("notesbar").classList.contains("open")) { if (notesBarTrack === state.audio.currentId) renderNotesBar(); positionNotesBar(); }
@@ -1322,7 +1329,7 @@ function wireAudio() {
   a.addEventListener("durationchange", renderMarkers);
   a.addEventListener("timeupdate", () => {
     const seek = document.getElementById("pSeek"), time = document.getElementById("pTime");
-    if (seek && a.duration) seek.value = String((a.currentTime / a.duration) * 1000);
+    if (seek && a.duration && !seeking) seek.value = String((a.currentTime / a.duration) * 1000);
     if (time) time.textContent = `${fmt(a.currentTime)} / ${fmt(a.duration)}`;
     if (!notesTimeLocked && notesBarTrack && notesBarTrack === state.audio.currentId) { const tb = document.getElementById("nbTime"); if (tb) tb.textContent = mmss(Math.floor(a.currentTime || 0)); }
   });
