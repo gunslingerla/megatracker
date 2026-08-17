@@ -1422,7 +1422,7 @@ function renderPlayer() {
   el.className = "player";
   el.innerHTML = `
     <div class="pctrl">
-      <button class="pbtn mini" id="pPrev" title="Previous">&#9198;&#xFE0E;</button>
+      <button class="pbtn mini" id="pPrev" title="Restart song (double-click for previous)">&#9198;&#xFE0E;</button>
       <button class="pbtn mini" id="pBack10" title="Back 10 seconds"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g transform="translate(0 1.4)"><path d="M15.75 5.5A7.5 7.5 0 1 1 8.25 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><polygon points="8.25 3.4 8.25 7.6 4.9 5.5" fill="currentColor"/><text x="12" y="12.5" text-anchor="middle" dominant-baseline="central" font-size="8.5" fill="currentColor" font-weight="700">10</text></g></svg></button>
       <button class="pbtn" id="pToggle" title="Play/Pause">${a.paused ? "&#9654;&#xFE0E;" : "&#9208;&#xFE0E;"}</button>
       <button class="pbtn mini" id="pFwd10" title="Forward 10 seconds"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g transform="translate(0 1.4)"><path d="M8.25 5.5A7.5 7.5 0 1 0 15.75 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><polygon points="15.75 3.4 15.75 7.6 19.1 5.5" fill="currentColor"/><text x="12" y="12.5" text-anchor="middle" dominant-baseline="central" font-size="8.5" fill="currentColor" font-weight="700">10</text></g></svg></button>
@@ -1440,7 +1440,12 @@ function renderPlayer() {
     <button class="fb-mini" id="pFbBtn" title="Notes for this song">Notes</button>
     <button class="pclose" id="pClose" title="Close">&times;</button>`;
   document.getElementById("pToggle").onclick = () => (a.paused ? a.play().catch(() => {}) : a.pause());
-  document.getElementById("pPrev").onclick = () => playNext(-1);
+  { let prevClickT = null;
+    document.getElementById("pPrev").onclick = () => {
+      if (prevClickT) { clearTimeout(prevClickT); prevClickT = null; playNext(-1); return; }  // double-click → previous track
+      prevClickT = setTimeout(() => { prevClickT = null; a.currentTime = 0; }, 280);            // single click → restart
+    };
+  }
   document.getElementById("pNext").onclick = () => playNext(1);
   document.getElementById("pClose").onclick = () => { a.pause(); state.audio.currentId = null; el.className = "player hidden"; updatePlayButtons(); positionNotesBar(); };
   document.getElementById("pBack10").onclick = () => { a.currentTime = Math.max(0, (a.currentTime || 0) - 10); };
