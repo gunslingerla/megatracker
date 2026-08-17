@@ -21,6 +21,7 @@ const collapsedSubs = new Set(); // phases the user explicitly collapsed
 let newlyAddedSub = null; // "phase:index" of a just-added subtask (for pop-in)
 let asgGroup = "phase";
 let asgOnlyMe = false; // Assignments grouping: "phase" or "song" // Band cards in edit mode
+let notesShowResolved = false; // Notes page: include resolved notes
 const PALETTE = ["#6cb6ff", "#46dba0", "#ffab4a", "#f0654f", "#b58cff", "#4fd0e0", "#f078c0", "#e5c94a", "#8a9bff", "#5fd08a"];
 const memberById = (id) => (state.data && state.data.members ? state.data.members.find((m) => m.id === id) : null);
 // Normalize a title (or filename) for matching Dropbox audio to a track.
@@ -859,6 +860,8 @@ function wireBoard() {
   document.querySelectorAll("[data-asgme]").forEach((b) => b.onclick = () => { asgOnlyMe = !asgOnlyMe; render(); });
   document.querySelectorAll("#main .note-time[data-nseek]").forEach((b) => b.onclick = () => seekTo(b.dataset.ntrack, Math.max(0, Number(b.dataset.nseek) - preRoll)));
   document.querySelectorAll("#main [data-nresolve]").forEach((b) => b.onclick = async () => { const r = await update("feedback", b.dataset.nresolve, { status: "Resolved" }); if (r.ok) { toast("Resolved"); refresh(); } });
+  document.querySelectorAll("#main [data-nreopen]").forEach((b) => b.onclick = async () => { const r = await update("feedback", b.dataset.nreopen, { status: "Open" }); if (r.ok) { toast("Reopened"); refresh(); } });
+  { const rc = document.getElementById("notesResolved"); if (rc) rc.onchange = () => { notesShowResolved = rc.checked; render(); }; }
   document.querySelectorAll("#main [data-ndel]").forEach((b) => b.onclick = async () => { if (!(await confirmDialog("Delete this note? This can\u2019t be undone.", { title: "Delete note", okText: "Delete", danger: true }))) return; const r = await deleteEntity("feedback", b.dataset.ndel); if (r.ok) { toast("Deleted"); refresh(); } });
   wireNoteCtrls(document.getElementById("main"));
 
@@ -2107,29 +2110,39 @@ function wireNoteCtrls(root) {
   });
 }
 function noteRowHTML(t, fb) {
+  const resolved = fb.status === "Resolved";
   const filed = noteHasTask(t, fb.id);
-  return `<div class="note-row" data-fb="${fb.id}">
+  return `<div class="note-row${resolved ? " resolved" : ""}" data-fb="${fb.id}">
     <div class="note-main">
-      <span class="afb-song" data-open="${t.id}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
       <button class="note-time" data-nseek="${fb.timestamp}" data-ntrack="${t.id}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
       <span class="note-when">${fmtWhen(fb.createdTime)}</span>
       <span class="note-author">${esc(fb.author || "")}</span>
-      <div class="fb-actions"><button class="fb-mini" data-nresolve="${fb.id}">Resolve</button><button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
+      <div class="fb-actions">${resolved ? `<button class="fb-mini" data-nreopen="${fb.id}">Reopen</button>` : `<button class="fb-mini" data-nresolve="${fb.id}">Resolve</button>`}<button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
     </div>
     <div class="fb-body">
       <div class="fb-comment">${esc(fb.comment)}</div>
-      <div class="fb-right">${filed ? `<div class="nt-filed">&#10003; Task filed — resolves when done</div>` : noteTaskCtrls(t, fb)}</div>
+      ${resolved ? "" : `<div class="fb-right">${filed ? `<div class="nt-filed">&#10003; Task filed — resolves when done</div>` : noteTaskCtrls(t, fb)}</div>`}
     </div>
   </div>`;
 }
 function notesHTML() {
   const alb = currentAlbum();
   const inScope = (t) => !t.onHold && (!alb || t.albumId === alb.id);
-  const rows = [];
-  state.data.tracks.filter(inScope).forEach((t) => { const cur = currentVersion(t); (t.feedback || []).filter((fb) => fb.status === "Open" && (fb.version || "") === (cur || "")).forEach((fb) => rows.push({ t, fb })); });
-  rows.sort((a, b) => (effOrder(a.t) - effOrder(b.t)) || (a.fb.timestamp - b.fb.timestamp));
-  const list = rows.length ? rows.map(({ t, fb }) => noteRowHTML(t, fb)).join("") : `<div class="empty" style="padding:24px">No open notes${alb ? " for this album" : ""}.</div>`;
-  return `<div class="notes-page"><div class="notes-head">Open notes<span class="asg-count">${rows.length}</span></div>${list}</div>`;
+  const groups = state.data.tracks.filter(inScope)
+    .map((t) => { const cur = currentVersion(t); const notes = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "") && (notesShowResolved || fb.status === "Open")).sort((a, b) => (a.status === b.status ? 0 : a.status === "Open" ? -1 : 1) || a.timestamp - b.timestamp); return { t, notes }; })
+    .filter((g) => g.notes.length)
+    .sort((a, b) => effOrder(a.t) - effOrder(b.t));
+  const total = groups.reduce((n, g) => n + g.notes.length, 0);
+  const cards = groups.map(({ t, notes }) => `
+    <div class="note-card">
+      <div class="note-card-head">
+        <span class="afb-song" data-open="${t.id}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
+        <span class="nc-count">${notes.length} note${notes.length > 1 ? "s" : ""}</span>
+      </div>
+      <div class="note-card-body">${notes.map((fb) => noteRowHTML(t, fb)).join("")}</div>
+    </div>`).join("");
+  const list = groups.length ? cards : `<div class="empty" style="padding:24px">No open notes${alb ? " for this album" : ""}.</div>`;
+  return `<div class="notes-page"><div class="notes-head">${notesShowResolved ? "Notes" : "Open notes"}<span class="asg-count">${total}</span><label class="notes-toggle"><input type="checkbox" id="notesResolved"${notesShowResolved ? " checked" : ""}/> Show resolved</label></div>${list}</div>`;
 }
 function fbItemHTML(fb, t) {
   const showCtrls = fb.status === "Open" && t;
