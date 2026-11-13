@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Vercel
+.vercel/
+
+# Env / secrets — never commit real values
+.env
+.env.local
+.env*.local
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+
+# Build zips from the chat-based workflow (not needed in git)
+album-tracker-v*.zip
+out.zip
