@@ -47,6 +47,19 @@
   .an-time.bad { border-color:#f0654f; }
   .an-btn { flex:none; background:linear-gradient(140deg,var(--accent),var(--accent-2)); color:#1a0713; border:none; border-radius:7px; padding:6px 12px; font-size:12.5px; font-weight:700; cursor:pointer; }
   .an-btn[disabled] { opacity:0.5; cursor:default; }
+  .song-h { flex-wrap:wrap; }
+  .pdfbtn { flex:none; background:var(--panel-2); color:var(--text); border:1px solid var(--stroke-strong); border-radius:7px; padding:4px 9px; font-size:11.5px; cursor:pointer; }
+  .pdfbtn:hover { border-color:var(--accent); }
+  .pdfbtn[disabled] { opacity:0.5; cursor:default; }
+  @media print {
+    body { background:#fff; color:#000; }
+    .player, .addnote, .threp, .acts, .intro, .pdfbtn { display:none !important; }
+    .song { background:#fff; border-color:#999; break-inside:avoid; }
+    .song-h { background:#eee; border-color:#999; }
+    .n .time, .thby { color:#000; } .n .time { background:#fff; border-color:#999; }
+    .thm, .thm.me { background:#f3f3f3; }
+    .n .cmt, .thm, .song-h .t { color:#000; } .song-h .v, .n .meta, .foot { color:#555; }
+  }
   .acts { margin-left:auto; flex:none; }
   .thm .acts { float:right; margin-left:8px; }
   .act { background:none; border:none; color:var(--muted); font-size:11px; cursor:pointer; padding:0 4px; text-decoration:underline; }
@@ -146,6 +159,7 @@
         + '<span class="t">'+esc(s.title)+'</span>'
         + (s.version?'<span class="v">'+esc(s.version)+'</span>':'')
         + '<span class="cnt">'+open+' to review</span>'
+        + '<button class="pdfbtn" data-pdf="'+s.id+'" title="Download this song\'s notes as a PDF to print or mark up">Download PDF</button>'
         + '</div><div class="nlist">'+rows
         + '<div class="addnote"><input class="an-time" data-dk="m:'+s.id+'" data-song="'+s.id+'" value="0:00" aria-label="Time in song" inputmode="numeric" />'
         + '<input class="an-text" data-dk="t:'+s.id+'" data-song="'+s.id+'" placeholder="Add your own note…" />'
@@ -254,6 +268,89 @@
     if (!confirm(op === "deleteNote" ? "Delete this note? This can't be undone." : "Delete this reply? This can't be undone.")) return;
     var payload = { op: op, id: b.dataset.id }; if (op === "deleteReply") payload.at = Number(b.dataset.at);
     manage(payload);
+  });
+
+  // ---- Per-song PDF: a printable copy of one song's notes (checkbox, timecode, member, comment,
+  // replies) for guests who prefer pen and paper. jsPDF is loaded on demand (pinned + integrity
+  // checked); if it can't load, we fall back to the browser's Print dialog (Save as PDF).
+  function pdfClean(s) {
+    return String(s == null ? "" : s).replace(/\r/g, "").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, "...")
+      .replace(/[^\n\x20-\x7E\xA0-\xFF–—•]/g, "").replace(/ {2,}/g, " ");
+  }
+  function loadJsPdf(cb) {
+    if (window.jspdf) return cb(window.jspdf);
+    var s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.integrity = "sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==";
+    s.crossOrigin = "anonymous"; s.referrerPolicy = "no-referrer";
+    s.onload = function () { cb(window.jspdf || null); };
+    s.onerror = function () { cb(null); };
+    document.head.appendChild(s);
+  }
+  function buildPdf(J, song) {
+    var doc = new J.jsPDF({ unit: "pt", format: "letter" });
+    var W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    var M = 54, CW = W - 2 * M, y = M;
+    function ensure(h) { if (y + h > H - M) { doc.addPage(); y = M; } }
+    function wrap(txt, size, width) { doc.setFontSize(size); return doc.splitTextToSize(pdfClean(txt), width); }
+    // Title block
+    doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.setTextColor(25);
+    var brand = "The Megas"; doc.text(brand, M, y + 14); var bw = doc.getTextWidth(brand);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(120); doc.text("Mix notes", M + bw + 8, y + 14);
+    y += 36;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(25);
+    wrap(song.title, 15, CW).forEach(function (l) { doc.text(l, M, y); y += 18; });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(120);
+    var date = new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    doc.text(pdfClean([song.version, shareTitle, date].filter(Boolean).join(" • ")), M, y);
+    y += 8; doc.setDrawColor(190); doc.setLineWidth(0.6); doc.line(M, y, W - M, y); y += 20;
+    // Notes
+    var notes = song.notes || [];
+    if (!notes.length) { doc.setFont("helvetica", "italic"); doc.setFontSize(11); doc.setTextColor(120); doc.text("No notes on this version.", M, y); y += 16; }
+    notes.forEach(function (n) {
+      var comment = wrap(n.comment, 11, CW - 22);
+      ensure(14 + 14 * Math.min(comment.length, 2) + 8);
+      // checkbox (filled with a tick if already reviewed), then timecode + member
+      doc.setDrawColor(60); doc.setLineWidth(0.9); doc.rect(M, y - 9, 10, 10);
+      if (n.reviewed) { doc.setLineWidth(1.4); doc.line(M + 2, y - 4, M + 4.5, y - 1.2); doc.line(M + 4.5, y - 1.2, M + 8.5, y - 7.2); }
+      doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(190, 30, 120);
+      var tc = mmss(n.timestamp); doc.text(tc, M + 20, y); var tw = doc.getTextWidth(tc);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(110);
+      var who = pdfClean(n.author || ""); if (who) doc.text(who + (n.status === "Resolved" ? "  (band resolved)" : ""), M + 20 + tw + 10, y);
+      y += 15;
+      doc.setFontSize(11); doc.setTextColor(25);
+      comment.forEach(function (l) { ensure(14); doc.text(l, M + 20, y); y += 14; });
+      // replies, indented under a thin rule
+      (n.thread || []).forEach(function (r) {
+        var rl = wrap((r.by || "?") + ": " + (r.text || ""), 9.5, CW - 44);
+        var top = y - 8; doc.setFontSize(9.5); doc.setTextColor(95);
+        rl.forEach(function (l) { ensure(12); doc.text(l, M + 40, y); y += 12; });
+        doc.setDrawColor(210); doc.setLineWidth(1); doc.line(M + 31, top, M + 31, y - 9);
+      });
+      y += 12;
+    });
+    // Footer on every page
+    var pages = doc.getNumberOfPages();
+    for (var p = 1; p <= pages; p++) {
+      doc.setPage(p); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(150);
+      doc.text("The Megas — Album Tracker", M, H - 28); doc.text("Page " + p + " of " + pages, W - M, H - 28, { align: "right" });
+    }
+    return doc;
+  }
+  function pdfFileName(song) {
+    var base = pdfClean(song.title).replace(/[^\w\- ]+/g, "").replace(/\s+/g, " ").trim() || "Song";
+    return base + " - mix notes.pdf";
+  }
+  app.addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest(".pdfbtn") : null; if (!btn) return;
+    var song = byId[btn.dataset.pdf]; if (!song) return;
+    var label = btn.textContent; btn.disabled = true; btn.textContent = "Preparing…";
+    function done() { btn.disabled = false; btn.textContent = label; }
+    function fallback() { done(); alert("Couldn't create the PDF here. Use your browser's Print option (Save as PDF) instead."); window.print(); }
+    loadJsPdf(function (J) {
+      if (!J) return fallback();
+      try { buildPdf(J, song).save(pdfFileName(song)); done(); } catch (err) { fallback(); }
+    });
   });
 
   function counts(){ app.querySelectorAll(".song").forEach(function(sg){ var open=sg.querySelectorAll(".n:not(.done)").length; var c=sg.querySelector(".cnt"); if(c) c.textContent=open+" to review"; }); }

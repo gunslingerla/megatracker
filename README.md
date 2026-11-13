@@ -40,6 +40,10 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   notes are tagged with the link's title; the band sees guest notes as "<title> (guest)".
   Guests can **edit or delete their own** replies and notes (not the band's, and a note
   the band has replied to can't be deleted). The band can delete any reply and edit band replies.
+  Each song has a **Download PDF** button: a printable copy of that song's notes (checkbox,
+  timecode, member name, comment and replies) for guests who prefer pen and paper. The PDF is
+  built in the browser with jsPDF, loaded on demand from cdnjs (pinned version + integrity hash);
+  if it can't load, the page falls back to the browser's Print dialog.
   Manage links from the share manager in the app.
 - **Calendar** — track and phase due dates on a month grid, plus a read-only iCal feed to
   subscribe to from Google/Apple Calendar.

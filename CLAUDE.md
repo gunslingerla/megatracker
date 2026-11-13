@@ -119,6 +119,10 @@ links with outside collaborators (mixers, etc.).
   timestamp), or a note whose Name matches `isGuestNoteOf` (`_share.js`). A guest can't touch band
   replies, other links' replies, or band-authored notes, and can't delete a note anyone else has
   replied to. The band can delete any reply and edit band replies (`threadEdit`/`threadDelete`).
+- **Share-page PDF:** `mix.html` builds a per-song PDF client-side (`buildPdf`) with jsPDF 2.5.1,
+  lazy-loaded from cdnjs with an SRI hash (`loadJsPdf`). It's the only external script in the
+  standalone pages; if it fails to load we `window.print()` (there's a small `@media print` block).
+  jsPDF's built-in fonts are Latin-1 only, so `pdfClean` strips emoji/other characters.
 - **Auth bypass is deliberate and scoped:** the `mixRead`/`mixReview`/`mixReply`/`mixAddNote`/`mixManage`
   paths skip `requireAuth` ONLY when a valid share slug/token is present, and only ever touch
   (or create notes on) that share's tracks. Don't widen this.
