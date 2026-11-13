@@ -25,8 +25,10 @@
   .n input[type=checkbox] { margin-top:3px; width:18px; height:18px; flex:none; cursor:pointer; accent-color:var(--good); }
   .n .body { flex:1; min-width:0; }
   .n .meta { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); margin-bottom:2px; }
-  .n .time { color:var(--accent-2); font-weight:700; font-variant-numeric:tabular-nums; background:none; border:none; padding:0; cursor:pointer; font-size:11px; }
-  .n .time:hover { text-decoration:underline; }
+  .n .time { background:var(--accent-soft); color:var(--accent-2); border:1px solid var(--accent-soft); border-radius:6px; padding:2px 8px; cursor:pointer; font-weight:700; font-size:11px; font-variant-numeric:tabular-nums; }
+  .n .time:hover { border-color:var(--accent); }
+  .intro { color:var(--muted); font-size:13px; margin:-8px 0 18px; line-height:1.5; }
+  .intro input { width:46px; background:var(--panel); border:1px solid var(--stroke-strong); border-radius:6px; color:var(--text); padding:2px 5px; font-size:13px; text-align:center; }
   .n .cmt { font-size:14px; line-height:1.45; white-space:pre-wrap; }
   .n.done .cmt { opacity:0.5; }
   .nrow { display:flex; align-items:flex-start; gap:10px; }
@@ -65,6 +67,7 @@
 <body>
 <div class="wrap">
   <div class="head"><h1>The Megas</h1><span class="sub">Mix notes</span></div>
+  <div class="intro">Click a timecode to play through the note, pre-roll <input type="number" id="preroll" min="0" max="30" step="1" value="5" aria-label="Pre-roll seconds" /> seconds.</div>
   <div id="app"><div class="state">Loading notes…</div></div>
   <div class="foot">The Megas — Album Tracker</div>
 </div>
@@ -89,6 +92,15 @@
   var playerBar = document.getElementById("player");
   var nowEl = document.getElementById("now");
   var curId = null, byId = {}, shareTitle = "";
+  // Pre-roll: how many seconds before a note's timecode playback starts (same default, limits and
+  // storage key as the band's notes bar, so a guest who is also in the app keeps one setting).
+  var preRoll = 5;
+  try { var pr0 = localStorage.getItem("megasPreroll"); var pv = Number(pr0); if (pr0 !== null && pr0 !== "" && isFinite(pv) && pv >= 0) preRoll = Math.min(30, pv); } catch (e) {}
+  var preEl = document.getElementById("preroll"); preEl.value = preRoll;
+  preEl.addEventListener("change", function () {
+    var v = Number(preEl.value); preRoll = isFinite(v) && v >= 0 ? Math.min(30, v) : 5; preEl.value = preRoll;
+    try { localStorage.setItem("megasPreroll", preRoll); } catch (e) {}
+  });
   if (!token && !slug) { app.innerHTML = '<div class="state">This link is missing its code. Ask the band for a fresh link.</div>'; return; }
 
   function loadSong(s, seek, play) {
@@ -122,7 +134,7 @@
         return '<div class="n'+(n.reviewed?" done":"")+'" data-id="'+n.id+'">'
           + '<div class="nrow">'
           + '<input type="checkbox" '+(n.reviewed?"checked":"")+' />'
-          + '<span class="body"><span class="meta"><button class="time" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>'+(n.author?'<span>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+(n.mine?'<span class="acts"><button class="act" data-op="editNote" data-id="'+n.id+'">Edit</button><button class="act" data-op="deleteNote" data-id="'+n.id+'">Delete</button></span>':'')+'</span>'
+          + '<span class="body"><span class="meta"><button class="time" title="Play from pre-roll before" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>'+(n.author?'<span>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+(n.mine?'<span class="acts"><button class="act" data-op="editNote" data-id="'+n.id+'">Edit</button><button class="act" data-op="deleteNote" data-id="'+n.id+'">Delete</button></span>':'')+'</span>'
           + '<span class="cmt">'+esc(n.comment)+'</span></span></div>'
           + '<div class="thread"><div class="thmsgs">'+msgs+'</div><div class="threp"><input class="thin" data-rid="'+n.id+'" data-dk="r:'+n.id+'" placeholder="Reply or ask a question…" /><button class="thsend" data-sid="'+n.id+'">Send</button></div></div>'
           + '</div>';
@@ -166,7 +178,7 @@
     });
 
     app.querySelectorAll("[data-play]").forEach(function(b){ b.addEventListener("click", function(){ loadSong(byId[b.dataset.play], null, true); }); });
-    app.querySelectorAll(".time").forEach(function(b){ b.addEventListener("click", function(e){ e.preventDefault(); loadSong(byId[b.dataset.song], Number(b.dataset.t)||0, true); }); });
+    app.querySelectorAll(".time").forEach(function(b){ b.addEventListener("click", function(e){ e.preventDefault(); loadSong(byId[b.dataset.song], Math.max(0, (Number(b.dataset.t)||0) - preRoll), true); }); });
     app.querySelectorAll(".nrow input[type=checkbox]").forEach(function (cb) {
       cb.addEventListener("change", function () {
         var row = cb.closest(".n");

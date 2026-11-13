@@ -32,7 +32,8 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
 - **Preview Albums** — an ordered tracklist with Play-All through the whole album and a player
   bar with version history per track.
 - **Share links** — create a titled, login-free link for a chosen set of songs
-  (`/mix?s=<slug>`). The page always shows each song's *current* bounce and its notes; the guest
+  (`/mix?s=<slug>`). The page always shows each song's *current* bounce and its notes (click a
+  timecode to play from an adjustable pre-roll before it, same as the band's notes); the guest
   can check off **Mixer Reviewed** (separate from the band's Resolved), reply on a note, and
   **add their own notes** at a timestamp (the time box follows the player). Replies and guest
   notes are tagged with the link's title; the band sees guest notes as "<title> (guest)".
