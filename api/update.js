@@ -1,5 +1,6 @@
 const { T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch } = require("./_airtable");
 const { requireAuth } = require("./_auth");
+const share = require("./_share");
 
 // Recompute every phase record's owner(s) from the members' "Default Phases" mapping.
 // (Folded in from the old /api/reassign to stay under Vercel's function limit.)
@@ -66,13 +67,39 @@ const MAP = {
 
 const PRODUCTION_IDX = STAGES.indexOf("Production");
 
+// Login-free mixer review: a valid mix token may toggle a note's "Mixer Reviewed"
+// flag (distinct from the band's Resolved status), but only on the token's tracks.
+const mixIds = (t) => (Array.isArray(t) ? t.map((x) => (typeof x === "string" ? x : x && x.id)).filter(Boolean) : []);
+async function mixReview(req, res, body) {
+  const data = share.verify(body.mixtoken);
+  if (!data || !Array.isArray(data.t)) return res.status(403).json({ error: "invalid link" });
+  if (!body.id) return res.status(400).json({ error: "id required" });
+  const allowed = new Set(mixIds(data.t));
+  const reviewed = !!body.reviewed;
+  try {
+    const rec = await getRecord(T.feedback, body.id);
+    const tr = (rec.fields[F.feedback.track] || [])[0];
+    if (!allowed.has(tr)) return res.status(403).json({ error: "not allowed" });
+    await patch(T.feedback, [{ id: body.id, fields: { [F.feedback.mixReviewed]: reviewed } }], true);
+    return res.status(200).json({ ok: true, reviewed });
+  } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+}
+
 module.exports = async (req, res) => {
-  if (!requireAuth(req, res)) return;
   if (req.method !== "POST") return res.status(405).json({ error: "method not allowed" });
 
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
+  if (body && body.mixtoken) return mixReview(req, res, body); // login-free mixer path
+  if (!requireAuth(req, res)) return;
   const { entity, id, fields, force } = body || {};
+
+  // Mint a signed, login-free mixer review link for the selected tracks.
+  if (entity === "mixshare") {
+    const tracks = Array.isArray(body.tracks) ? body.tracks.map((x) => (typeof x === "string" ? x : x && x.id)).filter(Boolean) : [];
+    if (!tracks.length) return res.status(400).json({ error: "pick at least one song" });
+    return res.status(200).json({ ok: true, token: share.sign({ t: tracks, iat: Date.now() }) });
+  }
 
   // Bulk action: re-derive all phase owners from the member->phase mapping.
   if (entity === "reassign") {

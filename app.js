@@ -1303,6 +1303,34 @@ function openCreateTrack() {
   });
 }
 
+function openMixShare() {
+  const alb = currentAlbum();
+  const tracks = state.data.tracks.filter((t) => !t.onHold && (!alb || t.albumId === alb.id)).sort((a, b) => effOrder(a) - effOrder(b));
+  if (!tracks.length) { toast("No songs to share", true); return; }
+  openModal(`
+    <div class="mhd"><h2>Share with mixer</h2><button class="icon-btn close" id="mClose">&times;</button></div>
+    <div class="mbd">
+      <p style="margin:0;color:var(--muted)">Pick the songs the mixer should see. He gets a login-free link that always shows each song’s current bounce, lets him play it, and lets him check off notes as he addresses them — those show as “reviewed” on your side. The same link keeps working as you upload new versions.</p>
+      <div class="mix-pick" id="mixPick">${tracks.map((t) => `<label class="mix-row"><input type="checkbox" class="mix-chk" value="${t.id}" checked /><span class="mix-t">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span><span class="mix-vn">${esc(currentVersion(t) || "no bounce")}</span></label>`).join("")}</div>
+      <div class="mix-actions"><label class="vx-all"><input type="checkbox" id="mixAll" checked /> Select all</label><span style="flex:1"></span><button class="add-btn" id="mixGo">Create link</button></div>
+      <div id="mixOut"></div>
+    </div>`);
+  $("#mClose").onclick = closeModal;
+  $("#mixAll").onchange = (e) => document.querySelectorAll(".mix-chk").forEach((c) => (c.checked = e.target.checked));
+  $("#mixGo").onclick = async () => {
+    const picks = [...document.querySelectorAll(".mix-chk")].filter((c) => c.checked).map((c) => c.value);
+    if (!picks.length) { toast("Pick at least one song", true); return; }
+    const btn = $("#mixGo"); btn.disabled = true; btn.textContent = "Creating…";
+    let r; try { r = await post("/api/update", { entity: "mixshare", tracks: picks }); } catch {}
+    btn.disabled = false; btn.textContent = "Create link";
+    if (!r || !r.ok || !r.token) { toast("Couldn't create link", true); return; }
+    const url = location.origin + "/mix.html?t=" + encodeURIComponent(r.token);
+    const out = $("#mixOut");
+    out.innerHTML = `<div class="mix-linkbox"><input id="mixLink" readonly value="${esc(url)}" /><button class="add-btn" id="mixCopy">Copy</button></div><div class="mix-hint">Anyone with this link can view, play, and check off notes for the ${picks.length} selected song${picks.length > 1 ? "s" : ""} — no login, and it follows each song’s current version. Make a new link to revoke the old one.</div>`;
+    const inp = $("#mixLink"); inp.focus(); inp.select();
+    $("#mixCopy").onclick = async () => { try { await navigator.clipboard.writeText(url); toast("Link copied"); } catch { inp.select(); try { document.execCommand("copy"); toast("Link copied"); } catch { toast("Copy failed — select and copy manually", true); } } };
+  };
+}
 function openCreateAlbum() {
   const stages = state.data.stages;
   openShell(`
@@ -2117,6 +2145,7 @@ function noteRowHTML(t, fb) {
       <button class="note-time" data-nseek="${fb.timestamp}" data-ntrack="${t.id}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
       <span class="note-when">${fmtWhen(fb.createdTime)}</span>
       <span class="note-author">${esc(fb.author || "")}</span>
+      ${fb.mixReviewed ? `<span class="mix-badge" title="Mixer marked this reviewed">✓ mixer</span>` : ""}
       <div class="fb-actions">${resolved ? `<button class="fb-mini" data-nreopen="${fb.id}">Reopen</button>` : `<button class="fb-mini" data-nresolve="${fb.id}">Resolve</button>`}<button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
     </div>
     <div class="fb-body">
@@ -2153,6 +2182,7 @@ function fbItemHTML(fb, t) {
         <button class="fb-time" data-seek="${fb.timestamp}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
         <span class="fb-when">${fmtWhen(fb.createdTime)}</span>
         <span class="fb-author">${esc(fb.author || "—")}</span>
+        ${fb.mixReviewed ? `<span class="mix-badge" title="Mixer marked this reviewed">✓ mixer</span>` : ""}
         <div class="fb-actions">
           <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>
           <button class="fb-mini" data-fbdel>&times;</button>
@@ -2496,6 +2526,7 @@ function wireChrome() {
 
   $("#newTrack").addEventListener("click", () => { closeMenu(); openCreateTrack(); });
   $("#newAlbum").addEventListener("click", () => { closeMenu(); openCreateAlbum(); });
+  $("#shareMix").addEventListener("click", () => { closeMenu(); openMixShare(); });
   $("#whoami").addEventListener("click", () => { closeMenu(); pickIdentity(); });
   $("#scratchBtn").addEventListener("click", () => {
     closeMenu();

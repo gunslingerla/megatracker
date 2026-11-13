@@ -1,9 +1,60 @@
 const { T, F, STAGES, PHASE_NAMES, listAll } = require("./_airtable");
+const { albumData, tempLink } = require("./_dropbox");
 const { requireAuth } = require("./_auth");
+const share = require("./_share");
+
+// Login-free read for a mixer link. The token grants a set of track ids; this always
+// resolves each track's CURRENT Dropbox bounce (so one link follows the whole process),
+// returns its notes for that version, plus a fresh streaming URL for playback.
+const mixIds = (t) => (Array.isArray(t) ? t.map((x) => (typeof x === "string" ? x : x && x.id)).filter(Boolean) : []);
+async function mixRead(req, res, token) {
+  const data = share.verify(token);
+  if (!data || !Array.isArray(data.t)) return res.status(403).json({ error: "invalid link" });
+  const ids = new Set(mixIds(data.t));
+  try {
+    const [tracksR, albumsR, feedbackR, membersR] = await Promise.all([listAll(T.tracks), listAll(T.albums), listAll(T.feedback), listAll(T.members)]);
+    const first = (v) => (Array.isArray(v) ? v[0] : v);
+    const arr = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
+    const norm = (s) => String(s || "").toLowerCase().replace(/\.[a-z0-9]+$/, "").replace(/^\s*\d+[_\-.\s]+/, "").replace(/_v\d+.*$/i, "").replace(/[^a-z0-9]+/g, "");
+    const memberName = Object.fromEntries(membersR.map((r) => [r.id, r.fields[F.member.nickname] || r.fields[F.member.name] || "?"]));
+    const albumById = Object.fromEntries(albumsR.map((r) => [r.id, r.fields]));
+    const wantTracks = tracksR.filter((r) => ids.has(r.id));
+    const byAlbum = {};
+    wantTracks.forEach((r) => { const aid = first(r.fields[F.track.album]) || "__none"; (byAlbum[aid] = byAlbum[aid] || []).push(r); });
+    const bounceByTrack = {}; // trackId -> { name, url }
+    for (const aid of Object.keys(byAlbum)) {
+      const af = albumById[aid]; if (!af) continue;
+      const folder = af[F.album.dropboxFolder] || ""; const prefix = af[F.album.trackPrefix] || "";
+      if (!folder) continue;
+      try {
+        const { tok, items } = await albumData(folder, prefix);
+        const idx = {}; items.forEach((it) => { idx[norm(it.title)] = it; });
+        for (const r of byAlbum[aid]) {
+          const it = idx[norm(r.fields[F.track.title] || "")];
+          if (it && it.file) { const url = await tempLink(it.file.path_lower, tok); bounceByTrack[r.id] = { name: it.file.name, url }; }
+        }
+      } catch (_) {}
+    }
+    const songs = mixIds(data.t).map((id) => {
+      const r = tracksR.find((x) => x.id === id); if (!r) return null;
+      const b = bounceByTrack[id] || null;
+      const ver = b ? b.name : "";
+      const notes = feedbackR
+        .filter((fr) => first(fr.fields[F.feedback.track]) === id && (fr.fields[F.feedback.version] || "") === ver)
+        .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || "" }))
+        .sort((a, b2) => a.timestamp - b2.timestamp);
+      return { id, title: r.fields[F.track.title] || "Untitled", version: ver, url: b ? b.url : null, notes };
+    }).filter(Boolean);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json({ mix: true, songs });
+  } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+}
 
 // Returns the whole board as clean JSON. All Airtable field IDs are resolved here so the
 // frontend deals only with friendly names.
 module.exports = async (req, res) => {
+  const mixtoken = req.query && req.query.mixtoken;
+  if (mixtoken) return mixRead(req, res, mixtoken); // login-free mixer link
   if (!requireAuth(req, res)) return;
   try {
     const [albumsR, tracksR, phasesR, membersR, feedbackR] = await Promise.all([
@@ -57,6 +108,7 @@ module.exports = async (req, res) => {
         version: f[F.feedback.version] || "",
         authorId: first(f[F.feedback.author]) || null,
         author: (arr(f[F.feedback.author]).map((id) => memberName[id] || "?"))[0] || "",
+        mixReviewed: !!f[F.feedback.mixReviewed],
         createdTime: r.createdTime,
       };
     });

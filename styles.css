@@ -904,3 +904,16 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .vx-resolve { flex: none; }
 .vx-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .vx-all { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+
+/* Share-with-mixer picker */
+.mix-pick { display:flex; flex-direction:column; gap:2px; max-height:46vh; overflow-y:auto; border:1px solid var(--stroke); border-radius:10px; padding:4px; }
+.mix-row { display:flex; align-items:center; gap:10px; padding:7px 8px; border-radius:8px; cursor:pointer; font-size:13.5px; }
+.mix-row:hover { background:var(--panel-2); }
+.mix-row .mix-t { flex:1; min-width:0; }
+.mix-row .mix-vn { color:var(--muted); font-size:11px; flex:none; font-variant-numeric:tabular-nums; }
+.mix-actions { display:flex; align-items:center; gap:10px; margin-top:4px; }
+.mix-linkbox { display:flex; gap:8px; margin-top:12px; }
+.mix-linkbox input { flex:1; background:var(--panel); border:1px solid var(--stroke-strong); border-radius:8px; color:var(--text); padding:8px 10px; font-size:12px; }
+.mix-hint { font-size:11px; color:var(--muted); margin-top:8px; line-height:1.4; }
+
+.mix-badge { font-size:10px; font-weight:800; color:#0c0b10; background:var(--good); border-radius:999px; padding:1px 7px; white-space:nowrap; }

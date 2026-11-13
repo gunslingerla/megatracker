@@ -65,6 +65,7 @@ const F = {
     track: "fldNAQ2fPgNBobOQ3",
     author: "fldjtnnsl8PhwxePj",
     version: "fldciN7WbSCDDT5l1",
+    mixReviewed: "fldv4et1aJk8Lv2LR", // "Mixer Reviewed" checkbox, set via login-free mix links
   },
   phase: {
     name: "fld1LCOJADedeOh8e",
