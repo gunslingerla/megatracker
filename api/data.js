@@ -28,9 +28,10 @@ async function mixRead(req, res, token) {
       if (!folder) continue;
       try {
         const { tok, items } = await albumData(folder, prefix);
-        const idx = {}; items.forEach((it) => { idx[norm(it.title)] = it; });
+        const idx = {}, byOrder = {}; items.forEach((it) => { idx[norm(it.title)] = it; if (it.order != null) byOrder[it.order] = it; });
         for (const r of byAlbum[aid]) {
-          const it = idx[norm(r.fields[F.track.title] || "")];
+          const ord = r.fields[F.track.order];
+          const it = idx[norm(r.fields[F.track.title] || "")] || (ord != null ? byOrder[ord] : null);
           if (it && it.file) { const url = await tempLink(it.file.path_lower, tok); bounceByTrack[r.id] = { name: it.file.name, url }; }
         }
       } catch (_) {}

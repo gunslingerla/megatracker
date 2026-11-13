@@ -1378,10 +1378,12 @@ async function fetchPlaylist() {
       if (!r.ok) continue;
       const j = await r.json();
       configured = !!j.configured || configured;
-      const idx = {};
-      (j.items || []).forEach((it) => { idx[normTitle(it.title)] = it; });
+      const idx = {}, byOrder = {};
+      (j.items || []).forEach((it) => { idx[normTitle(it.title)] = it; if (it.order != null) byOrder[it.order] = it; });
       state.data.tracks.filter((t) => t.albumId === alb.id).forEach((t) => {
-        const it = idx[normTitle(t.title)];
+        // Match by title first; fall back to the track number so a mislabeled Dropbox
+        // folder name (e.g. "Bloodlines" vs "Opposing Bloodlines") still links up.
+        const it = idx[normTitle(t.title)] || (t.order != null ? byOrder[t.order] : null);
         if (it) { order[t.id] = it.order; if (it.url) byTrack[t.id] = it; } // order from Dropbox even if no bounce yet
       });
     } catch {}
