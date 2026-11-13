@@ -1311,13 +1311,14 @@ function openShareManager() {
   $("#mClose").onclick = closeModal;
   renderShareList();
 }
+function shareUrl(sh) { return sh.slug ? location.origin + "/s/" + sh.slug : location.origin + "/mix.html?t=" + encodeURIComponent(sh.token); }
 function renderShareList() {
   const body = document.getElementById("shareBody"); if (!body) return;
   const shares = (state.data.shares || []);
   const rows = shares.length ? shares.map((sh) => {
-    const url = location.origin + "/mix.html?t=" + encodeURIComponent(sh.token);
+    const url = shareUrl(sh);
     return `<div class="sl-row" data-sid="${sh.id}">
-      <div class="sl-main"><span class="sl-title">${esc(sh.title)}</span><span class="sl-meta">${sh.tracks.length} song${sh.tracks.length === 1 ? "" : "s"}</span></div>
+      <div class="sl-main"><span class="sl-title">${esc(sh.title)}</span><span class="sl-meta">${sh.tracks.length} song${sh.tracks.length === 1 ? "" : "s"}${sh.slug ? ` · /s/${esc(sh.slug)}` : ""}</span></div>
       <div class="sl-actions">
         <button class="fb-mini" data-slcopy="${esc(url)}">Copy link</button>
         <button class="fb-mini" data-sledit="${sh.id}">Edit</button>
@@ -1344,6 +1345,7 @@ function shareEditor(sh) {
   const tracks = state.data.tracks.filter((t) => !t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
   body.innerHTML = `
     <div class="field"><label>Link title (also tags their replies)</label><input id="slTitle" type="text" placeholder="e.g. Dalton — mix round 1" value="${esc(sh ? sh.title : "")}" /></div>
+    <div class="field"><label>Custom link (optional)</label><div class="sl-slug"><span>/s/</span><input id="slSlug" type="text" placeholder="leave blank for a random one" value="${esc(sh && sh.slug ? sh.slug : "")}" /></div></div>
     <div class="mix-pick" id="mixPick">${tracks.map((t) => `<label class="mix-row"><input type="checkbox" class="mix-chk" value="${t.id}"${picked.has(t.id) ? " checked" : ""} /><span class="mix-t">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span><span class="mix-vn">${esc(currentVersion(t) || "no bounce")}</span></label>`).join("")}</div>
     <div class="mix-actions"><button class="fb-mini" id="slBack">&larr; Back</button><span style="flex:1"></span><button class="add-btn" id="slSave">${sh ? "Save changes" : "Create link"}</button></div>
     <div id="slOut"></div>`;
@@ -1352,12 +1354,14 @@ function shareEditor(sh) {
     const title = document.getElementById("slTitle").value.trim() || "Untitled link";
     const picks = [...document.querySelectorAll(".mix-chk")].filter((c) => c.checked).map((c) => c.value);
     if (!picks.length) { toast("Pick at least one song", true); return; }
+    const slug = (document.getElementById("slSlug").value || "").trim();
     const btn = document.getElementById("slSave"); btn.disabled = true; btn.textContent = "Saving…";
-    const r = await post("/api/update", { entity: sh ? "shareUpdate" : "shareCreate", id: sh ? sh.id : undefined, title, tracks: picks });
+    const r = await post("/api/update", { entity: sh ? "shareUpdate" : "shareCreate", id: sh ? sh.id : undefined, title, tracks: picks, slug });
     btn.disabled = false; btn.textContent = sh ? "Save changes" : "Create link";
-    if (!r || !r.ok || !r.token) { toast("Couldn't save link", true); return; }
+    if (r && r.error) { toast(r.error, true); return; }
+    if (!r || !r.ok) { toast("Couldn't save link", true); return; }
     await refresh(false);
-    const url = location.origin + "/mix.html?t=" + encodeURIComponent(r.token);
+    const url = location.origin + "/s/" + r.slug;
     const out = document.getElementById("slOut");
     out.innerHTML = `<div class="mix-linkbox"><input id="slLink" readonly value="${esc(url)}" /><button class="add-btn" id="slCopy">Copy</button></div><div class="mix-hint">${sh ? "Saved." : "Link created."} Share it with anyone — no login. Edit this link anytime to change its songs; the URL stays the same.</div>`;
     const inp = document.getElementById("slLink"); inp.focus(); inp.select();

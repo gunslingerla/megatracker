@@ -82,6 +82,7 @@ const F = {
   share: {
     title: "fldIsDBz1BfZVrmZv",
     tracks: "fldVLWGWTsLAptuJb",
+    slug: "fldBbX1prApbmqC4j",
   },
   member: {
     name: "fldLdKtbqycPlKp2k",

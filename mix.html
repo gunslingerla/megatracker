@@ -62,12 +62,15 @@
   function mmss(s){ s=Math.max(0,Math.floor(s||0)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
   var params = new URLSearchParams(location.search);
   var token = params.get("t") || "";
+  var slug = params.get("s") || "";
+  var authQ = slug ? ("mixslug=" + encodeURIComponent(slug)) : ("mixtoken=" + encodeURIComponent(token));
+  function authBody(extra) { var b = slug ? { mixslug: slug } : { mixtoken: token }; for (var k in extra) b[k] = extra[k]; return b; }
   var app = document.getElementById("app");
   var audio = document.getElementById("audio");
   var playerBar = document.getElementById("player");
   var nowEl = document.getElementById("now");
   var curId = null, byId = {};
-  if (!token) { app.innerHTML = '<div class="state">This link is missing its code. Ask the band for a fresh link.</div>'; return; }
+  if (!token && !slug) { app.innerHTML = '<div class="state">This link is missing its code. Ask the band for a fresh link.</div>'; return; }
 
   function loadSong(s, seek, play) {
     if (!s.url) return;
@@ -115,7 +118,7 @@
         var row = cb.closest(".n");
         row.classList.toggle("done", cb.checked);
         cb.disabled = true;
-        fetch("/api/update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ mixtoken: token, id: row.dataset.id, reviewed: cb.checked }) })
+        fetch("/api/update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(authBody({ id: row.dataset.id, reviewed: cb.checked })) })
           .then(function(r){ return r.json(); })
           .then(function(j){ cb.disabled=false; if(!j||!j.ok){ cb.checked=!cb.checked; row.classList.toggle("done", cb.checked); } else { counts(); } })
           .catch(function(){ cb.disabled=false; cb.checked=!cb.checked; row.classList.toggle("done", cb.checked); });
@@ -128,7 +131,7 @@
         var text = inp ? inp.value.trim() : "";
         if (!text) return;
         btn.disabled = true;
-        fetch("/api/update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ mixtoken: token, id: id, text: text }) })
+        fetch("/api/update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(authBody({ id: id, text: text })) })
           .then(function(r){ return r.json(); })
           .then(function(j){ btn.disabled=false; if(j&&j.ok){ load(); } })
           .catch(function(){ btn.disabled=false; });
@@ -141,7 +144,7 @@
   function counts(){ app.querySelectorAll(".song").forEach(function(sg){ var open=sg.querySelectorAll(".n:not(.done)").length; var c=sg.querySelector(".cnt"); if(c) c.textContent=open+" to review"; }); }
 
   function load() {
-    fetch("/api/data?mixtoken=" + encodeURIComponent(token))
+    fetch("/api/data?" + authQ)
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (j) { render(j.songs || []); })
       .catch(function () { app.innerHTML = '<div class="state">This link is invalid or expired. Ask the band for a fresh one.</div>'; });

@@ -79,17 +79,31 @@ async function shareFromToken(data) {
   }
   return { ids: new Set(mixIds(data && data.t)), title: "Guest" };
 }
+function slugify(s) { return String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40); }
+function randSlug() { return Math.random().toString(36).slice(2, 9); }
+async function resolveShareReq(body) {
+  if (body.mixslug) {
+    const sharesR = await listAll(T.shares);
+    const rec = sharesR.find((r) => (r.fields[F.share.slug] || "") === body.mixslug);
+    if (!rec) return null;
+    let t = []; try { t = JSON.parse(rec.fields[F.share.tracks] || "[]"); } catch {}
+    return { ids: new Set(Array.isArray(t) ? t : []), title: rec.fields[F.share.title] || "Guest" };
+  }
+  const data = share.verify(body.mixtoken);
+  if (!data) return null;
+  return shareFromToken(data);
+}
 function threadAppend(rec, msg) {
   let t = []; try { t = JSON.parse(rec.fields[F.feedback.thread] || "[]"); if (!Array.isArray(t)) t = []; } catch {}
   t.push(msg); return JSON.stringify(t.slice(-200));
 }
 // Login-free: mixer toggles a note's "Mixer Reviewed" flag.
 async function mixReview(req, res, body) {
-  const data = share.verify(body.mixtoken);
-  if (!data) return res.status(403).json({ error: "invalid link" });
   if (!body.id) return res.status(400).json({ error: "id required" });
   try {
-    const { ids } = await shareFromToken(data);
+    const resolved = await resolveShareReq(body);
+    if (!resolved) return res.status(403).json({ error: "invalid link" });
+    const { ids } = resolved;
     const rec = await getRecord(T.feedback, body.id);
     const tr = (rec.fields[F.feedback.track] || [])[0];
     if (!ids.has(tr)) return res.status(403).json({ error: "not allowed" });
@@ -99,12 +113,12 @@ async function mixReview(req, res, body) {
 }
 // Login-free: sharee posts a reply/question on a note, tagged with the link title.
 async function mixReply(req, res, body) {
-  const data = share.verify(body.mixtoken);
-  if (!data) return res.status(403).json({ error: "invalid link" });
   const text = String(body.text || "").trim();
   if (!body.id || !text) return res.status(400).json({ error: "id and text required" });
   try {
-    const { ids, title } = await shareFromToken(data);
+    const resolved = await resolveShareReq(body);
+    if (!resolved) return res.status(403).json({ error: "invalid link" });
+    const { ids, title } = resolved;
     const rec = await getRecord(T.feedback, body.id);
     const tr = (rec.fields[F.feedback.track] || [])[0];
     if (!ids.has(tr)) return res.status(403).json({ error: "not allowed" });
@@ -119,7 +133,7 @@ module.exports = async (req, res) => {
 
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
-  if (body && body.mixtoken) return (body.text != null ? mixReply : mixReview)(req, res, body); // login-free path
+  if (body && (body.mixtoken || body.mixslug)) return (body.text != null ? mixReply : mixReview)(req, res, body); // login-free path
   if (!requireAuth(req, res)) return;
   const { entity, id, fields, force } = body || {};
 
@@ -130,13 +144,20 @@ module.exports = async (req, res) => {
     if (!tracks.length) return res.status(400).json({ error: "pick at least one song" });
     try {
       let sid = body.id;
-      if (entity === "shareUpdate" && sid) {
-        await patch(T.shares, [{ id: sid, fields: { [F.share.title]: title, [F.share.tracks]: JSON.stringify(tracks) } }], true);
-      } else {
-        const rec = await create(T.shares, [{ fields: { [F.share.title]: title, [F.share.tracks]: JSON.stringify(tracks) } }]);
-        sid = rec[0].id;
+      const sharesR = await listAll(T.shares);
+      const taken = new Set(sharesR.filter((r) => r.id !== sid).map((r) => r.fields[F.share.slug]).filter(Boolean));
+      let slug = slugify(body.slug);
+      const custom = !!slug;
+      if (custom && taken.has(slug)) return res.status(409).json({ error: "That custom link is already taken — pick another." });
+      if (!custom) {
+        const existing = sid ? (sharesR.find((r) => r.id === sid) || {}).fields : null;
+        slug = (existing && existing[F.share.slug]) || randSlug();
+        while (taken.has(slug)) slug = randSlug();
       }
-      return res.status(200).json({ ok: true, id: sid, token: share.sign({ s: sid }) });
+      const fields = { [F.share.title]: title, [F.share.tracks]: JSON.stringify(tracks), [F.share.slug]: slug };
+      if (entity === "shareUpdate" && sid) { await patch(T.shares, [{ id: sid, fields }], true); }
+      else { const rec = await create(T.shares, [{ fields }]); sid = rec[0].id; }
+      return res.status(200).json({ ok: true, id: sid, slug, token: share.sign({ s: sid }) });
     } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
   }
   if (entity === "shareDelete") {

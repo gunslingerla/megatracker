@@ -7,18 +7,26 @@ const share = require("./_share");
 // resolves each track's CURRENT Dropbox bounce (so one link follows the whole process),
 // returns its notes for that version, plus a fresh streaming URL for playback.
 const mixIds = (t) => (Array.isArray(t) ? t.map((x) => (typeof x === "string" ? x : x && x.id)).filter(Boolean) : []);
-async function mixRead(req, res, token) {
-  const data = share.verify(token);
-  if (!data) return res.status(403).json({ error: "invalid link" });
-  let ids, shareTitle = "Guest";
-  try {
-    if (data.s) {
-      const rec = await getRecord(T.shares, data.s);
-      let t = []; try { t = JSON.parse(rec.fields[F.share.tracks] || "[]"); } catch {}
-      ids = new Set(Array.isArray(t) ? t : []); shareTitle = rec.fields[F.share.title] || "Guest";
-    } else if (Array.isArray(data.t)) { ids = new Set(mixIds(data.t)); }
-    else return res.status(403).json({ error: "invalid link" });
-  } catch { return res.status(403).json({ error: "invalid link" }); }
+async function mixResolve(q) {
+  // Resolve a mix request (by slug or signed token) to its track id list + title.
+  if (q.mixslug) {
+    const sharesR = await listAll(T.shares);
+    const rec = sharesR.find((r) => (r.fields[F.share.slug] || "") === q.mixslug);
+    if (!rec) return null;
+    let t = []; try { t = JSON.parse(rec.fields[F.share.tracks] || "[]"); } catch {}
+    return { idList: Array.isArray(t) ? t : [], title: rec.fields[F.share.title] || "Guest" };
+  }
+  const data = share.verify(q.mixtoken);
+  if (!data) return null;
+  if (data.s) { const rec = await getRecord(T.shares, data.s); let t = []; try { t = JSON.parse(rec.fields[F.share.tracks] || "[]"); } catch {} return { idList: Array.isArray(t) ? t : [], title: rec.fields[F.share.title] || "Guest" }; }
+  if (Array.isArray(data.t)) return { idList: mixIds(data.t), title: "Guest" };
+  return null;
+}
+async function mixRead(req, res) {
+  let resolved; try { resolved = await mixResolve(req.query || {}); } catch { resolved = null; }
+  if (!resolved) return res.status(403).json({ error: "invalid link" });
+  const idList = resolved.idList, shareTitle = resolved.title;
+  const ids = new Set(idList);
   try {
     const [tracksR, albumsR, feedbackR, membersR] = await Promise.all([listAll(T.tracks), listAll(T.albums), listAll(T.feedback), listAll(T.members)]);
     const first = (v) => (Array.isArray(v) ? v[0] : v);
@@ -44,7 +52,7 @@ async function mixRead(req, res, token) {
         }
       } catch (_) {}
     }
-    const songs = mixIds(data.t).map((id) => {
+    const songs = idList.map((id) => {
       const r = tracksR.find((x) => x.id === id); if (!r) return null;
       const b = bounceByTrack[id] || null;
       const ver = b ? b.name : "";
@@ -62,8 +70,7 @@ async function mixRead(req, res, token) {
 // Returns the whole board as clean JSON. All Airtable field IDs are resolved here so the
 // frontend deals only with friendly names.
 module.exports = async (req, res) => {
-  const mixtoken = req.query && req.query.mixtoken;
-  if (mixtoken) return mixRead(req, res, mixtoken); // login-free mixer link
+  if (req.query && (req.query.mixtoken || req.query.mixslug)) return mixRead(req, res); // login-free share link
   if (!requireAuth(req, res)) return;
   try {
     const [albumsR, tracksR, phasesR, membersR, feedbackR, sharesR] = await Promise.all([
@@ -191,7 +198,7 @@ module.exports = async (req, res) => {
     const feedUrl = `${proto}://${host}/api/calendar.ics${feedKey ? `?key=${encodeURIComponent(feedKey)}` : ""}`;
 
     res.setHeader("Cache-Control", "no-store");
-    const shares = sharesR.map((r) => { let t = []; try { t = JSON.parse(r.fields[F.share.tracks] || "[]"); } catch {} return { id: r.id, title: r.fields[F.share.title] || "Untitled link", tracks: Array.isArray(t) ? t : [], token: share.sign({ s: r.id }), createdTime: r.createdTime }; }).sort((a, b) => (a.createdTime < b.createdTime ? 1 : -1));
+    const shares = sharesR.map((r) => { let t = []; try { t = JSON.parse(r.fields[F.share.tracks] || "[]"); } catch {} return { id: r.id, title: r.fields[F.share.title] || "Untitled link", tracks: Array.isArray(t) ? t : [], slug: r.fields[F.share.slug] || "", token: share.sign({ s: r.id }), createdTime: r.createdTime }; }).sort((a, b) => (a.createdTime < b.createdTime ? 1 : -1));
     res.status(200).json({ albums, tracks, phases, members, feedback, shares, stages: STAGES, phaseNames: PHASE_NAMES, feedUrl, feedSecured: !!feedKey });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
