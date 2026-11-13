@@ -67,7 +67,7 @@
 <body>
 <div class="wrap">
   <div class="head"><h1>The Megas</h1><span class="sub">Mix notes</span></div>
-  <div class="intro">Click a timecode to play through the note, pre-roll <input type="number" id="preroll" min="0" max="30" step="1" value="5" aria-label="Pre-roll seconds" /> seconds.</div>
+  <div class="intro">Click a timecode to play through the note, pre-roll <input type="number" id="preroll" min="0" max="30" step="1" value="3" aria-label="Pre-roll seconds" /> seconds.</div>
   <div id="app"><div class="state">Loading notes…</div></div>
   <div class="foot">The Megas — Album Tracker</div>
 </div>
@@ -92,14 +92,16 @@
   var playerBar = document.getElementById("player");
   var nowEl = document.getElementById("now");
   var curId = null, byId = {}, shareTitle = "";
-  // Pre-roll: how many seconds before a note's timecode playback starts (same default, limits and
-  // storage key as the band's notes bar, so a guest who is also in the app keeps one setting).
-  var preRoll = 5;
-  try { var pr0 = localStorage.getItem("megasPreroll"); var pv = Number(pr0); if (pr0 !== null && pr0 !== "" && isFinite(pv) && pv >= 0) preRoll = Math.min(30, pv); } catch (e) {}
+  // Pre-roll: how many seconds before a note's timecode playback starts. Remembered separately for
+  // each share link (keyed by its slug/token) in this browser; defaults to 3s, range 0-30.
+  var PREROLL_DEFAULT = 3;
+  var preKey = "megasPreroll:" + (slug || token);
+  var preRoll = PREROLL_DEFAULT;
+  try { var pr0 = localStorage.getItem(preKey); var pv = Number(pr0); if (pr0 !== null && pr0 !== "" && isFinite(pv) && pv >= 0) preRoll = Math.min(30, pv); } catch (e) {}
   var preEl = document.getElementById("preroll"); preEl.value = preRoll;
   preEl.addEventListener("change", function () {
-    var v = Number(preEl.value); preRoll = isFinite(v) && v >= 0 ? Math.min(30, v) : 5; preEl.value = preRoll;
-    try { localStorage.setItem("megasPreroll", preRoll); } catch (e) {}
+    var v = Number(preEl.value); preRoll = isFinite(v) && v >= 0 ? Math.min(30, v) : PREROLL_DEFAULT; preEl.value = preRoll;
+    try { localStorage.setItem(preKey, preRoll); } catch (e) {}
   });
   if (!token && !slug) { app.innerHTML = '<div class="state">This link is missing its code. Ask the band for a fresh link.</div>'; return; }
 
