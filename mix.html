@@ -39,6 +39,13 @@
   .threp { display:flex; gap:6px; margin-top:6px; }
   .thin { flex:1; background:var(--panel); border:1px solid var(--stroke-strong); border-radius:7px; color:var(--text); padding:5px 8px; font-size:12.5px; }
   .thsend { flex:none; background:var(--panel-2); color:var(--text); border:1px solid var(--stroke-strong); border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; }
+  .addnote { display:flex; flex-wrap:wrap; gap:6px; padding:12px 0 4px; border-top:1px solid var(--stroke); }
+  .an-time { flex:none; width:62px; text-align:center; font-variant-numeric:tabular-nums; }
+  .an-text { flex:1; min-width:140px; }
+  .an-time, .an-text { background:var(--panel); border:1px solid var(--stroke-strong); border-radius:7px; color:var(--text); padding:6px 9px; font-size:13px; }
+  .an-time.bad { border-color:#f0654f; }
+  .an-btn { flex:none; background:linear-gradient(140deg,var(--accent),var(--accent-2)); color:#1a0713; border:none; border-radius:7px; padding:6px 12px; font-size:12.5px; font-weight:700; cursor:pointer; }
+  .an-btn[disabled] { opacity:0.5; cursor:default; }
   .empty { color:var(--muted); font-size:13px; padding:10px 0; }
   .state { padding:40px 0; text-align:center; color:var(--muted); }
   .foot { color:var(--muted); font-size:11px; margin-top:24px; text-align:center; }
@@ -60,6 +67,12 @@
 (function () {
   function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return c==="&"?"&amp;":c==="<"?"&lt;":"&gt;";}); }
   function mmss(s){ s=Math.max(0,Math.floor(s||0)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+  // "1:23", "83", or "1:02:03" -> seconds; null if it isn't a time.
+  function parseTime(v){
+    v = String(v||"").trim(); if (!v) return 0;
+    var p = v.split(":"); if (p.length > 3 || p.some(function(x){ return !/^\d+(\.\d+)?$/.test(x); })) return null;
+    return p.reduce(function(a,x){ return a*60 + Number(x); }, 0);
+  }
   var params = new URLSearchParams(location.search);
   var token = params.get("t") || "";
   var slug = params.get("s") || "";
@@ -100,7 +113,7 @@
           + '<input type="checkbox" '+(n.reviewed?"checked":"")+' />'
           + '<span class="body"><span class="meta"><button class="time" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>'+(n.author?'<span>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+'</span>'
           + '<span class="cmt">'+esc(n.comment)+'</span></span></div>'
-          + '<div class="thread"><div class="thmsgs">'+msgs+'</div><div class="threp"><input class="thin" data-rid="'+n.id+'" placeholder="Reply or ask a question…" /><button class="thsend" data-sid="'+n.id+'">Send</button></div></div>'
+          + '<div class="thread"><div class="thmsgs">'+msgs+'</div><div class="threp"><input class="thin" data-rid="'+n.id+'" data-dk="r:'+n.id+'" placeholder="Reply or ask a question…" /><button class="thsend" data-sid="'+n.id+'">Send</button></div></div>'
           + '</div>';
       }).join("") : '<div class="empty">No notes on this version.</div>';
       return '<div class="song"><div class="song-h">'
@@ -108,8 +121,38 @@
         + '<span class="t">'+esc(s.title)+'</span>'
         + (s.version?'<span class="v">'+esc(s.version)+'</span>':'')
         + '<span class="cnt">'+open+' to review</span>'
-        + '</div><div class="nlist">'+rows+'</div></div>';
+        + '</div><div class="nlist">'+rows
+        + '<div class="addnote"><input class="an-time" data-dk="m:'+s.id+'" data-song="'+s.id+'" value="0:00" aria-label="Time in song" inputmode="numeric" />'
+        + '<input class="an-text" data-dk="t:'+s.id+'" data-song="'+s.id+'" placeholder="Add your own note…" />'
+        + '<button class="an-btn" data-song="'+s.id+'">Add note</button></div>'
+        + '</div></div>';
     }).join("");
+
+    // "Add your own note": the time box follows the player when this song is loaded, unless edited.
+    app.querySelectorAll(".an-time").forEach(function (t) { t.addEventListener("input", function () { t.dataset.edited = "1"; t.classList.remove("bad"); }); });
+    app.querySelectorAll(".an-text").forEach(function (inp) {
+      inp.addEventListener("focus", function () {
+        var t = app.querySelector('.an-time[data-song="'+inp.dataset.song+'"]');
+        if (t && !t.dataset.edited && curId === inp.dataset.song) t.value = mmss(audio.currentTime);
+      });
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var b = app.querySelector('.an-btn[data-song="'+inp.dataset.song+'"]'); if (b) b.click(); } });
+    });
+    app.querySelectorAll(".an-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.dataset.song;
+        var t = app.querySelector('.an-time[data-song="'+id+'"]');
+        var inp = app.querySelector('.an-text[data-song="'+id+'"]');
+        var text = inp ? inp.value.trim() : "";
+        if (!text) { if (inp) inp.focus(); return; }
+        var secs = parseTime(t ? t.value : "0:00");
+        if (secs == null) { if (t) { t.classList.add("bad"); t.focus(); } return; }
+        btn.disabled = true;
+        fetch("/api/update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(authBody({ newNote: true, trackId: id, timestamp: secs, text: text, version: (byId[id] && byId[id].version) || "" })) })
+          .then(function(r){ return r.json(); })
+          .then(function(j){ btn.disabled = false; if (j && j.ok) { inp.value = ""; if (t) { t.value = "0:00"; delete t.dataset.edited; } load(); } else { btn.textContent = "Try again"; setTimeout(function(){ btn.textContent = "Add note"; }, 2500); } })
+          .catch(function(){ btn.disabled = false; btn.textContent = "Try again"; setTimeout(function(){ btn.textContent = "Add note"; }, 2500); });
+      });
+    });
 
     app.querySelectorAll("[data-play]").forEach(function(b){ b.addEventListener("click", function(){ loadSong(byId[b.dataset.play], null, true); }); });
     app.querySelectorAll(".time").forEach(function(b){ b.addEventListener("click", function(e){ e.preventDefault(); loadSong(byId[b.dataset.song], Number(b.dataset.t)||0, true); }); });
@@ -149,16 +192,19 @@
   function refresh(songs) {
     var sig = JSON.stringify(songs.map(function (s) { return { id: s.id, v: s.version, n: s.notes }; }));
     if (sig === lastSig) { songs.forEach(function (s) { byId[s.id] = s; }); return; } // same content; just keep fresh stream URLs
-    var drafts = {}, focusId = null, selStart = null;
-    app.querySelectorAll(".thin").forEach(function (i) { if (i.value) drafts[i.dataset.rid] = i.value; });
-    if (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("thin")) {
-      focusId = document.activeElement.dataset.rid; selStart = document.activeElement.selectionStart;
-    }
+    // Every typed-in box carries a data-dk key (reply, new-note text, new-note time).
+    var drafts = {}, focusKey = null, selStart = null;
+    app.querySelectorAll("[data-dk]").forEach(function (i) { if (i.value) drafts[i.dataset.dk] = i.value; });
+    var ae = document.activeElement;
+    if (ae && ae.dataset && ae.dataset.dk) { focusKey = ae.dataset.dk; selStart = ae.selectionStart; }
     lastSig = sig;
     render(songs);
-    app.querySelectorAll(".thin").forEach(function (i) { if (drafts[i.dataset.rid] != null) i.value = drafts[i.dataset.rid]; });
-    if (focusId) {
-      var f = app.querySelector('.thin[data-rid="' + focusId + '"]');
+    app.querySelectorAll("[data-dk]").forEach(function (i) {
+      var k = i.dataset.dk;
+      if (drafts[k] != null) { i.value = drafts[k]; if (k.charAt(0) === "m" && drafts[k] !== "0:00") i.dataset.edited = "1"; }
+    });
+    if (focusKey) {
+      var f = app.querySelector('[data-dk="' + focusKey + '"]');
       if (f) { f.focus(); try { f.setSelectionRange(selStart, selStart); } catch (e) {} }
     }
   }

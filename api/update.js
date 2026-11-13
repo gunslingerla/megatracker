@@ -128,12 +128,42 @@ async function mixReply(req, res, body) {
   } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
 }
 
+// Login-free: sharee adds a brand-new note on one of the link's songs. Still scoped to the
+// share's tracks. There's no member to link as author, so the note is authored as a guest:
+// the link title goes in the note's Name ("Guest: <title> @ m:ss"), which data.js reads back
+// as the displayed author. Pinned to the bounce version the guest was looking at.
+async function mixAddNote(req, res, body) {
+  const text = String(body.text || "").trim();
+  const trackId = String(body.trackId || "");
+  if (!trackId || !text) return res.status(400).json({ error: "trackId and text required" });
+  try {
+    const resolved = await resolveShareReq(body);
+    if (!resolved) return res.status(403).json({ error: "invalid link" });
+    const { ids, title } = resolved;
+    if (!ids.has(trackId)) return res.status(403).json({ error: "not allowed" });
+    const ts = Math.min(Math.max(Math.round(Number(body.timestamp)) || 0, 0), 86400);
+    const clock = `${Math.floor(ts / 60)}:${String(ts % 60).padStart(2, "0")}`;
+    const label = String(title || "").replace(/\s+/g, " ").trim().slice(0, 60) || "Guest";
+    const fields = {
+      [F.feedback.name]: `Guest: ${label} @ ${clock}`,
+      [F.feedback.track]: [trackId],
+      [F.feedback.timestamp]: ts,
+      [F.feedback.comment]: text.slice(0, 2000),
+      [F.feedback.status]: "Open",
+    };
+    const version = String(body.version || "").slice(0, 200);
+    if (version) fields[F.feedback.version] = version;
+    const rec = await create(T.feedback, [{ fields }]);
+    return res.status(200).json({ ok: true, id: rec[0].id });
+  } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+}
+
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "method not allowed" });
 
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
-  if (body && (body.mixtoken || body.mixslug)) return (body.text != null ? mixReply : mixReview)(req, res, body); // login-free path
+  if (body && (body.mixtoken || body.mixslug)) return (body.newNote ? mixAddNote : body.text != null ? mixReply : mixReview)(req, res, body); // login-free path
   if (!requireAuth(req, res)) return;
   const { entity, id, fields, force } = body || {};
 

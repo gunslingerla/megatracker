@@ -58,7 +58,7 @@ links with outside collaborators (mixers, etc.).
   **login-free `mixRead`** branch (`?mixtoken=` or `?mixslug=`) for share pages.
 - `api/update.js` — all writes (auth required) via `{entity, id, fields}`; plus bulk
   actions (`reassign`, `planphases`), share CRUD (`shareCreate/shareUpdate/shareDelete`),
-  `noteReply`, and the **login-free** `mixReview`/`mixReply` branch (body has
+  `noteReply`, and the **login-free** `mixReview`/`mixReply`/`mixAddNote` branch (body has
   `mixtoken`/`mixslug`).
 - `api/create.js` — creates tracks/albums/members/phases/feedback (+ auto-creates the
   production phases for a new track).
@@ -108,9 +108,14 @@ links with outside collaborators (mixers, etc.).
   `GET /api/data?mixslug=…`, checks off a note's `Mixer Reviewed`, and posts replies —
   all authorized by the slug/token resolving to a Shares record. `vercel.json` also has a
   `/s/:slug` rewrite, but links use `/mix?s=` so nothing depends on it.
-- **Auth bypass is deliberate and scoped:** the `mixRead`/`mixReview`/`mixReply` paths skip
-  `requireAuth` ONLY when a valid share slug/token is present, and only ever touch notes on
-  that share's tracks. Don't widen this.
+- **Guest notes:** a sharee can also add brand-new notes (`mixAddNote` in `update.js`,
+  body has `newNote: true, trackId, timestamp, text, version`). There's no member to link as
+  author, so the note's `Name` field is set to `Guest: <share title> @ m:ss` and `data.js`
+  (`guestOf`) reads that back as the author (the band sees "<title> (guest)"). The `version`
+  is whatever bounce the guest's page was showing.
+- **Auth bypass is deliberate and scoped:** the `mixRead`/`mixReview`/`mixReply`/`mixAddNote`
+  paths skip `requireAuth` ONLY when a valid share slug/token is present, and only ever touch
+  (or create notes on) that share's tracks. Don't widen this.
 
 ## Conventions
 

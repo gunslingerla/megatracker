@@ -33,8 +33,10 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   bar with version history per track.
 - **Share links** — create a titled, login-free link for a chosen set of songs
   (`/mix?s=<slug>`). The page always shows each song's *current* bounce and its notes; the guest
-  can check off **Mixer Reviewed** (separate from the band's Resolved) and reply on a note.
-  Replies are tagged with the link's title. Manage links from the share manager in the app.
+  can check off **Mixer Reviewed** (separate from the band's Resolved), reply on a note, and
+  **add their own notes** at a timestamp (the time box follows the player). Replies and guest
+  notes are tagged with the link's title; the band sees guest notes as "<title> (guest)".
+  Manage links from the share manager in the app.
 - **Calendar** — track and phase due dates on a month grid, plus a read-only iCal feed to
   subscribe to from Google/Apple Calendar.
 - **Detail drawer** — edit stage, BPM, key, due date, notes, owners, each phase's status/owner,
