@@ -45,6 +45,14 @@
   .an-time.bad { border-color:#f0654f; }
   .an-btn { flex:none; background:linear-gradient(140deg,var(--accent),var(--accent-2)); color:#1a0713; border:none; border-radius:7px; padding:6px 12px; font-size:12.5px; font-weight:700; cursor:pointer; }
   .an-btn[disabled] { opacity:0.5; cursor:default; }
+  .acts { margin-left:auto; flex:none; }
+  .thm .acts { float:right; margin-left:8px; }
+  .act { background:none; border:none; color:var(--muted); font-size:11px; cursor:pointer; padding:0 4px; text-decoration:underline; }
+  .act:hover { color:var(--text); }
+  .edtag { color:var(--muted); font-size:11px; }
+  .edbox { display:flex; flex-wrap:wrap; gap:6px; margin:4px 0; }
+  .ed-in { flex:1; min-width:140px; background:var(--panel); border:1px solid var(--stroke-strong); border-radius:7px; color:var(--text); padding:5px 8px; font-size:13px; }
+  .ed-save, .ed-cancel { flex:none; background:var(--panel-2); color:var(--text); border:1px solid var(--stroke-strong); border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; }
   .empty { color:var(--muted); font-size:13px; padding:10px 0; }
   .state { padding:40px 0; text-align:center; color:var(--muted); }
   .foot { color:var(--muted); font-size:11px; margin-top:24px; text-align:center; }
@@ -80,7 +88,7 @@
   var audio = document.getElementById("audio");
   var playerBar = document.getElementById("player");
   var nowEl = document.getElementById("now");
-  var curId = null, byId = {};
+  var curId = null, byId = {}, shareTitle = "";
   if (!token && !slug) { app.innerHTML = '<div class="state">This link is missing its code. Ask the band for a fresh link.</div>'; return; }
 
   function loadSong(s, seek, play) {
@@ -105,11 +113,16 @@
       var open = s.notes.filter(function(n){return !n.reviewed;}).length;
       var rows = s.notes.length ? s.notes.map(function (n) {
         var th = (n.thread||[]);
-        var msgs = th.map(function(mm){ return '<div class="thm '+(mm.side==="share"?"me":"band")+'"><span class="thby">'+esc(mm.by||"?")+'</span> '+esc(mm.text)+'</div>'; }).join("");
+        var msgs = th.map(function(mm){
+          var mine = mm.side==="share" && mm.by===shareTitle && mm.at;
+          return '<div class="thm '+(mm.side==="share"?"me":"band")+'" data-nid="'+n.id+'" data-at="'+(mm.at||"")+'">'
+            + (mine ? '<span class="acts"><button class="act" data-op="editReply" data-id="'+n.id+'" data-at="'+mm.at+'">Edit</button><button class="act" data-op="deleteReply" data-id="'+n.id+'" data-at="'+mm.at+'">Delete</button></span>' : '')
+            + '<span class="thby">'+esc(mm.by||"?")+'</span><span class="thtx">'+esc(mm.text)+'</span>'+(mm.edited?' <span class="edtag">(edited)</span>':'')+'</div>';
+        }).join("");
         return '<div class="n'+(n.reviewed?" done":"")+'" data-id="'+n.id+'">'
           + '<div class="nrow">'
           + '<input type="checkbox" '+(n.reviewed?"checked":"")+' />'
-          + '<span class="body"><span class="meta"><button class="time" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>'+(n.author?'<span>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+'</span>'
+          + '<span class="body"><span class="meta"><button class="time" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>'+(n.author?'<span>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+(n.mine?'<span class="acts"><button class="act" data-op="editNote" data-id="'+n.id+'">Edit</button><button class="act" data-op="deleteNote" data-id="'+n.id+'">Delete</button></span>':'')+'</span>'
           + '<span class="cmt">'+esc(n.comment)+'</span></span></div>'
           + '<div class="thread"><div class="thmsgs">'+msgs+'</div><div class="threp"><input class="thin" data-rid="'+n.id+'" data-dk="r:'+n.id+'" placeholder="Reply or ask a question…" /><button class="thsend" data-sid="'+n.id+'">Send</button></div></div>'
           + '</div>';
@@ -182,13 +195,61 @@
       if (inp) inp.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); send(); } });
     });
   }
+  // Edit / delete the guest's own replies and notes (event delegation: survives redraws).
+  function findNote(id) { for (var sid in byId) { var ns = byId[sid].notes || []; for (var i = 0; i < ns.length; i++) if (ns[i].id === id) return ns[i]; } return null; }
+  function manage(payload, onFail) {
+    fetch("/api/update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(authBody(payload)) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){ if (j && j.ok) { load(); } else { alert((j && j.error) || "Couldn't save that. Please try again."); if (onFail) onFail(); } })
+      .catch(function(){ alert("Couldn't save that. Please try again."); if (onFail) onFail(); });
+  }
+  function startEdit(btn) {
+    var op = btn.dataset.op, id = btn.dataset.id, at = btn.dataset.at;
+    var note = findNote(id); if (!note) return;
+    var host, cur;
+    if (op === "editReply") {
+      host = app.querySelector('.thm[data-nid="'+id+'"][data-at="'+at+'"] .thtx');
+      var msg = (note.thread||[]).filter(function(m){ return String(m.at) === String(at); })[0]; cur = msg ? msg.text : "";
+    } else {
+      host = app.querySelector('.n[data-id="'+id+'"] .cmt'); cur = note.comment;
+    }
+    if (!host) return;
+    var box = document.createElement("div"); box.className = "edbox";
+    var inp = document.createElement("input"); inp.className = "ed-in"; inp.value = cur;
+    var save = document.createElement("button"); save.className = "ed-save"; save.textContent = "Save";
+    var cancel = document.createElement("button"); cancel.className = "ed-cancel"; cancel.textContent = "Cancel";
+    box.appendChild(inp); box.appendChild(save); box.appendChild(cancel);
+    host.style.display = "none"; host.parentNode.insertBefore(box, host.nextSibling);
+    function close() { box.remove(); host.style.display = ""; }
+    function doSave() {
+      var text = inp.value.trim(); if (!text) { inp.focus(); return; }
+      if (text === cur) { close(); return; }
+      save.disabled = true;
+      var payload = { op: op, id: id, text: text }; if (op === "editReply") payload.at = Number(at);
+      box.remove(); // drop the edit box first so the refresh isn't held back
+      manage(payload, function(){ host.style.display = ""; });
+    }
+    save.addEventListener("click", doSave); cancel.addEventListener("click", close);
+    inp.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); doSave(); } else if (e.key === "Escape") close(); });
+    inp.focus(); try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {}
+  }
+  app.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest(".act") : null; if (!b) return;
+    var op = b.dataset.op;
+    if (op === "editReply" || op === "editNote") { if (!app.querySelector(".ed-in")) startEdit(b); return; }
+    if (!confirm(op === "deleteNote" ? "Delete this note? This can't be undone." : "Delete this reply? This can't be undone.")) return;
+    var payload = { op: op, id: b.dataset.id }; if (op === "deleteReply") payload.at = Number(b.dataset.at);
+    manage(payload);
+  });
+
   function counts(){ app.querySelectorAll(".song").forEach(function(sg){ var open=sg.querySelectorAll(".n:not(.done)").length; var c=sg.querySelector(".cnt"); if(c) c.textContent=open+" to review"; }); }
 
   // Redraw only when notes/versions actually changed, and never lose a half-typed reply:
   // drafts (and which box has focus) are captured before a redraw and restored after.
   var lastSig = null;
   function refresh(songs) {
-    var sig = JSON.stringify(songs.map(function (s) { return { id: s.id, v: s.version, n: s.notes }; }));
+    if (app.querySelector(".ed-in")) return; // mid-edit: skip this tick, the next poll catches up
+    var sig =JSON.stringify(songs.map(function (s) { return { id: s.id, v: s.version, n: s.notes }; }));
     if (sig === lastSig) { songs.forEach(function (s) { byId[s.id] = s; }); return; } // same content; just keep fresh stream URLs
     // Every typed-in box carries a data-dk key (reply, new-note text, new-note time).
     var drafts = {}, focusKey = null, selStart = null;
@@ -210,7 +271,7 @@
   function load() {
     fetch("/api/data?" + authQ)
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (j) { refresh(j.songs || []); })
+      .then(function (j) { shareTitle = j.title || ""; refresh(j.songs || []); })
       .catch(function () { lastSig = null; app.innerHTML = '<div class="state">This link is invalid or expired. Ask the band for a fresh one.</div>'; });
   }
   load();

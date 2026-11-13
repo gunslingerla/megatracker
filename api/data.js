@@ -61,7 +61,7 @@ async function mixRead(req, res) {
       const ver = b ? b.name : "";
       const notes = feedbackR
         .filter((fr) => first(fr.fields[F.feedback.track]) === id && (fr.fields[F.feedback.version] || "") === ver)
-        .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || guestOf(fr.fields), thread: (() => { try { const z = JSON.parse(fr.fields[F.feedback.thread] || "[]"); return Array.isArray(z) ? z : []; } catch { return []; } })() }))
+        .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || guestOf(fr.fields), mine: share.isGuestNoteOf(fr.fields[F.feedback.name], shareTitle), thread: (() => { try { const z = JSON.parse(fr.fields[F.feedback.thread] || "[]"); return Array.isArray(z) ? z : []; } catch { return []; } })() }))
         .sort((a, b2) => a.timestamp - b2.timestamp);
       return { id, title: r.fields[F.track.title] || "Untitled", version: ver, url: b ? b.url : null, notes };
     }).filter(Boolean);

@@ -93,6 +93,9 @@ async function resolveShareReq(body) {
   if (!data) return null;
   return shareFromToken(data);
 }
+function readThread(rec) {
+  try { const t = JSON.parse(rec.fields[F.feedback.thread] || "[]"); return Array.isArray(t) ? t : []; } catch { return []; }
+}
 function threadAppend(rec, msg) {
   let t = []; try { t = JSON.parse(rec.fields[F.feedback.thread] || "[]"); if (!Array.isArray(t)) t = []; } catch {}
   t.push(msg); return JSON.stringify(t.slice(-200));
@@ -143,9 +146,8 @@ async function mixAddNote(req, res, body) {
     if (!ids.has(trackId)) return res.status(403).json({ error: "not allowed" });
     const ts = Math.min(Math.max(Math.round(Number(body.timestamp)) || 0, 0), 86400);
     const clock = `${Math.floor(ts / 60)}:${String(ts % 60).padStart(2, "0")}`;
-    const label = String(title || "").replace(/\s+/g, " ").trim().slice(0, 60) || "Guest";
     const fields = {
-      [F.feedback.name]: `Guest: ${label} @ ${clock}`,
+      [F.feedback.name]: `Guest: ${share.guestLabel(title)} @ ${clock}`,
       [F.feedback.track]: [trackId],
       [F.feedback.timestamp]: ts,
       [F.feedback.comment]: text.slice(0, 2000),
@@ -158,12 +160,49 @@ async function mixAddNote(req, res, body) {
   } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
 }
 
+// Login-free: a guest edits/deletes things THEY wrote — their own replies (thread entries on
+// this link, tagged with its title) and notes they added through it. Still scoped to the
+// share's tracks. Can't touch band replies, other links' replies, or band-authored notes.
+async function mixManage(req, res, body) {
+  const op = String(body.op || "");
+  const text = String(body.text || "").trim();
+  if (!body.id || !["editReply", "deleteReply", "editNote", "deleteNote"].includes(op)) return res.status(400).json({ error: "bad request" });
+  if ((op === "editReply" || op === "editNote") && !text) return res.status(400).json({ error: "text required" });
+  try {
+    const resolved = await resolveShareReq(body);
+    if (!resolved) return res.status(403).json({ error: "invalid link" });
+    const { ids, title } = resolved;
+    const rec = await getRecord(T.feedback, body.id);
+    const tr = (rec.fields[F.feedback.track] || [])[0];
+    if (!ids.has(tr)) return res.status(403).json({ error: "not allowed" });
+    const mineMsg = (m) => !!m && m.side === "share" && m.by === title;
+    const thread = readThread(rec);
+    if (op === "editReply" || op === "deleteReply") {
+      const at = Number(body.at);
+      const i = thread.findIndex((m) => mineMsg(m) && m.at === at);
+      if (i < 0) return res.status(403).json({ error: "You can only change your own replies." });
+      if (op === "editReply") thread[i] = { ...thread[i], text: text.slice(0, 2000), edited: Date.now() }; else thread.splice(i, 1);
+      await patch(T.feedback, [{ id: body.id, fields: { [F.feedback.thread]: JSON.stringify(thread) } }], true);
+    } else {
+      if (!share.isGuestNoteOf(rec.fields[F.feedback.name], title)) return res.status(403).json({ error: "You can only change notes you added." });
+      if (op === "editNote") {
+        await patch(T.feedback, [{ id: body.id, fields: { [F.feedback.comment]: text.slice(0, 2000) } }], true);
+      } else {
+        // Deleting would also wipe anyone else's replies on it, so only allow when it's just yours.
+        if (thread.some((m) => !mineMsg(m))) return res.status(409).json({ error: "Others have replied to this note, so it can't be deleted — edit it instead." });
+        await del(T.feedback, [body.id]);
+      }
+    }
+    return res.status(200).json({ ok: true });
+  } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+}
+
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "method not allowed" });
 
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
-  if (body && (body.mixtoken || body.mixslug)) return (body.newNote ? mixAddNote : body.text != null ? mixReply : mixReview)(req, res, body); // login-free path
+  if (body && (body.mixtoken || body.mixslug)) return (body.op ? mixManage : body.newNote ? mixAddNote : body.text != null ? mixReply : mixReview)(req, res, body); // login-free path
   if (!requireAuth(req, res)) return;
   const { entity, id, fields, force } = body || {};
 
@@ -201,6 +240,26 @@ module.exports = async (req, res) => {
       const rec = await getRecord(T.feedback, id);
       const thread = threadAppend(rec, { by: (body.by || "Band").toString().slice(0, 60), side: "band", text: String(body.text).trim().slice(0, 2000), at: Date.now() });
       await patch(T.feedback, [{ id, fields: { [F.feedback.thread]: thread } }], true);
+      return res.status(200).json({ ok: true });
+    } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+  }
+
+  // Band-side moderation of a note's thread: delete any reply; edit only band replies
+  // (a guest's words stay the guest's). Replies are identified by their `at` timestamp.
+  if (entity === "threadEdit" || entity === "threadDelete") {
+    if (!id || body.at == null) return res.status(400).json({ error: "id and at required" });
+    try {
+      const rec = await getRecord(T.feedback, id);
+      const thread = readThread(rec);
+      const i = thread.findIndex((m) => m && m.at === Number(body.at));
+      if (i < 0) return res.status(404).json({ error: "reply not found" });
+      if (entity === "threadEdit") {
+        const text = String(body.text || "").trim();
+        if (!text) return res.status(400).json({ error: "text required" });
+        if (thread[i].side === "share") return res.status(403).json({ error: "Only the guest can edit their own reply." });
+        thread[i] = { ...thread[i], text: text.slice(0, 2000), edited: Date.now() };
+      } else thread.splice(i, 1);
+      await patch(T.feedback, [{ id, fields: { [F.feedback.thread]: JSON.stringify(thread) } }], true);
       return res.status(200).json({ ok: true });
     } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
   }

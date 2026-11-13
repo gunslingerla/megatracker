@@ -36,6 +36,8 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   can check off **Mixer Reviewed** (separate from the band's Resolved), reply on a note, and
   **add their own notes** at a timestamp (the time box follows the player). Replies and guest
   notes are tagged with the link's title; the band sees guest notes as "<title> (guest)".
+  Guests can **edit or delete their own** replies and notes (not the band's, and a note
+  the band has replied to can't be deleted). The band can delete any reply and edit band replies.
   Manage links from the share manager in the app.
 - **Calendar** — track and phase due dates on a month grid, plus a read-only iCal feed to
   subscribe to from Google/Apple Calendar.

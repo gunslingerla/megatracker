@@ -58,7 +58,7 @@ links with outside collaborators (mixers, etc.).
   **login-free `mixRead`** branch (`?mixtoken=` or `?mixslug=`) for share pages.
 - `api/update.js` — all writes (auth required) via `{entity, id, fields}`; plus bulk
   actions (`reassign`, `planphases`), share CRUD (`shareCreate/shareUpdate/shareDelete`),
-  `noteReply`, and the **login-free** `mixReview`/`mixReply`/`mixAddNote` branch (body has
+  `noteReply`, and the **login-free** `mixReview`/`mixReply`/`mixAddNote`/`mixManage` branch (body has
   `mixtoken`/`mixslug`).
 - `api/create.js` — creates tracks/albums/members/phases/feedback (+ auto-creates the
   production phases for a new track).
@@ -113,7 +113,13 @@ links with outside collaborators (mixers, etc.).
   author, so the note's `Name` field is set to `Guest: <share title> @ m:ss` and `data.js`
   (`guestOf`) reads that back as the author (the band sees "<title> (guest)"). The `version`
   is whatever bounce the guest's page was showing.
-- **Auth bypass is deliberate and scoped:** the `mixRead`/`mixReview`/`mixReply`/`mixAddNote`
+- **Editing/deleting mix comments:** a guest can edit/delete their *own* replies and guest notes
+  (`op: editReply|deleteReply|editNote|deleteNote` → `mixManage` in `update.js`). "Own" = a thread
+  entry with `side:"share"` and `by` equal to the link title (entries are identified by their `at`
+  timestamp), or a note whose Name matches `isGuestNoteOf` (`_share.js`). A guest can't touch band
+  replies, other links' replies, or band-authored notes, and can't delete a note anyone else has
+  replied to. The band can delete any reply and edit band replies (`threadEdit`/`threadDelete`).
+- **Auth bypass is deliberate and scoped:** the `mixRead`/`mixReview`/`mixReply`/`mixAddNote`/`mixManage`
   paths skip `requireAuth` ONLY when a valid share slug/token is present, and only ever touch
   (or create notes on) that share's tracks. Don't widen this.
 

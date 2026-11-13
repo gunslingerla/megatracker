@@ -19,4 +19,14 @@ function verify(token) {
   if (sig !== expect) return null;
   try { return JSON.parse(b64uDec(p)); } catch { return null; }
 }
-module.exports = { sign, verify };
+
+// Guest notes (added by a share-link guest) have no linked member, so the link title is stored
+// in the note's Name as "Guest: <label> @ m:ss". These helpers keep write (update.js) and read
+// (data.js) agreeing on that format, and on which share a guest note belongs to.
+function guestLabel(title) { return String(title || "").replace(/\s+/g, " ").trim().slice(0, 60) || "Guest"; }
+function isGuestNoteOf(name, title) {
+  const pre = "Guest: " + guestLabel(title) + " @ ";
+  const n = String(name || "");
+  return n.startsWith(pre) && /^\d+:\d{2}$/.test(n.slice(pre.length));
+}
+module.exports = { sign, verify, guestLabel, isGuestNoteOf };

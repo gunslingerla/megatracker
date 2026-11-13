@@ -127,7 +127,7 @@ async function refresh(keepDrawer = true) {
 // Two cadences: a snappy 12s pass that keeps an open notes bar live, and a 60s
 // sitewide pass that refreshes every view. Both bail out while you are mid-edit.
 function fbSig(t) {
-  return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${(fb.comment || "").length}:${(fb.thread || []).length}:${fb.mixReviewed ? 1 : 0}`).sort().join("|");
+  return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${(fb.comment || "").length}:${(fb.thread || []).map((m) => `${m.at || ""}.${(m.text || "").length}`).join(",")}:${fb.mixReviewed ? 1 : 0}`).sort().join("|");
 }
 function dataSig(d) {
   try {
@@ -170,6 +170,7 @@ async function pollNotes() {
   const bar = document.getElementById("notesbar");
   if (!bar || !bar.classList.contains("open") || !notesBarTrack) return;
   if (document.hidden || refreshing || polling) return;
+  if (bar.querySelector(".th-edit-in")) return; // mid-edit of a reply: a redraw would drop it
   const before = (() => { const t = trackById(notesBarTrack); return t ? fbSig(t) : ""; })();
   polling = true;
   let d; try { d = await loadData(); } finally { polling = false; }
@@ -2215,7 +2216,11 @@ function notesHTML() {
 function noteThreadHTML(fb) {
   const th = fb.thread || [];
   const n = th.length;
-  const msgs = th.map((m) => `<div class="th-msg th-${m.side === "share" ? "share" : "band"}"><span class="th-by">${esc(m.by || "?")}</span> ${esc(m.text)}</div>`).join("");
+  // Replies carry their `at` timestamp as an id: anyone can delete one; only band replies can be edited.
+  const msgs = th.map((m) => {
+    const acts = m.at ? `<span class="th-acts">${m.side === "share" ? "" : `<button class="th-act" data-thedit="${fb.id}" data-that="${m.at}">Edit</button>`}<button class="th-act" data-thdel="${fb.id}" data-that="${m.at}">Delete</button></span>` : "";
+    return `<div class="th-msg th-${m.side === "share" ? "share" : "band"}" data-thmsg="${m.at || ""}">${acts}<span class="th-by">${esc(m.by || "?")}</span><span class="th-tx">${esc(m.text)}</span>${m.edited ? ` <span class="th-edtag">(edited)</span>` : ""}</div>`;
+  }).join("");
   return `<details class="th-wrap"${n ? " open" : ""}><summary>${n ? `&#128172; ${n} ${n === 1 ? "reply" : "replies"}` : "&#128172; Reply"}</summary><div class="th-msgs">${msgs}</div><div class="th-reply"><input class="th-in" data-threply="${fb.id}" placeholder="Write a reply…" /><button class="fb-mini" data-threplybtn="${fb.id}">Send</button></div></details>`;
 }
 async function sendThreadReply(id, inp, btn) {
@@ -2226,13 +2231,46 @@ async function sendThreadReply(id, inp, btn) {
   if (btn) btn.disabled = false;
   if (r && r.ok) {
     if (inp) inp.value = "";
-    await refresh(false);
-    const nb = document.getElementById("notesbar");
-    if (nb && nb.classList.contains("open")) renderNotesBarPreserving(); else render();
+    await afterThreadChange();
   } else toast("Couldn't send reply", true);
+}
+async function afterThreadChange() {
+  await refresh(false);
+  const nb = document.getElementById("notesbar");
+  if (nb && nb.classList.contains("open")) renderNotesBarPreserving(); else render();
+}
+// Inline edit of a band reply: swap the text for an input; Save/Enter commits, Cancel/Esc backs out.
+function startThreadEdit(btn) {
+  const fbId = btn.dataset.thedit, at = Number(btn.dataset.that);
+  const msg = btn.closest(".th-msg"), tx = msg && msg.querySelector(".th-tx"); if (!tx) return;
+  const fb = state.data.feedback.find((f) => f.id === fbId);
+  const cur = ((fb && fb.thread || []).find((m) => m.at === at) || {}).text || tx.textContent;
+  const box = document.createElement("div"); box.className = "th-editbox";
+  const inp = document.createElement("input"); inp.className = "th-in th-edit-in"; inp.value = cur;
+  const save = document.createElement("button"); save.className = "fb-mini"; save.textContent = "Save";
+  const cancel = document.createElement("button"); cancel.className = "fb-mini"; cancel.textContent = "Cancel";
+  box.append(inp, save, cancel);
+  tx.style.display = "none"; tx.after(box);
+  const close = () => { box.remove(); tx.style.display = ""; };
+  const doSave = async () => {
+    const text = inp.value.trim(); if (!text) { inp.focus(); return; }
+    if (text === cur) { close(); return; }
+    save.disabled = true;
+    const r = await post("/api/update", { entity: "threadEdit", id: fbId, at, text });
+    if (r && r.ok) { box.remove(); await afterThreadChange(); } else { save.disabled = false; toast((r && r.error) || "Couldn't save edit", true); }
+  };
+  save.onclick = doSave; cancel.onclick = close;
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doSave(); } else if (e.key === "Escape") close(); });
+  inp.focus();
 }
 function wireThreads(root) {
   if (!root) return;
+  root.querySelectorAll("[data-thedit]").forEach((b) => b.onclick = () => { if (!root.querySelector(".th-edit-in")) startThreadEdit(b); });
+  root.querySelectorAll("[data-thdel]").forEach((b) => b.onclick = async () => {
+    if (!(await confirmDialog("Delete this reply? This can’t be undone.", { title: "Delete reply", okText: "Delete", danger: true }))) return;
+    const r = await post("/api/update", { entity: "threadDelete", id: b.dataset.thdel, at: Number(b.dataset.that) });
+    if (r && r.ok) { toast("Reply deleted"); await afterThreadChange(); } else toast((r && r.error) || "Couldn't delete reply", true);
+  });
   root.querySelectorAll("[data-threplybtn]").forEach((b) => b.onclick = () => { const inp = root.querySelector(`[data-threply="${b.dataset.threplybtn}"]`); sendThreadReply(b.dataset.threplybtn, inp, b); });
   root.querySelectorAll("[data-threply]").forEach((inp) => inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const b = root.querySelector(`[data-threplybtn="${inp.dataset.threply}"]`); sendThreadReply(inp.dataset.threply, inp, b); } }));
 }
