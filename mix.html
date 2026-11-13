@@ -30,6 +30,15 @@
   .n .time:hover { text-decoration:underline; }
   .n .cmt { font-size:14px; line-height:1.45; white-space:pre-wrap; }
   .n.done .cmt { opacity:0.5; }
+  .nrow { display:flex; align-items:flex-start; gap:10px; }
+  .thread { margin:8px 0 2px 28px; }
+  .thmsgs { display:flex; flex-direction:column; gap:5px; }
+  .thm { font-size:12.5px; line-height:1.4; padding:5px 8px; border-radius:8px; background:var(--panel-3); }
+  .thm.me { background:var(--accent-soft); }
+  .thby { font-weight:800; font-size:11px; margin-right:5px; }
+  .threp { display:flex; gap:6px; margin-top:6px; }
+  .thin { flex:1; background:var(--panel); border:1px solid var(--stroke-strong); border-radius:7px; color:var(--text); padding:5px 8px; font-size:12.5px; }
+  .thsend { flex:none; background:var(--panel-2); color:var(--text); border:1px solid var(--stroke-strong); border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; }
   .empty { color:var(--muted); font-size:13px; padding:10px 0; }
   .state { padding:40px 0; text-align:center; color:var(--muted); }
   .foot { color:var(--muted); font-size:11px; margin-top:24px; text-align:center; }
@@ -81,10 +90,15 @@
     app.innerHTML = songs.map(function (s) {
       var open = s.notes.filter(function(n){return !n.reviewed;}).length;
       var rows = s.notes.length ? s.notes.map(function (n) {
-        return '<label class="n'+(n.reviewed?" done":"")+'" data-id="'+n.id+'">'
+        var th = (n.thread||[]);
+        var msgs = th.map(function(mm){ return '<div class="thm '+(mm.side==="share"?"me":"band")+'"><span class="thby">'+esc(mm.by||"?")+'</span> '+esc(mm.text)+'</div>'; }).join("");
+        return '<div class="n'+(n.reviewed?" done":"")+'" data-id="'+n.id+'">'
+          + '<div class="nrow">'
           + '<input type="checkbox" '+(n.reviewed?"checked":"")+' />'
           + '<span class="body"><span class="meta"><button class="time" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>'+(n.author?'<span>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+'</span>'
-          + '<span class="cmt">'+esc(n.comment)+'</span></span></label>';
+          + '<span class="cmt">'+esc(n.comment)+'</span></span></div>'
+          + '<div class="thread"><div class="thmsgs">'+msgs+'</div><div class="threp"><input class="thin" data-rid="'+n.id+'" placeholder="Reply or ask a question…" /><button class="thsend" data-sid="'+n.id+'">Send</button></div></div>'
+          + '</div>';
       }).join("") : '<div class="empty">No notes on this version.</div>';
       return '<div class="song"><div class="song-h">'
         + (s.url?'<button class="play" data-play="'+s.id+'" title="Play">&#9654;&#xFE0E;</button>':'<button class="play" disabled title="No bounce yet">&#9654;&#xFE0E;</button>')
@@ -96,7 +110,7 @@
 
     app.querySelectorAll("[data-play]").forEach(function(b){ b.addEventListener("click", function(){ loadSong(byId[b.dataset.play], null, true); }); });
     app.querySelectorAll(".time").forEach(function(b){ b.addEventListener("click", function(e){ e.preventDefault(); loadSong(byId[b.dataset.song], Number(b.dataset.t)||0, true); }); });
-    app.querySelectorAll(".n input").forEach(function (cb) {
+    app.querySelectorAll(".nrow input[type=checkbox]").forEach(function (cb) {
       cb.addEventListener("change", function () {
         var row = cb.closest(".n");
         row.classList.toggle("done", cb.checked);
@@ -107,13 +121,33 @@
           .catch(function(){ cb.disabled=false; cb.checked=!cb.checked; row.classList.toggle("done", cb.checked); });
       });
     });
+    app.querySelectorAll(".thsend").forEach(function (btn) {
+      function send() {
+        var id = btn.dataset.sid;
+        var inp = app.querySelector('.thin[data-rid="'+id+'"]');
+        var text = inp ? inp.value.trim() : "";
+        if (!text) return;
+        btn.disabled = true;
+        fetch("/api/update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ mixtoken: token, id: id, text: text }) })
+          .then(function(r){ return r.json(); })
+          .then(function(j){ btn.disabled=false; if(j&&j.ok){ load(); } })
+          .catch(function(){ btn.disabled=false; });
+      }
+      btn.addEventListener("click", send);
+      var inp = app.querySelector('.thin[data-rid="'+btn.dataset.sid+'"]');
+      if (inp) inp.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); send(); } });
+    });
   }
   function counts(){ app.querySelectorAll(".song").forEach(function(sg){ var open=sg.querySelectorAll(".n:not(.done)").length; var c=sg.querySelector(".cnt"); if(c) c.textContent=open+" to review"; }); }
 
-  fetch("/api/data?mixtoken=" + encodeURIComponent(token))
-    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function (j) { render(j.songs || []); })
-    .catch(function () { app.innerHTML = '<div class="state">This link is invalid or expired. Ask the band for a fresh one.</div>'; });
+  function load() {
+    fetch("/api/data?mixtoken=" + encodeURIComponent(token))
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) { render(j.songs || []); })
+      .catch(function () { app.innerHTML = '<div class="state">This link is invalid or expired. Ask the band for a fresh one.</div>'; });
+  }
+  load();
+  setInterval(load, 60000);
 })();
 </script>
 </body>

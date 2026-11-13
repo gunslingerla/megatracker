@@ -917,3 +917,21 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .mix-hint { font-size:11px; color:var(--muted); margin-top:8px; line-height:1.4; }
 
 .mix-badge { font-size:10px; font-weight:800; color:#0c0b10; background:var(--good); border-radius:999px; padding:1px 7px; white-space:nowrap; }
+
+/* Share manager */
+.sl-list { display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto; }
+.sl-row { display:flex; align-items:center; gap:10px; padding:9px 11px; border:1px solid var(--stroke-strong); border-radius:10px; background:var(--panel-2); }
+.sl-main { flex:1; min-width:0; }
+.sl-title { font-weight:700; font-size:13.5px; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sl-meta { color:var(--muted); font-size:11px; }
+.sl-actions { display:flex; gap:6px; flex:none; }
+/* Note reply threads */
+.th-wrap { margin-top:8px; border-top:1px dashed var(--stroke); padding-top:6px; }
+.th-wrap summary { cursor:pointer; font-size:11px; color:var(--muted); list-style:none; }
+.th-wrap summary::-webkit-details-marker { display:none; }
+.th-msgs { display:flex; flex-direction:column; gap:5px; margin:6px 0; }
+.th-msg { font-size:12.5px; line-height:1.4; padding:5px 8px; border-radius:8px; background:var(--panel-3); }
+.th-msg.th-share { background:var(--accent-soft); }
+.th-by { font-weight:800; font-size:11px; margin-right:5px; }
+.th-reply { display:flex; gap:6px; }
+.th-reply .th-in { flex:1; background:var(--panel); border:1px solid var(--stroke-strong); border-radius:7px; color:var(--text); padding:5px 8px; font-size:12.5px; }

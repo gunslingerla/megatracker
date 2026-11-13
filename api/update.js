@@ -1,4 +1,4 @@
-const { T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch } = require("./_airtable");
+const { T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch, create, del } = require("./_airtable");
 const { requireAuth } = require("./_auth");
 const share = require("./_share");
 
@@ -70,18 +70,47 @@ const PRODUCTION_IDX = STAGES.indexOf("Production");
 // Login-free mixer review: a valid mix token may toggle a note's "Mixer Reviewed"
 // flag (distinct from the band's Resolved status), but only on the token's tracks.
 const mixIds = (t) => (Array.isArray(t) ? t.map((x) => (typeof x === "string" ? x : x && x.id)).filter(Boolean) : []);
+// Resolve a mix token to its allowed track ids + the link title (used to tag replies).
+async function shareFromToken(data) {
+  if (data && data.s) {
+    const rec = await getRecord(T.shares, data.s);
+    let ids = []; try { ids = JSON.parse(rec.fields[F.share.tracks] || "[]"); } catch {}
+    return { ids: new Set(Array.isArray(ids) ? ids : []), title: rec.fields[F.share.title] || "Guest" };
+  }
+  return { ids: new Set(mixIds(data && data.t)), title: "Guest" };
+}
+function threadAppend(rec, msg) {
+  let t = []; try { t = JSON.parse(rec.fields[F.feedback.thread] || "[]"); if (!Array.isArray(t)) t = []; } catch {}
+  t.push(msg); return JSON.stringify(t.slice(-200));
+}
+// Login-free: mixer toggles a note's "Mixer Reviewed" flag.
 async function mixReview(req, res, body) {
   const data = share.verify(body.mixtoken);
-  if (!data || !Array.isArray(data.t)) return res.status(403).json({ error: "invalid link" });
+  if (!data) return res.status(403).json({ error: "invalid link" });
   if (!body.id) return res.status(400).json({ error: "id required" });
-  const allowed = new Set(mixIds(data.t));
-  const reviewed = !!body.reviewed;
   try {
+    const { ids } = await shareFromToken(data);
     const rec = await getRecord(T.feedback, body.id);
     const tr = (rec.fields[F.feedback.track] || [])[0];
-    if (!allowed.has(tr)) return res.status(403).json({ error: "not allowed" });
-    await patch(T.feedback, [{ id: body.id, fields: { [F.feedback.mixReviewed]: reviewed } }], true);
-    return res.status(200).json({ ok: true, reviewed });
+    if (!ids.has(tr)) return res.status(403).json({ error: "not allowed" });
+    await patch(T.feedback, [{ id: body.id, fields: { [F.feedback.mixReviewed]: !!body.reviewed } }], true);
+    return res.status(200).json({ ok: true, reviewed: !!body.reviewed });
+  } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+}
+// Login-free: sharee posts a reply/question on a note, tagged with the link title.
+async function mixReply(req, res, body) {
+  const data = share.verify(body.mixtoken);
+  if (!data) return res.status(403).json({ error: "invalid link" });
+  const text = String(body.text || "").trim();
+  if (!body.id || !text) return res.status(400).json({ error: "id and text required" });
+  try {
+    const { ids, title } = await shareFromToken(data);
+    const rec = await getRecord(T.feedback, body.id);
+    const tr = (rec.fields[F.feedback.track] || [])[0];
+    if (!ids.has(tr)) return res.status(403).json({ error: "not allowed" });
+    const thread = threadAppend(rec, { by: title, side: "share", text: text.slice(0, 2000), at: Date.now() });
+    await patch(T.feedback, [{ id: body.id, fields: { [F.feedback.thread]: thread } }], true);
+    return res.status(200).json({ ok: true });
   } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
 }
 
@@ -90,15 +119,39 @@ module.exports = async (req, res) => {
 
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
-  if (body && body.mixtoken) return mixReview(req, res, body); // login-free mixer path
+  if (body && body.mixtoken) return (body.text != null ? mixReply : mixReview)(req, res, body); // login-free path
   if (!requireAuth(req, res)) return;
   const { entity, id, fields, force } = body || {};
 
-  // Mint a signed, login-free mixer review link for the selected tracks.
-  if (entity === "mixshare") {
+  // Create or edit a stored, titled share link (stable URL; songs/title editable).
+  if (entity === "shareCreate" || entity === "shareUpdate") {
     const tracks = Array.isArray(body.tracks) ? body.tracks.map((x) => (typeof x === "string" ? x : x && x.id)).filter(Boolean) : [];
+    const title = (body.title || "Untitled link").toString().slice(0, 120);
     if (!tracks.length) return res.status(400).json({ error: "pick at least one song" });
-    return res.status(200).json({ ok: true, token: share.sign({ t: tracks, iat: Date.now() }) });
+    try {
+      let sid = body.id;
+      if (entity === "shareUpdate" && sid) {
+        await patch(T.shares, [{ id: sid, fields: { [F.share.title]: title, [F.share.tracks]: JSON.stringify(tracks) } }], true);
+      } else {
+        const rec = await create(T.shares, [{ fields: { [F.share.title]: title, [F.share.tracks]: JSON.stringify(tracks) } }]);
+        sid = rec[0].id;
+      }
+      return res.status(200).json({ ok: true, id: sid, token: share.sign({ s: sid }) });
+    } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+  }
+  if (entity === "shareDelete") {
+    if (!id) return res.status(400).json({ error: "id required" });
+    try { await del(T.shares, [id]); return res.status(200).json({ ok: true }); } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+  }
+  // Band-side reply on a note's thread.
+  if (entity === "noteReply") {
+    if (!id || !body.text) return res.status(400).json({ error: "id and text required" });
+    try {
+      const rec = await getRecord(T.feedback, id);
+      const thread = threadAppend(rec, { by: (body.by || "Band").toString().slice(0, 60), side: "band", text: String(body.text).trim().slice(0, 2000), at: Date.now() });
+      await patch(T.feedback, [{ id, fields: { [F.feedback.thread]: thread } }], true);
+      return res.status(200).json({ ok: true });
+    } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
   }
 
   // Bulk action: re-derive all phase owners from the member->phase mapping.

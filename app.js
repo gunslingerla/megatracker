@@ -127,7 +127,7 @@ async function refresh(keepDrawer = true) {
 // Two cadences: a snappy 12s pass that keeps an open notes bar live, and a 60s
 // sitewide pass that refreshes every view. Both bail out while you are mid-edit.
 function fbSig(t) {
-  return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${(fb.comment || "").length}`).sort().join("|");
+  return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${(fb.comment || "").length}:${(fb.thread || []).length}:${fb.mixReviewed ? 1 : 0}`).sort().join("|");
 }
 function dataSig(d) {
   try {
@@ -864,6 +864,7 @@ function wireBoard() {
   { const rc = document.getElementById("notesResolved"); if (rc) rc.onchange = () => { notesShowResolved = rc.checked; render(); }; }
   document.querySelectorAll("#main [data-ndel]").forEach((b) => b.onclick = async () => { if (!(await confirmDialog("Delete this note? This can\u2019t be undone.", { title: "Delete note", okText: "Delete", danger: true }))) return; const r = await deleteEntity("feedback", b.dataset.ndel); if (r.ok) { toast("Deleted"); refresh(); } });
   wireNoteCtrls(document.getElementById("main"));
+  wireThreads(document.getElementById("main"));
 
   document.querySelectorAll(".mcard[data-member]").forEach((card) => {
     const id = card.dataset.member;
@@ -1303,35 +1304,66 @@ function openCreateTrack() {
   });
 }
 
-function openMixShare() {
-  const alb = currentAlbum();
-  const tracks = state.data.tracks.filter((t) => !t.onHold && (!alb || t.albumId === alb.id)).sort((a, b) => effOrder(a) - effOrder(b));
-  if (!tracks.length) { toast("No songs to share", true); return; }
+function openShareManager() {
   openModal(`
-    <div class="mhd"><h2>Share with mixer</h2><button class="icon-btn close" id="mClose">&times;</button></div>
-    <div class="mbd">
-      <p style="margin:0;color:var(--muted)">Pick the songs the mixer should see. He gets a login-free link that always shows each song’s current bounce, lets him play it, and lets him check off notes as he addresses them — those show as “reviewed” on your side. The same link keeps working as you upload new versions.</p>
-      <div class="mix-pick" id="mixPick">${tracks.map((t) => `<label class="mix-row"><input type="checkbox" class="mix-chk" value="${t.id}" checked /><span class="mix-t">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span><span class="mix-vn">${esc(currentVersion(t) || "no bounce")}</span></label>`).join("")}</div>
-      <div class="mix-actions"><label class="vx-all"><input type="checkbox" id="mixAll" checked /> Select all</label><span style="flex:1"></span><button class="add-btn" id="mixGo">Create link</button></div>
-      <div id="mixOut"></div>
-    </div>`);
+    <div class="mhd"><h2>Share links</h2><button class="icon-btn close" id="mClose">&times;</button></div>
+    <div class="mbd" id="shareBody"></div>`);
   $("#mClose").onclick = closeModal;
-  $("#mixAll").onchange = (e) => document.querySelectorAll(".mix-chk").forEach((c) => (c.checked = e.target.checked));
-  $("#mixGo").onclick = async () => {
+  renderShareList();
+}
+function renderShareList() {
+  const body = document.getElementById("shareBody"); if (!body) return;
+  const shares = (state.data.shares || []);
+  const rows = shares.length ? shares.map((sh) => {
+    const url = location.origin + "/mix.html?t=" + encodeURIComponent(sh.token);
+    return `<div class="sl-row" data-sid="${sh.id}">
+      <div class="sl-main"><span class="sl-title">${esc(sh.title)}</span><span class="sl-meta">${sh.tracks.length} song${sh.tracks.length === 1 ? "" : "s"}</span></div>
+      <div class="sl-actions">
+        <button class="fb-mini" data-slcopy="${esc(url)}">Copy link</button>
+        <button class="fb-mini" data-sledit="${sh.id}">Edit</button>
+        <button class="fb-mini" data-sldel="${sh.id}">&times;</button>
+      </div>
+    </div>`;
+  }).join("") : `<div class="empty" style="padding:14px 0">No share links yet.</div>`;
+  body.innerHTML = `<p style="margin:0 0 12px;color:var(--muted)">Login-free links to review notes. Each shows every selected song’s current bounce, plays it, and lets the person check off notes and reply with questions.</p>
+    <div class="sl-list">${rows}</div>
+    <div class="mix-actions"><span style="flex:1"></span><button class="add-btn" id="slNew">+ New link</button></div>`;
+  document.getElementById("slNew").onclick = () => shareEditor(null);
+  body.querySelectorAll("[data-sledit]").forEach((b) => b.onclick = () => shareEditor((state.data.shares || []).find((x) => x.id === b.dataset.sledit)));
+  body.querySelectorAll("[data-slcopy]").forEach((b) => b.onclick = async () => { const u = b.dataset.slcopy; try { await navigator.clipboard.writeText(u); toast("Link copied"); } catch { toast("Copy failed", true); } });
+  body.querySelectorAll("[data-sldel]").forEach((b) => b.onclick = async () => {
+    if (!(await confirmDialog("Delete this share link? The URL will stop working.", { title: "Delete link", okText: "Delete", danger: true }))) return;
+    const r = await post("/api/update", { entity: "shareDelete", id: b.dataset.sldel });
+    if (r && r.ok) { toast("Deleted"); await refresh(false); renderShareList(); } else toast("Couldn't delete", true);
+  });
+}
+function shareEditor(sh) {
+  const body = document.getElementById("shareBody"); if (!body) return;
+  const alb = currentAlbum();
+  const picked = new Set(sh ? sh.tracks : state.data.tracks.filter((t) => !t.onHold && (!alb || t.albumId === alb.id)).map((t) => t.id));
+  const tracks = state.data.tracks.filter((t) => !t.onHold).sort((a, b) => effOrder(a) - effOrder(b));
+  body.innerHTML = `
+    <div class="field"><label>Link title (also tags their replies)</label><input id="slTitle" type="text" placeholder="e.g. Dalton — mix round 1" value="${esc(sh ? sh.title : "")}" /></div>
+    <div class="mix-pick" id="mixPick">${tracks.map((t) => `<label class="mix-row"><input type="checkbox" class="mix-chk" value="${t.id}"${picked.has(t.id) ? " checked" : ""} /><span class="mix-t">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span><span class="mix-vn">${esc(currentVersion(t) || "no bounce")}</span></label>`).join("")}</div>
+    <div class="mix-actions"><button class="fb-mini" id="slBack">&larr; Back</button><span style="flex:1"></span><button class="add-btn" id="slSave">${sh ? "Save changes" : "Create link"}</button></div>
+    <div id="slOut"></div>`;
+  document.getElementById("slBack").onclick = renderShareList;
+  document.getElementById("slSave").onclick = async () => {
+    const title = document.getElementById("slTitle").value.trim() || "Untitled link";
     const picks = [...document.querySelectorAll(".mix-chk")].filter((c) => c.checked).map((c) => c.value);
     if (!picks.length) { toast("Pick at least one song", true); return; }
-    const btn = $("#mixGo"); btn.disabled = true; btn.textContent = "Creating…";
-    let r; try { r = await post("/api/update", { entity: "mixshare", tracks: picks }); } catch {}
-    btn.disabled = false; btn.textContent = "Create link";
-    if (!r || !r.ok || !r.token) { toast("Couldn't create link", true); return; }
+    const btn = document.getElementById("slSave"); btn.disabled = true; btn.textContent = "Saving…";
+    const r = await post("/api/update", { entity: sh ? "shareUpdate" : "shareCreate", id: sh ? sh.id : undefined, title, tracks: picks });
+    btn.disabled = false; btn.textContent = sh ? "Save changes" : "Create link";
+    if (!r || !r.ok || !r.token) { toast("Couldn't save link", true); return; }
+    await refresh(false);
     const url = location.origin + "/mix.html?t=" + encodeURIComponent(r.token);
-    const out = $("#mixOut");
-    out.innerHTML = `<div class="mix-linkbox"><input id="mixLink" readonly value="${esc(url)}" /><button class="add-btn" id="mixCopy">Copy</button></div><div class="mix-hint">Anyone with this link can view, play, and check off notes for the ${picks.length} selected song${picks.length > 1 ? "s" : ""} — no login, and it follows each song’s current version. Make a new link to revoke the old one.</div>`;
-    const inp = $("#mixLink"); inp.focus(); inp.select();
-    $("#mixCopy").onclick = async () => { try { await navigator.clipboard.writeText(url); toast("Link copied"); } catch { inp.select(); try { document.execCommand("copy"); toast("Link copied"); } catch { toast("Copy failed — select and copy manually", true); } } };
+    const out = document.getElementById("slOut");
+    out.innerHTML = `<div class="mix-linkbox"><input id="slLink" readonly value="${esc(url)}" /><button class="add-btn" id="slCopy">Copy</button></div><div class="mix-hint">${sh ? "Saved." : "Link created."} Share it with anyone — no login. Edit this link anytime to change its songs; the URL stays the same.</div>`;
+    const inp = document.getElementById("slLink"); inp.focus(); inp.select();
+    document.getElementById("slCopy").onclick = async () => { try { await navigator.clipboard.writeText(url); toast("Link copied"); } catch { inp.select(); try { document.execCommand("copy"); toast("Link copied"); } catch {} } };
   };
-}
-function openCreateAlbum() {
+}function openCreateAlbum() {
   const stages = state.data.stages;
   openShell(`
     <div class="dhead"><div><h2>New album</h2></div><button class="icon-btn close" id="closeDrawer">&times;</button></div>
@@ -2154,6 +2186,7 @@ function noteRowHTML(t, fb) {
       <div class="fb-comment">${esc(fb.comment)}</div>
       ${resolved ? "" : `<div class="fb-right">${filed ? `<div class="nt-filed">&#10003; Task filed — resolves when done</div>` : noteTaskCtrls(t, fb)}</div>`}
     </div>
+    ${noteThreadHTML(fb)}
   </div>`;
 }
 function notesHTML() {
@@ -2175,6 +2208,30 @@ function notesHTML() {
   const list = groups.length ? cards : `<div class="empty" style="padding:24px">No open notes${alb ? " for this album" : ""}.</div>`;
   return `<div class="notes-page"><div class="notes-head">${notesShowResolved ? "Notes" : "Open notes"}<span class="asg-count">${total}</span><label class="notes-toggle"><input type="checkbox" id="notesResolved"${notesShowResolved ? " checked" : ""}/> Show resolved</label></div>${list}</div>`;
 }
+function noteThreadHTML(fb) {
+  const th = fb.thread || [];
+  const n = th.length;
+  const msgs = th.map((m) => `<div class="th-msg th-${m.side === "share" ? "share" : "band"}"><span class="th-by">${esc(m.by || "?")}</span> ${esc(m.text)}</div>`).join("");
+  return `<details class="th-wrap"${n ? " open" : ""}><summary>${n ? `&#128172; ${n} ${n === 1 ? "reply" : "replies"}` : "&#128172; Reply"}</summary><div class="th-msgs">${msgs}</div><div class="th-reply"><input class="th-in" data-threply="${fb.id}" placeholder="Write a reply…" /><button class="fb-mini" data-threplybtn="${fb.id}">Send</button></div></details>`;
+}
+async function sendThreadReply(id, inp, btn) {
+  const text = (inp && inp.value || "").trim(); if (!text) return;
+  const me = getMe();
+  if (btn) btn.disabled = true;
+  const r = await post("/api/update", { entity: "noteReply", id, text, by: me ? me.name : "Band" });
+  if (btn) btn.disabled = false;
+  if (r && r.ok) {
+    if (inp) inp.value = "";
+    await refresh(false);
+    const nb = document.getElementById("notesbar");
+    if (nb && nb.classList.contains("open")) renderNotesBarPreserving(); else render();
+  } else toast("Couldn't send reply", true);
+}
+function wireThreads(root) {
+  if (!root) return;
+  root.querySelectorAll("[data-threplybtn]").forEach((b) => b.onclick = () => { const inp = root.querySelector(`[data-threply="${b.dataset.threplybtn}"]`); sendThreadReply(b.dataset.threplybtn, inp, b); });
+  root.querySelectorAll("[data-threply]").forEach((inp) => inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const b = root.querySelector(`[data-threplybtn="${inp.dataset.threply}"]`); sendThreadReply(inp.dataset.threply, inp, b); } }));
+}
 function fbItemHTML(fb, t) {
   const showCtrls = fb.status === "Open" && t;
   const right = showCtrls ? (noteHasTask(t, fb.id) ? `<div class="nt-filed">&#10003; Task filed</div>` : noteTaskCtrls(t, fb)) : "";
@@ -2194,6 +2251,7 @@ function fbItemHTML(fb, t) {
         <div class="fb-comment">${esc(fb.comment)}</div>
         ${right ? `<div class="fb-right">${right}</div>` : ""}
       </div>
+      ${noteThreadHTML(fb)}
     </div>`;
 }
 // Timestamped feedback lives in its own modal (like the lyrics editor).
@@ -2241,6 +2299,7 @@ function renderNotesBar() {
     const dl = item.querySelector("[data-fbdel]"); if (dl) dl.onclick = async () => { if (!(await confirmDialog("Delete this note? This can\u2019t be undone.", { title: "Delete note", okText: "Delete", danger: true }))) return; const r = await deleteEntity("feedback", fid); if (r.ok) { toast("Deleted"); await refresh(); renderNotesBar(); } };
   });
   wireNoteCtrls(bar);
+  wireThreads(bar);
   notesTimeLocked = false;
   const textEl = document.getElementById("nbText");
   const lock = () => { notesTimeLocked = true; };
@@ -2528,7 +2587,7 @@ function wireChrome() {
 
   $("#newTrack").addEventListener("click", () => { closeMenu(); openCreateTrack(); });
   $("#newAlbum").addEventListener("click", () => { closeMenu(); openCreateAlbum(); });
-  $("#shareMix").addEventListener("click", () => { closeMenu(); openMixShare(); });
+  $("#shareMix").addEventListener("click", () => { closeMenu(); openShareManager(); });
   $("#whoami").addEventListener("click", () => { closeMenu(); pickIdentity(); });
   $("#scratchBtn").addEventListener("click", () => {
     closeMenu();

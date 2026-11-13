@@ -11,6 +11,7 @@ const T = {
   phases: "tbleJ6Qb48oHzO94M",
   members: "tblwgBJzoEHAmfISz",
   feedback: "tblPqaEXRjvC5JLNv",
+  shares: "tbl6JIejCROGxk2hB",
 };
 
 const F = {
@@ -66,6 +67,7 @@ const F = {
     author: "fldjtnnsl8PhwxePj",
     version: "fldciN7WbSCDDT5l1",
     mixReviewed: "fldv4et1aJk8Lv2LR", // "Mixer Reviewed" checkbox, set via login-free mix links
+    thread: "fldYqJ2OVgtkEcuGy", // "Thread" JSON: reply conversation on a note
   },
   phase: {
     name: "fld1LCOJADedeOh8e",
@@ -76,6 +78,10 @@ const F = {
     isDone: "fldFNK4qLW250BiGn",
     due: "fldIdcVR9Ae64NCUF",
     subtasks: "fldza2Sz3EBFOe2Io",
+  },
+  share: {
+    title: "fldIsDBz1BfZVrmZv",
+    tracks: "fldVLWGWTsLAptuJb",
   },
   member: {
     name: "fldLdKtbqycPlKp2k",
