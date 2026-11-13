@@ -337,9 +337,13 @@
     }
     return doc;
   }
+  // "Song Title - v04 - 2026-11-13.pdf" (version only when the bounce filename has one).
   function pdfFileName(song) {
-    var base = pdfClean(song.title).replace(/[^\w\- ]+/g, "").replace(/\s+/g, " ").trim() || "Song";
-    return base + " - mix notes.pdf";
+    var clean = function (s) { return pdfClean(s).replace(/[^\w\- ]+/g, "").replace(/\s+/g, " ").trim(); };
+    var vm = String(song.version || "").match(/_v(\d+)/i) || String(song.version || "").match(/\bv(\d+)\b/i);
+    var d = new Date(), pad = function (n) { return String(n).padStart(2, "0"); };
+    var date = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+    return [clean(song.title) || "Song", vm ? "v" + vm[1] : "", date].filter(Boolean).join(" - ") + ".pdf";
   }
   app.addEventListener("click", function (e) {
     var btn = e.target.closest ? e.target.closest(".pdfbtn") : null; if (!btn) return;
