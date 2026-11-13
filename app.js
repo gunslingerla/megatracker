@@ -1311,7 +1311,7 @@ function openShareManager() {
   $("#mClose").onclick = closeModal;
   renderShareList();
 }
-function shareUrl(sh) { return sh.slug ? location.origin + "/s/" + sh.slug : location.origin + "/mix.html?t=" + encodeURIComponent(sh.token); }
+function shareUrl(sh) { return sh.slug ? location.origin + "/mix?s=" + encodeURIComponent(sh.slug) : location.origin + "/mix?t=" + encodeURIComponent(sh.token); }
 function renderShareList() {
   const body = document.getElementById("shareBody"); if (!body) return;
   const shares = (state.data.shares || []);
@@ -1361,7 +1361,7 @@ function shareEditor(sh) {
     if (r && r.error) { toast(r.error, true); return; }
     if (!r || !r.ok) { toast("Couldn't save link", true); return; }
     await refresh(false);
-    const url = location.origin + "/s/" + r.slug;
+    const url = location.origin + "/mix?s=" + encodeURIComponent(r.slug);
     const out = document.getElementById("slOut");
     out.innerHTML = `<div class="mix-linkbox"><input id="slLink" readonly value="${esc(url)}" /><button class="add-btn" id="slCopy">Copy</button></div><div class="mix-hint">${sh ? "Saved." : "Link created."} Share it with anyone — no login. Edit this link anytime to change its songs; the URL stays the same.</div>`;
     const inp = document.getElementById("slLink"); inp.focus(); inp.select();
