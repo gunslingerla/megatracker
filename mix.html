@@ -383,10 +383,17 @@
     }
   }
 
+  // Browser-tab title = the link's title (editable in the share manager), so each share can be
+  // labelled; the generic placeholders keep the default "Mix notes" title.
+  function setTabTitle() {
+    var t = String(shareTitle || "").trim();
+    document.title = (t && t !== "Guest" && t !== "Untitled link") ? t + " · The Megas" : "The Megas — Mix notes";
+  }
+
   function load() {
     fetch("/api/data?" + authQ)
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (j) { shareTitle = j.title || ""; refresh(j.songs || []); })
+      .then(function (j) { shareTitle = j.title || ""; setTabTitle(); refresh(j.songs || []); })
       .catch(function () { lastSig = null; app.innerHTML = '<div class="state">This link is invalid or expired. Ask the band for a fresh one.</div>'; });
   }
   load();
