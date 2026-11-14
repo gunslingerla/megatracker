@@ -101,6 +101,8 @@ links with outside collaborators (mixers, etc.).
 - **Volume:** both players (the app's shared `#audio` bar and `mix.html`) have a volume slider + mute. State lives
   in localStorage `megasVolume` / `megasMuted` (shared by the app and share pages, applied on load, kept in sync via
   `volumechange`). It's hidden when the browser won't let pages set `audio.volume` (iOS); detected, not UA-sniffed.
+- **Loop:** both players have a loop toggle (`loopOn` / `#pLoop` in `app.js`, `#loop` in `mix.html`) that sets
+  `audio.loop`. Session-only, not persisted; `playAlbum` turns it off because a looping song never fires `ended`.
 - **Identity:** each browser picks "who am I" (stored in localStorage `megasMe`); a hard
   gate on first load (`pickIdentity(true)`) requires it before using the app.
 - **Live sync (no websockets):** `app.js` polls — a 12s pass keeps an open notes bar
@@ -118,7 +120,7 @@ links with outside collaborators (mixers, etc.).
   (`create.js` `fields.global`); guests too (`newNote` + `global`). Any note can be switched either way
   with `update.js` `feedback` + `fields.global` (rewrites only the Name; the stored timestamp is kept so
   switching back restores it; guest notes stay guest notes). `data.js` exposes `global` on the board and
-  `mixRead`. The UI lists global notes first under a "Global · whole song" heading
+  `mixRead`. The UI lists global notes first under a "Global" heading
   (`groupedNotesHTML`/`noteCmp` in `app.js`; same on `mix.html` and in the PDF), shows GLOBAL instead
   of a timecode, and skips them on the player's timeline markers. Notes stay pinned to a bounce version.
 - **Guest notes:** a sharee can also add brand-new notes (`mixAddNote` in `update.js`,

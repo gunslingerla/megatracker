@@ -661,6 +661,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 }
 .player .pbtn.mini { width: 30px; height: 30px; background: var(--panel-2); color: var(--text); border: 1px solid var(--stroke-strong); font-size: 16px; }
 .player .pbtn svg { display: block; }
+.player .pbtn.mini.on { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent); }
 .player .pinfo { min-width: 180px; max-width: 260px; }
 .player .pinfo .pt { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player .pinfo .ps { color: var(--muted); font-size: 11.5px; }

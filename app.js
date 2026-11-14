@@ -44,7 +44,7 @@ function wireGlobalSwitch(root, after) {
 function groupedNotesHTML(notes, renderRow) {
   const g = notes.filter(isGlobalNote), s = notes.filter((n) => !isGlobalNote(n));
   if (!g.length) return s.map(renderRow).join("");
-  return `<div class="note-cat">Global &middot; whole song</div>${g.map(renderRow).join("")}${s.length ? `<div class="note-cat">Timestamped</div>` : ""}${s.map(renderRow).join("")}`;
+  return `<div class="note-cat">Global</div>${g.map(renderRow).join("")}${s.length ? `<div class="note-cat">Timestamped</div>` : ""}${s.map(renderRow).join("")}`;
 }
 // Reply authors: a reply stores the member's display name (and, for newer replies, their id); find the
 // member either way so the name can be tinted with their color. Guests' replies stay uncolored.
@@ -1477,6 +1477,15 @@ async function fetchPlaylist() {
 
 const audioEl = () => document.getElementById("audio");
 
+// ---- Loop: repeat the current song until switched off (session-only; "Play album" turns it off).
+let loopOn = false;
+const loopIconHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
+function syncLoopUI() {
+  const b = document.getElementById("pLoop"); if (!b) return;
+  b.classList.toggle("on", loopOn); b.setAttribute("aria-pressed", String(loopOn));
+  b.title = loopOn ? "Loop is on - click to turn off" : "Loop this song";
+}
+
 // ---- Volume: one slider on the player bar; remembered per browser (shared with the share page).
 // Phones (iOS) don't let pages set volume, so the control is hidden there and hardware buttons rule.
 const VOL_KEY = "megasVolume", MUTE_KEY = "megasMuted";
@@ -1534,6 +1543,7 @@ function playAlbum(albumId) {
   if (!q.length) { toast("No audio in this album yet", true); return; }
   state.audio.queue = q;
   albumRoll = true;
+  loopOn = false; audioEl().loop = false; syncLoopUI(); // looping one song would stall the album
   playTrack(q[0], true);
 }
 
@@ -1563,6 +1573,7 @@ function renderPlayer() {
       <button class="pbtn" id="pToggle" title="Play/Pause">${a.paused ? "&#9654;&#xFE0E;" : "&#9208;&#xFE0E;"}</button>
       <button class="pbtn mini" id="pFwd10" title="Forward 10 seconds"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g transform="translate(0 1.4)"><path d="M8.25 5.5A7.5 7.5 0 1 0 15.75 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><polygon points="15.75 3.4 15.75 7.6 19.1 5.5" fill="currentColor"/><text x="12" y="12.5" text-anchor="middle" dominant-baseline="central" font-size="8.5" fill="currentColor" font-weight="700">10</text></g></svg></button>
       <button class="pbtn mini" id="pNext" title="Next">&#9197;&#xFE0E;</button>
+      <button class="pbtn mini ploop" id="pLoop" aria-pressed="false">${loopIconHTML}</button>
     </div>
     <div class="pinfo"><div class="pt">${esc(t.title)}</div><div class="ps">${esc(t.inspiredBy || "")}${item.ext ? " &middot; " + item.ext.toUpperCase() : ""}</div></div>
     <div class="pseek">
@@ -1584,6 +1595,8 @@ function renderPlayer() {
     };
   }
   document.getElementById("pNext").onclick = () => playNext(1);
+  document.getElementById("pLoop").onclick = () => { loopOn = !loopOn; a.loop = loopOn; syncLoopUI(); };
+  a.loop = loopOn; syncLoopUI();
   document.getElementById("pClose").onclick = () => { a.pause(); state.audio.currentId = null; el.className = "player hidden"; updatePlayButtons(); positionNotesBar(); };
   document.getElementById("pBack10").onclick = () => { a.currentTime = Math.max(0, (a.currentTime || 0) - 10); };
   document.getElementById("pFwd10").onclick = () => { const d = (a.duration && isFinite(a.duration)) ? a.duration : (a.currentTime || 0) + 10; a.currentTime = Math.min(d, (a.currentTime || 0) + 10); };
@@ -2471,7 +2484,7 @@ function renderFeedback(t) {
       <div class="fb-atwrap"><span style="color:var(--muted);font-size:12px">At</span>
         <input type="text" id="fbTime" value="${mmss(curT)}" />
         <button class="fb-mini" id="fbNow">Use current time</button>
-        <label class="fb-glob" title="A note for the whole song (no timestamp), listed at the top"><input type="checkbox" id="fbGlobal" /> Global (whole song)</label>
+        <label class="fb-glob" title="A note for the whole song (no timestamp), listed at the top"><input type="checkbox" id="fbGlobal" /> Global</label>
       </div>
       <textarea id="fbComment" placeholder="Add a note at this time…"></textarea>
       <div class="fb-addrow"><button class="add-btn" id="fbAdd">Add note</button></div>

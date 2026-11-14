@@ -31,13 +31,14 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   the newest bounce. Notes also have a reply **thread** (band and share-link guests).
 - **Global notes** — tick **Global** when adding a note (notes bar or the notes modal) to make it apply to
   the whole song instead of a moment in it. It ignores timestamps and is listed first, under its own
-  "Global · whole song" heading, with a GLOBAL tag in place of a timecode. Global notes also appear
+  "Global" heading, with a GLOBAL tag in place of a timecode. Global notes also appear
   that way on share links and in the PDF, and guests can add them too (Global checkbox next to
   "Add your own note"). Any existing note can be switched with its **→ Global** / **→ Timed** button;
   switching to global keeps the original time, so switching back restores it.
 - **Preview Albums** — an ordered tracklist with Play-All through the whole album and a player
   bar with version history per track. Every player, in the app and on share links,
-  has a volume slider with mute (remembered per browser; hidden on iPhones, which only allow hardware volume).
+  has a volume slider with mute (remembered per browser; hidden on iPhones, which only allow hardware volume)
+  and a loop button that repeats the current song until switched off (not remembered; "Play album" turns it off).
 - **Share links** — create a titled, login-free link for a chosen set of songs
   (`/mix?s=<slug>`). The page always shows each song's *current* bounce and its notes (click a
   timecode to play from an adjustable pre-roll before it — default 3s, remembered per link in
