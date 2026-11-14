@@ -43,6 +43,8 @@
   .addnote { display:flex; flex-wrap:wrap; gap:6px; padding:12px 0 4px; border-top:1px solid var(--stroke); }
   .an-time { flex:none; width:62px; text-align:center; font-variant-numeric:tabular-nums; }
   .an-text { flex:1; min-width:140px; }
+  .an-glob { flex:none; display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); cursor:pointer; white-space:nowrap; }
+  .addnote.is-global .an-time { opacity:0.35; pointer-events:none; }
   .an-time, .an-text { background:var(--panel); border:1px solid var(--stroke-strong); border-radius:7px; color:var(--text); padding:6px 9px; font-size:13px; }
   .an-time.bad { border-color:#f0654f; }
   .an-btn { flex:none; background:linear-gradient(140deg,var(--accent),var(--accent-2)); color:#1a0713; border:none; border-radius:7px; padding:6px 12px; font-size:12.5px; font-weight:700; cursor:pointer; }
@@ -56,7 +58,7 @@
     .player, .addnote, .threp, .acts, .intro, .pdfbtn { display:none !important; }
     .song { background:#fff; border-color:#999; break-inside:avoid; }
     .song-h { background:#eee; border-color:#999; }
-    .n .time, .thby { color:#000; } .n .time { background:#fff; border-color:#999; }
+    .n .time, .thby, .gtag { color:#000; } .n .time, .gtag { background:#fff; border-color:#999; }
     .n .meta span[style] { filter:brightness(0.55); }
     .thm, .thm.me { background:#f3f3f3; }
     .n .cmt, .thm, .song-h .t { color:#000; } .song-h .v, .n .meta, .foot { color:#555; }
@@ -69,6 +71,9 @@
   .edbox { display:flex; flex-wrap:wrap; gap:6px; margin:4px 0; }
   .ed-in { flex:1; min-width:140px; background:var(--panel); border:1px solid var(--stroke-strong); border-radius:7px; color:var(--text); padding:5px 8px; font-size:13px; }
   .ed-save, .ed-cancel { flex:none; background:var(--panel-2); color:var(--text); border:1px solid var(--stroke-strong); border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; }
+  .cat { font-size:10.5px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); padding:10px 0 2px; }
+  .cat:first-child { padding-top:6px; }
+  .gtag { font-size:10px; font-weight:800; letter-spacing:0.06em; color:var(--accent-2); background:var(--accent-soft); border:1px solid var(--accent-soft); border-radius:6px; padding:2px 8px; }
   .empty { color:var(--muted); font-size:13px; padding:10px 0; }
   .state { padding:40px 0; text-align:center; color:var(--muted); }
   .foot { color:var(--muted); font-size:11px; margin-top:24px; text-align:center; }
@@ -153,7 +158,7 @@
     if (!songs.length) { app.innerHTML = '<div class="state">No songs on this link.</div>'; return; }
     app.innerHTML = songs.map(function (s) {
       var open = s.notes.filter(function(n){return !n.reviewed;}).length;
-      var rows = s.notes.length ? s.notes.map(function (n) {
+      var noteRow = function (n) {
         var th = (n.thread||[]);
         var msgs = th.map(function(mm){
           var mine = mm.side==="share" && mm.by===shareTitle && mm.at;
@@ -164,11 +169,14 @@
         return '<div class="n'+(n.reviewed?" done":"")+'" data-id="'+n.id+'">'
           + '<div class="nrow">'
           + '<input type="checkbox" '+(n.reviewed?"checked":"")+' />'
-          + '<span class="body"><span class="meta"><button class="time" title="Play from pre-roll before" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>'+(n.author?'<span'+(hexOk(n.authorColor)?' style="color:'+n.authorColor+';font-weight:600"':'')+'>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+(n.mine?'<span class="acts"><button class="act" data-op="editNote" data-id="'+n.id+'">Edit</button><button class="act" data-op="deleteNote" data-id="'+n.id+'">Delete</button></span>':'')+'</span>'
+          + '<span class="body"><span class="meta">'+(n.global?'<span class="gtag" title="Applies to the whole song">GLOBAL</span>':'<button class="time" title="Play from pre-roll before" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>')+''+(n.author?'<span'+(hexOk(n.authorColor)?' style="color:'+n.authorColor+';font-weight:600"':'')+'>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+(n.mine?'<span class="acts"><button class="act" data-op="editNote" data-id="'+n.id+'">Edit</button><button class="act" data-op="deleteNote" data-id="'+n.id+'">Delete</button></span>':'')+'</span>'
           + '<span class="cmt">'+esc(n.comment)+'</span></span></div>'
           + '<div class="thread"><div class="thmsgs">'+msgs+'</div><div class="threp"><input class="thin" data-rid="'+n.id+'" data-dk="r:'+n.id+'" placeholder="Reply or ask a question…" /><button class="thsend" data-sid="'+n.id+'">Send</button></div></div>'
           + '</div>';
-      }).join("") : '<div class="empty">No notes on this version.</div>';
+      };
+      var gl = s.notes.filter(function(n){return n.global;}), tsn = s.notes.filter(function(n){return !n.global;});
+      var rows = !s.notes.length ? '<div class="empty">No notes on this version.</div>'
+        : (gl.length ? '<div class="cat">Global &middot; whole song</div>'+gl.map(noteRow).join("")+(tsn.length?'<div class="cat">Timestamped</div>':'') : '') + tsn.map(noteRow).join("");
       return '<div class="song"><div class="song-h">'
         + (s.url?'<button class="play" data-play="'+s.id+'" title="Play">&#9654;&#xFE0E;</button>':'<button class="play" disabled title="No bounce yet">&#9654;&#xFE0E;</button>')
         + '<span class="t">'+esc(s.title)+'</span>'
@@ -177,6 +185,7 @@
         + '<button class="pdfbtn" data-pdf="'+s.id+'" title="Download this song\'s notes as a PDF to print or mark up">Download PDF</button>'
         + '</div><div class="nlist">'+rows
         + '<div class="addnote"><input class="an-time" data-dk="m:'+s.id+'" data-song="'+s.id+'" value="0:00" aria-label="Time in song" inputmode="numeric" />'
+        + '<label class="an-glob" title="A note about the whole song, not one moment"><input type="checkbox" class="an-g" data-dk="g:'+s.id+'" data-song="'+s.id+'" /> Global</label>'
         + '<input class="an-text" data-dk="t:'+s.id+'" data-song="'+s.id+'" placeholder="Add your own note…" />'
         + '<button class="an-btn" data-song="'+s.id+'">Add note</button></div>'
         + '</div></div>';
@@ -191,6 +200,15 @@
       });
       inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var b = app.querySelector('.an-btn[data-song="'+inp.dataset.song+'"]'); if (b) b.click(); } });
     });
+    app.querySelectorAll(".an-g").forEach(function (g) {
+      function sync() {
+        var row = g.closest(".addnote"), txt = row.querySelector(".an-text");
+        row.classList.toggle("is-global", g.checked);
+        txt.placeholder = g.checked ? "Add a note about the whole song\u2026" : "Add your own note\u2026";
+      }
+      g.addEventListener("change", function () { sync(); if (g.checked) g.closest(".addnote").querySelector(".an-text").focus(); });
+      sync();
+    });
     app.querySelectorAll(".an-btn").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.dataset.song;
@@ -198,12 +216,13 @@
         var inp = app.querySelector('.an-text[data-song="'+id+'"]');
         var text = inp ? inp.value.trim() : "";
         if (!text) { if (inp) inp.focus(); return; }
-        var secs = parseTime(t ? t.value : "0:00");
+        var gEl = app.querySelector('.an-g[data-song="'+id+'"]'), isG = !!(gEl && gEl.checked);
+        var secs = isG ? 0 : parseTime(t ? t.value : "0:00");
         if (secs == null) { if (t) { t.classList.add("bad"); t.focus(); } return; }
         btn.disabled = true;
-        fetch("/api/update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(authBody({ newNote: true, trackId: id, timestamp: secs, text: text, version: (byId[id] && byId[id].version) || "" })) })
+        fetch("/api/update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(authBody({ newNote: true, global: isG, trackId: id, timestamp: secs, text: text, version: (byId[id] && byId[id].version) || "" })) })
           .then(function(r){ return r.json(); })
-          .then(function(j){ btn.disabled = false; if (j && j.ok) { inp.value = ""; if (t) { t.value = "0:00"; delete t.dataset.edited; } load(); } else { btn.textContent = "Try again"; setTimeout(function(){ btn.textContent = "Add note"; }, 2500); } })
+          .then(function(j){ btn.disabled = false; if (j && j.ok) { inp.value = ""; if (gEl) gEl.checked = false; if (t) { t.value = "0:00"; delete t.dataset.edited; } load(); } else { btn.textContent = "Try again"; setTimeout(function(){ btn.textContent = "Add note"; }, 2500); } })
           .catch(function(){ btn.disabled = false; btn.textContent = "Try again"; setTimeout(function(){ btn.textContent = "Add note"; }, 2500); });
       });
     });
@@ -322,14 +341,14 @@
     // Notes
     var notes = song.notes || [];
     if (!notes.length) { doc.setFont("helvetica", "italic"); doc.setFontSize(11); doc.setTextColor(120); doc.text("No notes on this version.", M, y); y += 16; }
-    notes.forEach(function (n) {
+    var renderNote = function (n) {
       var comment = wrap(n.comment, 11, CW - 22);
       ensure(14 + 14 * Math.min(comment.length, 2) + 8);
       // checkbox (filled with a tick if already reviewed), then timecode + member
       doc.setDrawColor(60); doc.setLineWidth(0.9); doc.rect(M, y - 9, 10, 10);
       if (n.reviewed) { doc.setLineWidth(1.4); doc.line(M + 2, y - 4, M + 4.5, y - 1.2); doc.line(M + 4.5, y - 1.2, M + 8.5, y - 7.2); }
       doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(190, 30, 120);
-      var tc = mmss(n.timestamp); doc.text(tc, M + 20, y); var tw = doc.getTextWidth(tc);
+      var tc = n.global ? "GLOBAL" : mmss(n.timestamp); doc.text(tc, M + 20, y); var tw = doc.getTextWidth(tc);
       var who = pdfClean(n.author || ""), wx = M + 20 + tw + 10;
       if (who) {
         // Member name in their (print-safe) color, bold; status stays gray.
@@ -350,7 +369,14 @@
         doc.setDrawColor(210); doc.setLineWidth(1); doc.line(M + 31, top, M + 31, y - 9);
       });
       y += 12;
-    });
+    };
+    // Whole-song (global) notes first under their own heading, then the timestamped ones.
+    var gl = notes.filter(function (n) { return n.global; }), tsn = notes.filter(function (n) { return !n.global; });
+    var section = function (label) { ensure(34); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(120); doc.text(label.toUpperCase(), M, y); y += 16; };
+    if (gl.length) section("Global \u00B7 whole song");
+    gl.forEach(renderNote);
+    if (gl.length && tsn.length) section("Timestamped");
+    tsn.forEach(renderNote);
     // Footer on every page
     var pages = doc.getNumberOfPages();
     for (var p = 1; p <= pages; p++) {
@@ -390,13 +416,14 @@
     if (sig === lastSig) { songs.forEach(function (s) { byId[s.id] = s; }); return; } // same content; just keep fresh stream URLs
     // Every typed-in box carries a data-dk key (reply, new-note text, new-note time).
     var drafts = {}, focusKey = null, selStart = null;
-    app.querySelectorAll("[data-dk]").forEach(function (i) { if (i.value) drafts[i.dataset.dk] = i.value; });
+    app.querySelectorAll("[data-dk]").forEach(function (i) { if (i.type === "checkbox") { if (i.checked) drafts[i.dataset.dk] = "1"; } else if (i.value) drafts[i.dataset.dk] = i.value; });
     var ae = document.activeElement;
     if (ae && ae.dataset && ae.dataset.dk) { focusKey = ae.dataset.dk; selStart = ae.selectionStart; }
     lastSig = sig;
     render(songs);
     app.querySelectorAll("[data-dk]").forEach(function (i) {
       var k = i.dataset.dk;
+      if (i.type === "checkbox") { if (drafts[k] === "1") { i.checked = true; i.dispatchEvent(new Event("change")); } return; }
       if (drafts[k] != null) { i.value = drafts[k]; if (k.charAt(0) === "m" && drafts[k] !== "0:00") i.dataset.edited = "1"; }
     });
     if (focusKey) {

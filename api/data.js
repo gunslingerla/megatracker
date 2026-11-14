@@ -9,7 +9,7 @@ const share = require("./_share");
 const mixIds = (t) => (Array.isArray(t) ? t.map((x) => (typeof x === "string" ? x : x && x.id)).filter(Boolean) : []);
 // Notes added by a share-link guest have no linked member; update.js stores their link title
 // in the note's Name as "Guest: <title> @ m:ss". Read it back as the display author.
-const guestOf = (f) => { const m = /^Guest: (.+) @ \d+:\d{2}$/.exec(String(f[F.feedback.name] || "")); return m ? m[1] : ""; };
+const guestOf = (f) => share.guestNameOf(f[F.feedback.name]);
 async function mixResolve(q) {
   // Resolve a mix request (by slug or signed token) to its track id list + title.
   if (q.mixslug) {
@@ -64,7 +64,7 @@ async function mixRead(req, res) {
       const ver = b ? b.name : "";
       const notes = feedbackR
         .filter((fr) => first(fr.fields[F.feedback.track]) === id && (fr.fields[F.feedback.version] || "") === ver)
-        .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || guestOf(fr.fields), authorColor: memberColor[first(arr(fr.fields[F.feedback.author]))] || "", mine: share.isGuestNoteOf(fr.fields[F.feedback.name], shareTitle), thread: (() => { try { const z = JSON.parse(fr.fields[F.feedback.thread] || "[]"); return Array.isArray(z) ? z : []; } catch { return []; } })() }))
+        .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || guestOf(fr.fields), authorColor: memberColor[first(arr(fr.fields[F.feedback.author]))] || "", global: share.isGlobalName(fr.fields[F.feedback.name]), mine: share.isGuestNoteOf(fr.fields[F.feedback.name], shareTitle), thread: (() => { try { const z = JSON.parse(fr.fields[F.feedback.thread] || "[]"); return Array.isArray(z) ? z : []; } catch { return []; } })() }))
         .sort((a, b2) => a.timestamp - b2.timestamp);
       return { id, title: r.fields[F.track.title] || "Untitled", version: ver, url: b ? b.url : null, notes };
     }).filter(Boolean);
@@ -132,6 +132,7 @@ module.exports = async (req, res) => {
         authorId: first(f[F.feedback.author]) || null,
         author: (arr(f[F.feedback.author]).map((id) => memberName[id] || "?"))[0] || (guestOf(f) ? guestOf(f) + " (guest)" : ""),
         mixReviewed: !!f[F.feedback.mixReviewed],
+        global: share.isGlobalName(f[F.feedback.name]),
         thread: (() => { try { const z = JSON.parse(f[F.feedback.thread] || "[]"); return Array.isArray(z) ? z : []; } catch { return []; } })(),
         createdTime: r.createdTime,
       };

@@ -1,4 +1,4 @@
-const { T, F, PHASE_NAMES, listAll, create } = require("./_airtable");
+const { T, F, PHASE_NAMES, GLOBAL_NOTE_NAME, listAll, create } = require("./_airtable");
 const { requireAuth } = require("./_auth");
 
 // Default owner(s) for each production phase.
@@ -59,9 +59,10 @@ module.exports = async (req, res) => {
 
     if (entity === "feedback") {
       if (!fields.trackId) return res.status(400).json({ error: "trackId required" });
-      const ts = Number(fields.timestamp) || 0;
+      const isGlobal = !!fields.global; // whole-song note: no timestamp
+      const ts = isGlobal ? 0 : Number(fields.timestamp) || 0;
       const ff = {
-        [F.feedback.name]: fields.name || `Note @ ${Math.floor(ts / 60)}:${String(ts % 60).padStart(2, "0")}`,
+        [F.feedback.name]: isGlobal ? GLOBAL_NOTE_NAME : fields.name || `Note @ ${Math.floor(ts / 60)}:${String(ts % 60).padStart(2, "0")}`,
         [F.feedback.track]: [fields.trackId],
         [F.feedback.timestamp]: ts,
         [F.feedback.comment]: fields.comment || "",

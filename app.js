@@ -23,6 +23,29 @@ let asgGroup = "phase";
 let asgOnlyMe = false; // Assignments grouping: "phase" or "song" // Band cards in edit mode
 let notesShowResolved = false; // Notes page: include resolved notes
 const PALETTE = ["#6cb6ff", "#46dba0", "#ffab4a", "#f0654f", "#b58cff", "#4fd0e0", "#f078c0", "#e5c94a", "#8a9bff", "#5fd08a"];
+// Global notes apply to the whole song (no timestamp). Sort them first, label them "Global" in place
+// of a timecode, and group them under their own heading at the top of a song's notes.
+const isGlobalNote = (fb) => !!(fb && fb.global);
+const noteCmp = (a, b) => (isGlobalNote(b) - isGlobalNote(a)) || (a.timestamp - b.timestamp);
+const noteStamp = (fb) => (isGlobalNote(fb) ? "Global" : mmss(fb.timestamp));
+// Per-note button that switches it between a timestamped note and a whole-song (global) one.
+// Switching to global keeps the stored time, so switching back restores it.
+const globalSwitchBtn = (fb) => `<button class="fb-mini" data-fbglobal="${fb.id}:${isGlobalNote(fb) ? 0 : 1}" title="${isGlobalNote(fb) ? "Give this note a timestamp again" : "Make this a whole-song note (no timestamp)"}">&rarr; ${isGlobalNote(fb) ? "Timed" : "Global"}</button>`;
+function wireGlobalSwitch(root, after) {
+  if (!root) return;
+  root.querySelectorAll("[data-fbglobal]").forEach((b) => b.onclick = async () => {
+    const [id, flag] = b.dataset.fbglobal.split(":");
+    b.disabled = true;
+    const r = await update("feedback", id, { global: flag === "1" });
+    if (r.ok) { toast(flag === "1" ? "Now a global note" : "Timestamp restored"); await refresh(); if (after) after(); }
+    else b.disabled = false;
+  });
+}
+function groupedNotesHTML(notes, renderRow) {
+  const g = notes.filter(isGlobalNote), s = notes.filter((n) => !isGlobalNote(n));
+  if (!g.length) return s.map(renderRow).join("");
+  return `<div class="note-cat">Global &middot; whole song</div>${g.map(renderRow).join("")}${s.length ? `<div class="note-cat">Timestamped</div>` : ""}${s.map(renderRow).join("")}`;
+}
 const memberById = (id) => (state.data && state.data.members ? state.data.members.find((m) => m.id === id) : null);
 // Tint a note author's name with their member color so "who said this" reads at a glance.
 // Only hex colors are applied (the value comes from Airtable); guests/unknown authors stay muted.
@@ -134,7 +157,7 @@ async function refresh(keepDrawer = true) {
 // Two cadences: a snappy 12s pass that keeps an open notes bar live, and a 60s
 // sitewide pass that refreshes every view. Both bail out while you are mid-edit.
 function fbSig(t) {
-  return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${(fb.comment || "").length}:${(fb.thread || []).map((m) => `${m.at || ""}.${(m.text || "").length}`).join(",")}:${fb.mixReviewed ? 1 : 0}`).sort().join("|");
+  return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${(fb.comment || "").length}:${(fb.thread || []).map((m) => `${m.at || ""}.${(m.text || "").length}`).join(",")}:${fb.mixReviewed ? 1 : 0}:${fb.global ? 1 : 0}`).sort().join("|");
 }
 function dataSig(d) {
   try {
@@ -160,7 +183,9 @@ function renderNotesBarPreserving() {
   const focused = document.activeElement === ta;
   const locked = notesTimeLocked;
   const timeText = (document.getElementById("nbTime") || {}).textContent;
+  const glOn = !!(document.getElementById("nbGlobal") || {}).checked;
   renderNotesBar();
+  { const g2 = document.getElementById("nbGlobal"); if (g2 && glOn) { g2.checked = true; g2.onchange(); } }
   const ta2 = document.getElementById("nbText");
   if (ta2) { ta2.value = draft; if (focused) { ta2.focus(); try { ta2.setSelectionRange(draft.length, draft.length); } catch {} } }
   notesTimeLocked = locked;
@@ -377,7 +402,7 @@ function openVersionTransfer(trackId) {
       ${list.map((fb) => `
         <label class="vx-row">
           <input type="checkbox" class="vx-chk" data-vid="${fb.id}" checked />
-          <span class="vx-time">${mmss(fb.timestamp)}</span>
+          <span class="vx-time">${noteStamp(fb)}</span>
           <span class="vx-comment">${esc(fb.comment)}</span>
           <span class="vx-author"${authorStyle(fb)}>${esc(fb.author || "")}</span>
           <button class="fb-mini vx-resolve" data-vresolve="${fb.id}" title="Mark resolved instead of moving">Resolve</button>
@@ -577,7 +602,7 @@ function assignmentsFeedbackBox() {
   const items = rows.map(({ t, fb }) => `
     <div class="afb-item">
       <span class="afb-song" data-open="${t.id}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
-      <span class="afb-time">${mmss(fb.timestamp)}</span>
+      <span class="afb-time">${noteStamp(fb)}</span>
       <span class="afb-comment">${esc(fb.comment)}</span>
       <span class="afb-author"${authorStyle(fb)}>${esc(fb.author || "")}</span>
       <button class="fb-mini" data-afbtask="${t.id}:${fb.id}" title="Turn into a task">&#8594; Task</button>
@@ -867,6 +892,7 @@ function wireBoard() {
   document.querySelectorAll("[data-asg]").forEach((b) => b.onclick = () => { asgGroup = b.dataset.asg; render(); });
   document.querySelectorAll("[data-asgme]").forEach((b) => b.onclick = () => { asgOnlyMe = !asgOnlyMe; render(); });
   document.querySelectorAll("#main .note-time[data-nseek]").forEach((b) => b.onclick = () => seekTo(b.dataset.ntrack, Math.max(0, Number(b.dataset.nseek) - preRoll)));
+  wireGlobalSwitch(document.getElementById("main"));
   document.querySelectorAll("#main [data-nresolve]").forEach((b) => b.onclick = async () => { const r = await update("feedback", b.dataset.nresolve, { status: "Resolved" }); if (r.ok) { toast("Resolved"); refresh(); } });
   document.querySelectorAll("#main [data-nreopen]").forEach((b) => b.onclick = async () => { const r = await update("feedback", b.dataset.nreopen, { status: "Open" }); if (r.ok) { toast("Reopened"); refresh(); } });
   { const rc = document.getElementById("notesResolved"); if (rc) rc.onchange = () => { notesShowResolved = rc.checked; render(); }; }
@@ -1545,7 +1571,7 @@ function renderMarkers() {
   const t = trackById(state.audio.currentId);
   if (!t || !a.duration || !isFinite(a.duration)) { wrap.innerHTML = ""; return; }
   const cur = currentVersion(t);
-  wrap.innerHTML = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "")).map((fb) => {
+  wrap.innerHTML = (t.feedback || []).filter((fb) => !fb.global && (fb.version || "") === (cur || "")).map((fb) => {
     const pct = Math.min(100, Math.max(0, (fb.timestamp / a.duration) * 100));
     return `<div class="marker ${fb.status === "Resolved" ? "resolved" : "open"}" style="left:${pct}%" data-mk="${fb.timestamp}" title="${esc(mmss(fb.timestamp))} — ${esc(fb.author || "")}: ${esc((fb.comment || "").slice(0, 80))}"></div>`;
   }).join("");
@@ -2082,7 +2108,7 @@ function convertNoteToTask(trackId, note) {
   const stageOpt = canOfferStage ? `<option value="__stage"${defSel === "__stage" ? " selected" : ""}>New phase: ${esc(stage)}</option>` : "";
   const phaseOpts = phases.map((p) => `<option value="${p.id}"${p.id === defSel ? " selected" : ""}>${esc(p.phase)}</option>`).join("");
   const inner = (stageOpt + phaseOpts) || `<option value="">No phases yet — add one on the track</option>`;
-  const text0 = `[${mmss(note.timestamp)}] ${note.comment || ""}`;
+  const text0 = `[${noteStamp(note)}] ${note.comment || ""}`;
   openModal(`
     <div class="mhd"><h2>Turn note into a task</h2><span style="flex:1"></span><button class="icon-btn close" id="mClose">&times;</button></div>
     <div class="mbd">
@@ -2175,7 +2201,7 @@ function wireNoteCtrls(root) {
       if (!phaseId) { toast("Pick a phase", true); return; }
       const ph = (state.data.phases || []).find((p) => p.id === phaseId);
       const arr = (ph && Array.isArray(ph.subtasks)) ? ph.subtasks.map((x) => ({ text: x.text, done: !!x.done, owner: x.owner || null, note: x.note || null })) : [];
-      arr.push({ text: `[${mmss(fb.timestamp)}] ${fb.comment || ""}`, done: false, owner: (ownerSel ? ownerSel.value : "") || null, note: fid });
+      arr.push({ text: `[${noteStamp(fb)}] ${fb.comment || ""}`, done: false, owner: (ownerSel ? ownerSel.value : "") || null, note: fid });
       const r2 = await update("phase", phaseId, { subtasks: JSON.stringify(arr) });
       if (!r2.ok) { toast((r2 && r2.error) || "Couldn't add task", true); return; }
       toast("Task filed — the note resolves when it's done"); await refresh(false);
@@ -2188,11 +2214,11 @@ function noteRowHTML(t, fb) {
   const filed = noteHasTask(t, fb.id);
   return `<div class="note-row${resolved ? " resolved" : ""}" data-fb="${fb.id}">
     <div class="note-main">
-      <button class="note-time" data-nseek="${fb.timestamp}" data-ntrack="${t.id}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
+      ${fb.global ? `<span class="note-time note-global" title="Applies to the whole song">GLOBAL</span>` : `<button class="note-time" data-nseek="${fb.timestamp}" data-ntrack="${t.id}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>`}
       <span class="note-when">${fmtWhen(fb.createdTime)}</span>
       <span class="note-author"${authorStyle(fb)}>${esc(fb.author || "")}</span>
       ${fb.mixReviewed ? `<span class="mix-badge" title="Mixer marked this reviewed">✓ mixer</span>` : ""}
-      <div class="fb-actions">${resolved ? `<button class="fb-mini" data-nreopen="${fb.id}">Reopen</button>` : `<button class="fb-mini" data-nresolve="${fb.id}">Resolve</button>`}<button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
+      <div class="fb-actions">${resolved ? `<button class="fb-mini" data-nreopen="${fb.id}">Reopen</button>` : `<button class="fb-mini" data-nresolve="${fb.id}">Resolve</button>`}${globalSwitchBtn(fb)}<button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
     </div>
     <div class="fb-body">
       <div class="fb-comment">${esc(fb.comment)}</div>
@@ -2205,7 +2231,7 @@ function notesHTML() {
   const alb = currentAlbum();
   const inScope = (t) => !t.onHold && (!alb || t.albumId === alb.id);
   const groups = state.data.tracks.filter(inScope)
-    .map((t) => { const cur = currentVersion(t); const notes = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "") && (notesShowResolved || fb.status === "Open")).sort((a, b) => (a.status === b.status ? 0 : a.status === "Open" ? -1 : 1) || a.timestamp - b.timestamp); return { t, notes }; })
+    .map((t) => { const cur = currentVersion(t); const notes = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "") && (notesShowResolved || fb.status === "Open")).sort((a, b) => (isGlobalNote(b) - isGlobalNote(a)) || (a.status === b.status ? 0 : a.status === "Open" ? -1 : 1) || a.timestamp - b.timestamp); return { t, notes }; })
     .filter((g) => g.notes.length)
     .sort((a, b) => effOrder(a.t) - effOrder(b.t));
   const total = groups.reduce((n, g) => n + g.notes.length, 0);
@@ -2215,7 +2241,7 @@ function notesHTML() {
         <span class="afb-song" data-open="${t.id}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
         <span class="nc-count">${notes.length} note${notes.length > 1 ? "s" : ""}</span>
       </div>
-      <div class="note-card-body">${notes.map((fb) => noteRowHTML(t, fb)).join("")}</div>
+      <div class="note-card-body">${groupedNotesHTML(notes, (fb) => noteRowHTML(t, fb))}</div>
     </div>`).join("");
   const list = groups.length ? cards : `<div class="empty" style="padding:24px">No open notes${alb ? " for this album" : ""}.</div>`;
   return `<div class="notes-page"><div class="notes-head">${notesShowResolved ? "Notes" : "Open notes"}<span class="asg-count">${total}</span><label class="notes-toggle"><input type="checkbox" id="notesResolved"${notesShowResolved ? " checked" : ""}/> Show resolved</label></div>${list}</div>`;
@@ -2287,12 +2313,13 @@ function fbItemHTML(fb, t) {
   return `
     <div class="fb-item ${fb.status === "Resolved" ? "resolved" : ""}" data-fb="${fb.id}">
       <div class="fb-top">
-        <button class="fb-time" data-seek="${fb.timestamp}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
+        ${fb.global ? `<span class="fb-time fb-global" title="Applies to the whole song">GLOBAL</span>` : `<button class="fb-time" data-seek="${fb.timestamp}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>`}
         <span class="fb-when">${fmtWhen(fb.createdTime)}</span>
         <span class="fb-author"${authorStyle(fb)}>${esc(fb.author || "—")}</span>
         ${fb.mixReviewed ? `<span class="mix-badge" title="Mixer marked this reviewed">✓ mixer</span>` : ""}
         <div class="fb-actions">
           <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>
+          ${globalSwitchBtn(fb)}
           <button class="fb-mini" data-fbdel>&times;</button>
         </div>
       </div>
@@ -2319,10 +2346,10 @@ function renderNotesBar() {
   const bar = document.getElementById("notesbar"); if (!bar || !notesBarTrack) return;
   const t = trackById(notesBarTrack); if (!t) { closeNotesBar(); return; }
   const cur = currentVersion(t);
-  const list = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "")).sort((a, b) => a.timestamp - b.timestamp);
+  const list = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "")).sort(noteCmp);
   const playing = state.audio.currentId === t.id;
   const curT = playing ? Math.floor(audioEl().currentTime || 0) : 0;
-  const rows = list.length ? list.map((fb) => fbItemHTML(fb, t)).join("") : `<div class="empty">No notes on the current version yet.</div>`;
+  const rows = list.length ? groupedNotesHTML(list, (fb) => fbItemHTML(fb, t)) : `<div class="empty">No notes on the current version yet.</div>`;
   const older = (t.feedback || []).filter((fb) => (fb.version || "") !== (cur || ""));
   const olderByVer = {}; older.forEach((fb) => { const k = fb.version || "(no version)"; (olderByVer[k] = olderByVer[k] || []).push(fb); });
   const olderHTML = Object.keys(olderByVer).length ? `<details class="fb-older"><summary>Previous versions (${older.length})</summary>${Object.entries(olderByVer).map(([v, l]) => `<div class="fb-vergroup"><div class="fb-verhd">${esc(v)}</div>${l.map((fb) => fbItemHTML(fb, t)).join("")}</div>`).join("")}</details>` : "";
@@ -2337,6 +2364,7 @@ function renderNotesBar() {
     <div class="nb-list">${rows}${olderHTML}</div>
     <div class="nb-add">
       <button class="nb-time" id="nbTime" title="${playing ? "Live time — click to resync; locks when you type" : "Timestamp"}">${mmss(curT)}</button>
+      <label class="nb-global" title="A note for the whole song (no timestamp), listed at the top"><input type="checkbox" id="nbGlobal" /> Global</label>
       <input type="text" id="nbText" placeholder="Add a note${playing ? " here" : ""}…" />
       <button class="add-btn" id="nbAdd">Add note</button>
     </div>
@@ -2349,18 +2377,26 @@ function renderNotesBar() {
   });
   wireNoteCtrls(bar);
   wireThreads(bar);
+  wireGlobalSwitch(bar, () => { renderNotesBar(); if (state.audio.currentId === t.id) renderMarkers(); });
   notesTimeLocked = false;
   const textEl = document.getElementById("nbText");
   const lock = () => { notesTimeLocked = true; };
   textEl.addEventListener("focus", lock); textEl.addEventListener("input", lock);
+  const glEl = document.getElementById("nbGlobal");
+  glEl.onchange = () => {
+    bar.querySelector(".nb-add").classList.toggle("is-global", glEl.checked);
+    textEl.placeholder = glEl.checked ? "Add a note for the whole song…" : `Add a note${playing ? " here" : ""}…`;
+    if (glEl.checked) textEl.focus();
+  };
   document.getElementById("nbTime").onclick = () => { if (state.audio.currentId === t.id) { document.getElementById("nbTime").textContent = mmss(Math.floor(audioEl().currentTime || 0)); notesTimeLocked = false; } };
   { const pr = document.getElementById("nbPreroll"); if (pr) pr.onchange = () => { const v = Number(pr.value); preRoll = isFinite(v) && v >= 0 ? Math.min(30, v) : 5; localStorage.setItem("megasPreroll", preRoll); pr.value = preRoll; }; }
   document.getElementById("nbClose").onclick = closeNotesBar;
   document.getElementById("nbAdd").onclick = async () => {
     const comment = textEl.value.trim(); if (!comment) { toast("Write a note first", true); return; }
     const me = await ensureMe();
-    const ts = parseTime(document.getElementById("nbTime").textContent);
-    const r = await createEntity("feedback", { trackId: t.id, timestamp: ts, comment, authorId: me ? me.id : undefined, version: cur });
+    const isG = document.getElementById("nbGlobal").checked;
+    const ts = isG ? 0 : parseTime(document.getElementById("nbTime").textContent);
+    const r = await createEntity("feedback", { trackId: t.id, timestamp: ts, global: isG, comment, authorId: me ? me.id : undefined, version: cur });
     if (r.ok) { toast("Note added"); await refresh(); renderNotesBar(); if (state.audio.currentId === t.id) renderMarkers(); }
   };
   textEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("nbAdd").click(); } });
@@ -2383,7 +2419,7 @@ function renderFeedback(t) {
   const older = all.filter((fb) => (fb.version || "") !== (cur || ""));
   const olderByVer = {};
   older.forEach((fb) => { const k = fb.version || "(no version)"; (olderByVer[k] = olderByVer[k] || []).push(fb); });
-  const curRows = curList.length ? curList.map((fb) => fbItemHTML(fb, t)).join("") : `<div class="empty">No notes on the current version yet.</div>`;
+  const curRows = curList.length ? groupedNotesHTML(curList.slice().sort(noteCmp), (fb) => fbItemHTML(fb, t)) : `<div class="empty">No notes on the current version yet.</div>`;
   const olderHTML = Object.keys(olderByVer).length
     ? `<details class="fb-older"><summary>Earlier versions (${older.length})</summary>${Object.entries(olderByVer).map(([v, list]) => `<div class="fb-vergroup"><div class="fb-verhd">${esc(v)}</div>${list.map((fb) => fbItemHTML(fb, t)).join("")}</div>`).join("")}</details>`
     : "";
@@ -2395,6 +2431,7 @@ function renderFeedback(t) {
       <div class="fb-atwrap"><span style="color:var(--muted);font-size:12px">At</span>
         <input type="text" id="fbTime" value="${mmss(curT)}" />
         <button class="fb-mini" id="fbNow">Use current time</button>
+        <label class="fb-glob" title="A note for the whole song (no timestamp), listed at the top"><input type="checkbox" id="fbGlobal" /> Global (whole song)</label>
       </div>
       <textarea id="fbComment" placeholder="Add a note at this time…"></textarea>
       <div class="fb-addrow"><button class="add-btn" id="fbAdd">Add note</button></div>
@@ -2415,6 +2452,12 @@ function renderFeedback(t) {
     };
   });
   wireNoteCtrls(el);
+  wireGlobalSwitch(el, () => reRenderFeedback(t.id));
+  $("#fbGlobal").onchange = () => {
+    const g = $("#fbGlobal").checked;
+    $("#fbTime").disabled = g; $("#fbNow").disabled = g; el.querySelector(".fb-atwrap").classList.toggle("is-global", g);
+    $("#fbComment").placeholder = g ? "Add a note for the whole song…" : "Add a note at this time…";
+  };
   $("#fbNow").onclick = () => {
     if (state.audio.currentId === t.id) $("#fbTime").value = mmss(Math.floor(audioEl().currentTime || 0));
     else toast("Play this track first", true);
@@ -2423,7 +2466,8 @@ function renderFeedback(t) {
     const comment = $("#fbComment").value.trim();
     if (!comment) { toast("Write a note first", true); return; }
     const me = await ensureMe();
-    const r = await createEntity("feedback", { trackId: t.id, timestamp: parseTime($("#fbTime").value), comment, authorId: me ? me.id : undefined, version: cur });
+    const isG = $("#fbGlobal").checked;
+    const r = await createEntity("feedback", { trackId: t.id, timestamp: isG ? 0 : parseTime($("#fbTime").value), global: isG, comment, authorId: me ? me.id : undefined, version: cur });
     if (r.ok) { toast("Note added"); await refresh(); reRenderFeedback(t.id); }
   };
 }

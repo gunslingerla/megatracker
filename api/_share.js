@@ -20,13 +20,23 @@ function verify(token) {
   try { return JSON.parse(b64uDec(p)); } catch { return null; }
 }
 
-// Guest notes (added by a share-link guest) have no linked member, so the link title is stored
-// in the note's Name as "Guest: <label> @ m:ss". These helpers keep write (update.js) and read
-// (data.js) agreeing on that format, and on which share a guest note belongs to.
+// Note naming. There are no Airtable fields for "guest" or "global", so both live in a note's Name:
+//   band note            "Note @ m:ss"                      band global   "Global note"
+//   guest note           "Guest: <label> @ m:ss"            guest global  "Guest: <label> @ Global"
+// (<label> is the share link's title.) These helpers keep write (update.js/create.js) and read
+// (data.js) agreeing on the format, on which share a guest note belongs to, and on what is global.
+const { GLOBAL_NOTE_NAME } = require("./_airtable");
+const GUEST_NAME = /^Guest: (.+) @ (\d+:\d{2}|Global)$/;
 function guestLabel(title) { return String(title || "").replace(/\s+/g, " ").trim().slice(0, 60) || "Guest"; }
-function isGuestNoteOf(name, title) {
-  const pre = "Guest: " + guestLabel(title) + " @ ";
-  const n = String(name || "");
-  return n.startsWith(pre) && /^\d+:\d{2}$/.test(n.slice(pre.length));
+function clockOf(ts) { ts = Math.max(0, Math.round(Number(ts) || 0)); return Math.floor(ts / 60) + ":" + String(ts % 60).padStart(2, "0"); }
+function isGuestNoteOf(name, title) { const m = GUEST_NAME.exec(String(name || "")); return !!m && m[1] === guestLabel(title); }
+function guestNameOf(name) { const m = GUEST_NAME.exec(String(name || "")); return m ? m[1] : ""; }
+function isGlobalName(name) { const n = String(name || ""); return n === GLOBAL_NOTE_NAME || /^Guest: .+ @ Global$/.test(n); }
+function guestNoteName(title, makeGlobal, ts) { return "Guest: " + guestLabel(title) + " @ " + (makeGlobal ? "Global" : clockOf(ts)); }
+// The name a note should have after switching it to/from global; a guest note stays a guest note.
+function noteNameFor(oldName, makeGlobal, ts) {
+  const g = guestNameOf(oldName);
+  if (g) return "Guest: " + g + " @ " + (makeGlobal ? "Global" : clockOf(ts));
+  return makeGlobal ? GLOBAL_NOTE_NAME : "Note @ " + clockOf(ts);
 }
-module.exports = { sign, verify, guestLabel, isGuestNoteOf };
+module.exports = { sign, verify, guestLabel, isGuestNoteOf, guestNameOf, isGlobalName, guestNoteName, noteNameFor };

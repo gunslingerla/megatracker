@@ -144,10 +144,10 @@ async function mixAddNote(req, res, body) {
     if (!resolved) return res.status(403).json({ error: "invalid link" });
     const { ids, title } = resolved;
     if (!ids.has(trackId)) return res.status(403).json({ error: "not allowed" });
-    const ts = Math.min(Math.max(Math.round(Number(body.timestamp)) || 0, 0), 86400);
-    const clock = `${Math.floor(ts / 60)}:${String(ts % 60).padStart(2, "0")}`;
+    const isGlobal = !!body.global; // whole-song note: no timestamp
+    const ts = isGlobal ? 0 : Math.min(Math.max(Math.round(Number(body.timestamp)) || 0, 0), 86400);
     const fields = {
-      [F.feedback.name]: `Guest: ${share.guestLabel(title)} @ ${clock}`,
+      [F.feedback.name]: share.guestNoteName(title, isGlobal, ts),
       [F.feedback.track]: [trackId],
       [F.feedback.timestamp]: ts,
       [F.feedback.comment]: text.slice(0, 2000),
@@ -311,6 +311,12 @@ module.exports = async (req, res) => {
       const fid = spec.fields[k];
       if (!fid) continue;
       airFields[fid] = spec.links.includes(k) ? (Array.isArray(v) ? v : v ? [v] : []) : v;
+    }
+    // Switch a note between global (whole song) and timestamped. Only the Name changes; the stored
+    // timestamp is left alone so switching back restores the original time.
+    if (entity === "feedback" && typeof fields.global === "boolean") {
+      const rec = await getRecord(T.feedback, id);
+      airFields[F.feedback.name] = share.noteNameFor(rec.fields[F.feedback.name], fields.global, rec.fields[F.feedback.timestamp]);
     }
 
     const updated = await patch(spec.table, [{ id, fields: airFields }], true);

@@ -108,6 +108,16 @@ links with outside collaborators (mixers, etc.).
   `GET /api/data?mixslug=…`, checks off a note's `Mixer Reviewed`, and posts replies —
   all authorized by the slug/token resolving to a Shares record. `vercel.json` also has a
   `/s/:slug` rewrite, but links use `/mix?s=` so nothing depends on it.
+- **Global notes:** a whole-song note (no timestamp). No Airtable field: it's encoded in the note's `Name`.
+  All note naming lives in `_share.js` (`isGlobalName`, `guestNoteName`, `noteNameFor`, `guestNameOf`):
+  band `Note @ m:ss` / global `GLOBAL_NOTE_NAME` ("Global note", in `_airtable.js`); guest
+  `Guest: <title> @ m:ss` / global `Guest: <title> @ Global`. Band members tick "Global" when adding
+  (`create.js` `fields.global`); guests too (`newNote` + `global`). Any note can be switched either way
+  with `update.js` `feedback` + `fields.global` (rewrites only the Name; the stored timestamp is kept so
+  switching back restores it; guest notes stay guest notes). `data.js` exposes `global` on the board and
+  `mixRead`. The UI lists global notes first under a "Global · whole song" heading
+  (`groupedNotesHTML`/`noteCmp` in `app.js`; same on `mix.html` and in the PDF), shows GLOBAL instead
+  of a timecode, and skips them on the player's timeline markers. Notes stay pinned to a bounce version.
 - **Guest notes:** a sharee can also add brand-new notes (`mixAddNote` in `update.js`,
   body has `newNote: true, trackId, timestamp, text, version`). There's no member to link as
   author, so the note's `Name` field is set to `Guest: <share title> @ m:ss` and `data.js`

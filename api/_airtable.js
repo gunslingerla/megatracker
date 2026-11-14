@@ -190,4 +190,8 @@ async function del(tableId, ids) {
   }
 }
 
-module.exports = { BASE, T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch, create, del, uploadAttachment };
+// A "global" note applies to the whole song (no timestamp). There's no Airtable field for it, so
+// it's marked by this exact value in the note's Name (like guest notes use "Guest: ..." names).
+const GLOBAL_NOTE_NAME = "Global note";
+
+module.exports = { BASE, T, F, STAGES, PHASE_NAMES, GLOBAL_NOTE_NAME, listAll, getRecord, patch, create, del, uploadAttachment };
