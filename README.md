@@ -36,7 +36,8 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   "Add your own note"). Any existing note can be switched with its **→ Global** / **→ Timed** button;
   switching to global keeps the original time, so switching back restores it.
 - **Preview Albums** — an ordered tracklist with Play-All through the whole album and a player
-  bar with version history per track.
+  bar with version history per track. Every player, in the app and on share links,
+  has a volume slider with mute (remembered per browser; hidden on iPhones, which only allow hardware volume).
 - **Share links** — create a titled, login-free link for a chosen set of songs
   (`/mix?s=<slug>`). The page always shows each song's *current* bounce and its notes (click a
   timecode to play from an adjustable pre-roll before it — default 3s, remembered per link in

@@ -15,7 +15,7 @@ links with outside collaborators (mixers, etc.).
 - **Deploy:** push to the connected GitHub repo → Vercel auto-builds. Static files are
   served directly; `/api/*.js` become functions.
 
-## ⚠️ Hard constraints (read before adding files)
+## Hard constraints (read before adding files)
 
 - **Max 12 serverless functions** (Vercel Hobby plan). Only files in `/api/` that do
   **not** start with `_` count. We are at exactly 12:
@@ -92,12 +92,15 @@ links with outside collaborators (mixers, etc.).
 - **Current version of a song** = the newest audio file in that song's Dropbox
   `.../PREFIX_NN_Title/Bounces/` folder. Project folders are matched to tracks by
   normalized title, **falling back to track number** when the folder name differs
-  (e.g. folder `The Belmonts_06_Bloodlines` ↔ track "Opposing Bloodlines"). See
+  (e.g. folder `The Belmonts_06_Bloodlines` maps to track "Opposing Bloodlines"). See
   `fetchPlaylist` in `app.js` and `mixRead` in `api/data.js` — keep both in sync.
 - **Notes are version-pinned.** The board/notes views show notes for the current bounce;
   older-version notes appear under a "Previous versions" twirl-down, and a "New version
   detected" banner offers to move still-open notes to the current bounce
   (`openVersionTransfer`).
+- **Volume:** both players (the app's shared `#audio` bar and `mix.html`) have a volume slider + mute. State lives
+  in localStorage `megasVolume` / `megasMuted` (shared by the app and share pages, applied on load, kept in sync via
+  `volumechange`). It's hidden when the browser won't let pages set `audio.volume` (iOS); detected, not UA-sniffed.
 - **Identity:** each browser picks "who am I" (stored in localStorage `megasMe`); a hard
   gate on first load (`pickIdentity(true)`) requires it before using the app.
 - **Live sync (no websockets):** `app.js` polls — a 12s pass keeps an open notes bar
@@ -131,7 +134,9 @@ links with outside collaborators (mixers, etc.).
   replied to. The band can delete any reply and edit band replies (`threadEdit`/`threadDelete`).
 - **Member color on notes:** the author's name is tinted with their member `color` (hex) in note lists
   (`authorStyle` in `app.js`), on the share page (`mixRead` returns `authorColor`; `mix.html` `hexOk`), and in
-  the PDF (`pdfInk` darkens it to stay readable on white). Non-hex values are ignored; guests have no color.
+  the PDF (`pdfInk` darkens it to stay readable on white). Non-hex values are ignored; guests have no color. Reply names (`th-by`) are tinted the same way: new band
+  replies store `byId` (member id) in the thread entry; older ones are matched by name (display/nickname/name,
+  case-insensitive). `mixRead` resolves this server-side and adds `byColor` to band thread entries.
 - **Share-page PDF:** `mix.html` builds a per-song PDF client-side (`buildPdf`) with jsPDF 2.5.1,
   lazy-loaded from cdnjs with an SRI hash (`loadJsPdf`). It's the only external script in the
   standalone pages; if it fails to load we `window.print()` (there's a small `@media print` block).

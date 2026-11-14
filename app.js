@@ -46,6 +46,18 @@ function groupedNotesHTML(notes, renderRow) {
   if (!g.length) return s.map(renderRow).join("");
   return `<div class="note-cat">Global &middot; whole song</div>${g.map(renderRow).join("")}${s.length ? `<div class="note-cat">Timestamped</div>` : ""}${s.map(renderRow).join("")}`;
 }
+// Reply authors: a reply stores the member's display name (and, for newer replies, their id); find the
+// member either way so the name can be tinted with their color. Guests' replies stay uncolored.
+const memberByLabel = (name) => {
+  const n = String(name || "").trim().toLowerCase();
+  return n && state.data && state.data.members ? state.data.members.find((m) => [m.display, m.nickname, m.name].some((x) => x && String(x).trim().toLowerCase() === n)) : null;
+};
+const replyByStyle = (m) => {
+  if (!m || m.side === "share") return "";
+  const mem = (m.byId && memberById(m.byId)) || memberByLabel(m.by);
+  const c = mem && mem.color ? String(mem.color).trim() : "";
+  return /^#[0-9a-f]{3,8}$/i.test(c) ? ` style="color:${c}"` : "";
+};
 const memberById = (id) => (state.data && state.data.members ? state.data.members.find((m) => m.id === id) : null);
 // Tint a note author's name with their member color so "who said this" reads at a glance.
 // Only hex colors are applied (the value comes from Airtable); guests/unknown authors stay muted.
@@ -454,7 +466,7 @@ function cardHTML(t, ord) {
       ? `background:#1b1a22;border-color:${col}55;color:#726d80`
       : `background:${col};border-color:${col};color:#0c0b10`;
     const count = subs.length ? ` (${sdone}/${subs.length})` : "";
-    const pop = subs.length ? `<span class="sub-pop"><span class="sub-pop-h">${esc(p.phase)} · ${sdone}/${subs.length} done</span>${subs.map((st) => `<span class="sp-row ${st.done ? "done" : ""}">${st.done ? "&#9745;" : "&#9744;"} ${esc(st.text)}</span>`).join("")}</span>` : "";
+    const pop = subs.length ? `<span class="sub-pop"><span class="sub-pop-h">${esc(p.phase)} · ${sdone}/${subs.length} done</span>${subs.map((st) => `<span class="sp-row ${st.done ? "done" : ""}">${st.done ? "&#9745;&#xFE0E;" : "&#9744;"} ${esc(st.text)}</span>`).join("")}</span>` : "";
     return `<span class="pchip${done ? " done" : ""}${prog ? " prog" : ""}${subs.length ? " has-sub" : ""}" style="${style}" title="${esc(p.phase)} (${esc(who)}): ${esc(p.status)}">${esc(p.phase)}${count}${pop}</span>`;
   }).join("");
   // "Waiting on X" — when every remaining production part belongs to a single member.
@@ -1049,7 +1061,7 @@ function openDrawer(id) {
         <div class="phase-row2 ${done ? "done" : ""}${custom ? " custom" : ""}" data-phase="${p.id}">
           <input type="checkbox" data-pf="done" ${done ? "checked" : ""} />
           <span class="pname2${custom ? " is-custom" : ""}">${esc(p.phase)}${custom ? ` <span class="cust-dot" title="Custom phase — unique to this song"></span>` : ""}</span>
-          <button class="sub-toggle${open ? " open" : ""}" data-subtoggle="${p.id}" title="Subtasks">&#9745; ${subs.length ? `${sdone}/${subs.length}` : "+"}</button>
+          <button class="sub-toggle${open ? " open" : ""}" data-subtoggle="${p.id}" title="Subtasks">&#9745;&#xFE0E; ${subs.length ? `${sdone}/${subs.length}` : "+"}</button>
           <details class="powner-det"><summary class="powner-sum" title="Assign owner(s)"><span data-ownersum="${p.id}">${ownerLabel}</span></summary><div class="powner-menu">${ownerChecks}</div></details>
           <input type="date" class="pdue" data-pf="due" value="${p.due || ""}" title="Phase due date" />
           ${custom ? `<button class="pdel" data-pdel="${p.id}" title="Remove this phase">&times;</button>` : ""}
@@ -1464,6 +1476,27 @@ async function fetchPlaylist() {
 }
 
 const audioEl = () => document.getElementById("audio");
+
+// ---- Volume: one slider on the player bar; remembered per browser (shared with the share page).
+// Phones (iOS) don't let pages set volume, so the control is hidden there and hardware buttons rule.
+const VOL_KEY = "megasVolume", MUTE_KEY = "megasMuted";
+const volumeSupported = (() => { try { const t = new Audio(); t.volume = 0.5; return t.volume === 0.5; } catch { return false; } })();
+const volIconHTML = (vol, muted) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" fill="currentColor" stroke="none"/>${muted || vol === 0 ? '<path d="M16 9.5l5 5M21 9.5l-5 5"/>' : vol < 0.5 ? '<path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/>' : '<path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10"/>'}</svg>`;
+function applySavedVolume(a) {
+  if (!volumeSupported) return;
+  try {
+    const v = parseFloat(localStorage.getItem(VOL_KEY));
+    a.volume = isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+    a.muted = localStorage.getItem(MUTE_KEY) === "1";
+  } catch {}
+}
+function syncVolumeUI(a) {
+  const s = document.getElementById("pVol"), b = document.getElementById("pMute");
+  if (!s || !b) return;
+  s.value = Math.round(a.volume * 100);
+  b.innerHTML = volIconHTML(a.volume, a.muted);
+  b.title = a.muted ? "Unmute" : "Mute";
+}
 function playQueue() {
   const alb = currentAlbum();
   return state.data.tracks
@@ -1539,6 +1572,7 @@ function renderPlayer() {
       </div>
     </div>
     <div class="ptime" id="pTime">0:00 / 0:00</div>
+    <div class="pvol${volumeSupported ? "" : " hidden"}"><button class="pvol-btn" id="pMute" title="Mute"></button><input type="range" id="pVol" min="0" max="100" value="100" aria-label="Volume" /></div>
     ${warn}
     <button class="fb-mini" id="pFbBtn" title="Notes for this song">Notes</button>
     <button class="pclose" id="pClose" title="Close">&times;</button>`;
@@ -1557,6 +1591,10 @@ function renderPlayer() {
   seek.oninput = () => { seeking = true; if (a.duration) { a.currentTime = (seek.value / 1000) * a.duration; const tEl = document.getElementById("pTime"); if (tEl) tEl.textContent = `${fmt(a.currentTime)} / ${fmt(a.duration)}`; } };
   seek.onpointerdown = () => { seeking = true; const up = () => { seeking = false; document.removeEventListener("pointerup", up); }; document.addEventListener("pointerup", up); };
   seek.onchange = () => { seeking = false; };
+  { const vol = document.getElementById("pVol"), mute = document.getElementById("pMute");
+    vol.oninput = () => { a.volume = vol.value / 100; if (a.muted && a.volume > 0) a.muted = false; };
+    mute.onclick = () => { a.muted = !a.muted; };
+    syncVolumeUI(a); }
 
   document.getElementById("pFbBtn").onclick = () => { if (state.audio.currentId) openNotesBar(state.audio.currentId, true); };
   if (document.getElementById("notesbar") && document.getElementById("notesbar").classList.contains("open")) { if (notesBarTrack === state.audio.currentId) renderNotesBar(); positionNotesBar(); }
@@ -1581,6 +1619,8 @@ function renderMarkers() {
 
 function wireAudio() {
   const a = audioEl();
+  applySavedVolume(a);
+  a.addEventListener("volumechange", () => { try { localStorage.setItem(VOL_KEY, String(a.volume)); localStorage.setItem(MUTE_KEY, a.muted ? "1" : "0"); } catch {} syncVolumeUI(a); });
   a.addEventListener("play", () => { state.audio.playing = true; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9208;&#xFE0E;"; });
   a.addEventListener("pause", () => { state.audio.playing = false; updatePlayButtons(); const b = document.getElementById("pToggle"); if (b) b.innerHTML = "&#9654;&#xFE0E;"; });
   a.addEventListener("ended", () => {
@@ -2252,15 +2292,15 @@ function noteThreadHTML(fb) {
   // Replies carry their `at` timestamp as an id: anyone can delete one; only band replies can be edited.
   const msgs = th.map((m) => {
     const acts = m.at ? `<span class="th-acts">${m.side === "share" ? "" : `<button class="th-act" data-thedit="${fb.id}" data-that="${m.at}">Edit</button>`}<button class="th-act" data-thdel="${fb.id}" data-that="${m.at}">Delete</button></span>` : "";
-    return `<div class="th-msg th-${m.side === "share" ? "share" : "band"}" data-thmsg="${m.at || ""}">${acts}<span class="th-by">${esc(m.by || "?")}</span><span class="th-tx">${esc(m.text)}</span>${m.edited ? ` <span class="th-edtag">(edited)</span>` : ""}</div>`;
+    return `<div class="th-msg th-${m.side === "share" ? "share" : "band"}" data-thmsg="${m.at || ""}">${acts}<span class="th-by"${replyByStyle(m)}>${esc(m.by || "?")}</span><span class="th-tx">${esc(m.text)}</span>${m.edited ? ` <span class="th-edtag">(edited)</span>` : ""}</div>`;
   }).join("");
-  return `<details class="th-wrap"${n ? " open" : ""}><summary>${n ? `&#128172; ${n} ${n === 1 ? "reply" : "replies"}` : "&#128172; Reply"}</summary><div class="th-msgs">${msgs}</div><div class="th-reply"><input class="th-in" data-threply="${fb.id}" placeholder="Write a reply…" /><button class="fb-mini" data-threplybtn="${fb.id}">Send</button></div></details>`;
+  return `<details class="th-wrap"${n ? " open" : ""}><summary>${n ? `${n} ${n === 1 ? "reply" : "replies"}` : "Reply"}</summary><div class="th-msgs">${msgs}</div><div class="th-reply"><input class="th-in" data-threply="${fb.id}" placeholder="Write a reply…" /><button class="fb-mini" data-threplybtn="${fb.id}">Send</button></div></details>`;
 }
 async function sendThreadReply(id, inp, btn) {
   const text = (inp && inp.value || "").trim(); if (!text) return;
   const me = getMe();
   if (btn) btn.disabled = true;
-  const r = await post("/api/update", { entity: "noteReply", id, text, by: me ? me.name : "Band" });
+  const r = await post("/api/update", { entity: "noteReply", id, text, by: me ? me.name : "Band", byId: me ? me.id : undefined });
   if (btn) btn.disabled = false;
   if (r && r.ok) {
     if (inp) inp.value = "";
@@ -2583,7 +2623,7 @@ function openScratch(notice) {
       <span class="scr-title">Scratchpad${me ? " — " + esc(me.name) : ""}</span>
       <span class="scr-save" id="scrSave"></span>
       <button class="icon-btn" id="scrHist" title="Session history">&#9776;</button>
-      <button class="icon-btn" id="scrPop" title="Pop out into its own window">&#8599;</button>
+      <button class="icon-btn" id="scrPop" title="Pop out into its own window">&#8599;&#xFE0E;</button>
       <button class="icon-btn" id="scrClose" title="Close">&times;</button>
     </div>
     ${notice ? `<div class="scr-note">${esc(notice)}</div>` : ""}

@@ -39,6 +39,10 @@ async function mixRead(req, res) {
     // Member color (hex only) so the share page can tint who wrote each note.
     const hexOnly = (c) => (/^#[0-9a-f]{3,8}$/i.test(String(c || "").trim()) ? String(c).trim() : "");
     const memberColor = Object.fromEntries(membersR.map((r) => [r.id, hexOnly(r.fields[F.member.color])]));
+    // Band replies carry the member's name (and, for newer ones, their id); resolve either to a color.
+    const colorByName = {};
+    membersR.forEach((r) => { const c = hexOnly(r.fields[F.member.color]); if (c) [r.fields[F.member.nickname], r.fields[F.member.name]].filter(Boolean).forEach((n) => { colorByName[String(n).trim().toLowerCase()] = c; }); });
+    const withReplyColors = (z) => z.map((m) => (m && m.side === "band" ? { ...m, byColor: memberColor[m.byId] || colorByName[String(m.by || "").trim().toLowerCase()] || "" } : m));
     const albumById = Object.fromEntries(albumsR.map((r) => [r.id, r.fields]));
     const wantTracks = tracksR.filter((r) => ids.has(r.id));
     const byAlbum = {};
@@ -64,7 +68,7 @@ async function mixRead(req, res) {
       const ver = b ? b.name : "";
       const notes = feedbackR
         .filter((fr) => first(fr.fields[F.feedback.track]) === id && (fr.fields[F.feedback.version] || "") === ver)
-        .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || guestOf(fr.fields), authorColor: memberColor[first(arr(fr.fields[F.feedback.author]))] || "", global: share.isGlobalName(fr.fields[F.feedback.name]), mine: share.isGuestNoteOf(fr.fields[F.feedback.name], shareTitle), thread: (() => { try { const z = JSON.parse(fr.fields[F.feedback.thread] || "[]"); return Array.isArray(z) ? z : []; } catch { return []; } })() }))
+        .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || guestOf(fr.fields), authorColor: memberColor[first(arr(fr.fields[F.feedback.author]))] || "", global: share.isGlobalName(fr.fields[F.feedback.name]), mine: share.isGuestNoteOf(fr.fields[F.feedback.name], shareTitle), thread: (() => { try { const z = JSON.parse(fr.fields[F.feedback.thread] || "[]"); return Array.isArray(z) ? withReplyColors(z) : []; } catch { return []; } })() }))
         .sort((a, b2) => a.timestamp - b2.timestamp);
       return { id, title: r.fields[F.track.title] || "Untitled", version: ver, url: b ? b.url : null, notes };
     }).filter(Boolean);

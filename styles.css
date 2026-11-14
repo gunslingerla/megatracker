@@ -677,6 +677,12 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .player .pfb { flex-basis: 100%; display: flex; align-items: center; gap: 8px; padding-top: 4px; }
 .player .pfb.hidden { display: none; }
 .player .pfb input { flex: 1; }
+.player .pvol { display: flex; align-items: center; gap: 6px; }
+.player .pvol.hidden { display: none; }
+.player .pvol-btn { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 2px; display: grid; place-items: center; }
+.player .pvol-btn:hover { color: var(--text); }
+.player .pvol-btn svg { display: block; }
+.player .pvol input[type="range"] { width: 88px; accent-color: var(--accent); }
 .player .pclose { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 18px; }
 .player .pclose:hover { color: var(--text); }
 .drawer-play { display: inline-flex; align-items: center; gap: 8px; }

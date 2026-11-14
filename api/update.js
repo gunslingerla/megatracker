@@ -238,7 +238,9 @@ module.exports = async (req, res) => {
     if (!id || !body.text) return res.status(400).json({ error: "id and text required" });
     try {
       const rec = await getRecord(T.feedback, id);
-      const thread = threadAppend(rec, { by: (body.by || "Band").toString().slice(0, 60), side: "band", text: String(body.text).trim().slice(0, 2000), at: Date.now() });
+      const msg = { by: (body.by || "Band").toString().slice(0, 60), side: "band", text: String(body.text).trim().slice(0, 2000), at: Date.now() };
+      if (body.byId) msg.byId = String(body.byId).slice(0, 40); // member id, so the reply can be tinted with their color
+      const thread = threadAppend(rec, msg);
       await patch(T.feedback, [{ id, fields: { [F.feedback.thread]: thread } }], true);
       return res.status(200).json({ ok: true });
     } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
