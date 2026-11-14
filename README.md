@@ -25,7 +25,7 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   owners from that mapping. Phases have due dates and **subtasks**; a subtask can be linked to a
   note, and checking it resolves that note.
 - **Notes (timestamped feedback)** — pin comments to a moment in a song (Frame.io-style), tagged
-  to the member, Open → Resolved. Click a timestamp to seek. Notes are **pinned to a bounce
+  to the member (the author's name is tinted with their member color, here, on share links and in the PDF), Open → Resolved. Click a timestamp to seek. Notes are **pinned to a bounce
   version** (the Dropbox filename): the current bounce's notes show by default, older versions sit
   under "Previous versions", and a "New version detected" banner offers to move still-open notes to
   the newest bounce. Notes also have a reply **thread** (band and share-link guests).

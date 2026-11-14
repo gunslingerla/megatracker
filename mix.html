@@ -57,6 +57,7 @@
     .song { background:#fff; border-color:#999; break-inside:avoid; }
     .song-h { background:#eee; border-color:#999; }
     .n .time, .thby { color:#000; } .n .time { background:#fff; border-color:#999; }
+    .n .meta span[style] { filter:brightness(0.55); }
     .thm, .thm.me { background:#f3f3f3; }
     .n .cmt, .thm, .song-h .t { color:#000; } .song-h .v, .n .meta, .foot { color:#555; }
   }
@@ -89,6 +90,20 @@
 (function () {
   function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return c==="&"?"&amp;":c==="<"?"&lt;":"&gt;";}); }
   function mmss(s){ s=Math.max(0,Math.floor(s||0)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+  // Member colors arrive as hex strings; anything else is ignored (never injected into markup).
+  function hexOk(c){ return /^#[0-9a-f]{3,8}$/i.test(String(c||"")); }
+  // Darken a hex color until it reads on white paper (contrast >= 4.5), as [r,g,b] for the PDF.
+  function pdfInk(hex){
+    var h = String(hex||"").replace("#",""); if (h.length === 3) h = h.replace(/./g, function(x){ return x+x; });
+    var c = [0,2,4].map(function(i){ return parseInt(h.substr(i,2),16); }); if (c.some(isNaN)) return null;
+    for (var f = 1; f >= 0.3; f -= 0.05) {
+      var rgb = c.map(function(v){ return Math.round(v*f); });
+      var lin = rgb.map(function(v){ v/=255; return v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); });
+      var L = 0.2126*lin[0] + 0.7152*lin[1] + 0.0722*lin[2];
+      if (1.05/(L+0.05) >= 4.5) return rgb;
+    }
+    return [60,60,60];
+  }
   // "1:23", "83", or "1:02:03" -> seconds; null if it isn't a time.
   function parseTime(v){
     v = String(v||"").trim(); if (!v) return 0;
@@ -149,7 +164,7 @@
         return '<div class="n'+(n.reviewed?" done":"")+'" data-id="'+n.id+'">'
           + '<div class="nrow">'
           + '<input type="checkbox" '+(n.reviewed?"checked":"")+' />'
-          + '<span class="body"><span class="meta"><button class="time" title="Play from pre-roll before" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>'+(n.author?'<span>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+(n.mine?'<span class="acts"><button class="act" data-op="editNote" data-id="'+n.id+'">Edit</button><button class="act" data-op="deleteNote" data-id="'+n.id+'">Delete</button></span>':'')+'</span>'
+          + '<span class="body"><span class="meta"><button class="time" title="Play from pre-roll before" data-song="'+s.id+'" data-t="'+n.timestamp+'">'+mmss(n.timestamp)+'</button>'+(n.author?'<span'+(hexOk(n.authorColor)?' style="color:'+n.authorColor+';font-weight:600"':'')+'>'+esc(n.author)+'</span>':'')+(n.status==="Resolved"?'<span>· band resolved</span>':'')+(n.mine?'<span class="acts"><button class="act" data-op="editNote" data-id="'+n.id+'">Edit</button><button class="act" data-op="deleteNote" data-id="'+n.id+'">Delete</button></span>':'')+'</span>'
           + '<span class="cmt">'+esc(n.comment)+'</span></span></div>'
           + '<div class="thread"><div class="thmsgs">'+msgs+'</div><div class="threp"><input class="thin" data-rid="'+n.id+'" data-dk="r:'+n.id+'" placeholder="Reply or ask a question…" /><button class="thsend" data-sid="'+n.id+'">Send</button></div></div>'
           + '</div>';
@@ -315,10 +330,17 @@
       if (n.reviewed) { doc.setLineWidth(1.4); doc.line(M + 2, y - 4, M + 4.5, y - 1.2); doc.line(M + 4.5, y - 1.2, M + 8.5, y - 7.2); }
       doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(190, 30, 120);
       var tc = mmss(n.timestamp); doc.text(tc, M + 20, y); var tw = doc.getTextWidth(tc);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(110);
-      var who = pdfClean(n.author || ""); if (who) doc.text(who + (n.status === "Resolved" ? "  (band resolved)" : ""), M + 20 + tw + 10, y);
+      var who = pdfClean(n.author || ""), wx = M + 20 + tw + 10;
+      if (who) {
+        // Member name in their (print-safe) color, bold; status stays gray.
+        var ink = hexOk(n.authorColor) ? pdfInk(n.authorColor) : null;
+        doc.setFont("helvetica", ink ? "bold" : "normal"); doc.setFontSize(9.5);
+        if (ink) doc.setTextColor(ink[0], ink[1], ink[2]); else doc.setTextColor(110);
+        doc.text(who, wx, y); var ww = doc.getTextWidth(who);
+        if (n.status === "Resolved") { doc.setFont("helvetica", "normal"); doc.setTextColor(110); doc.text("(band resolved)", wx + ww + 6, y); }
+      }
       y += 15;
-      doc.setFontSize(11); doc.setTextColor(25);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(25);
       comment.forEach(function (l) { ensure(14); doc.text(l, M + 20, y); y += 14; });
       // replies, indented under a thin rule
       (n.thread || []).forEach(function (r) {

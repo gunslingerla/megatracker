@@ -36,6 +36,9 @@ async function mixRead(req, res) {
     const arr = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
     const norm = (s) => String(s || "").toLowerCase().replace(/\.[a-z0-9]+$/, "").replace(/^\s*\d+[_\-.\s]+/, "").replace(/_v\d+.*$/i, "").replace(/[^a-z0-9]+/g, "");
     const memberName = Object.fromEntries(membersR.map((r) => [r.id, r.fields[F.member.nickname] || r.fields[F.member.name] || "?"]));
+    // Member color (hex only) so the share page can tint who wrote each note.
+    const hexOnly = (c) => (/^#[0-9a-f]{3,8}$/i.test(String(c || "").trim()) ? String(c).trim() : "");
+    const memberColor = Object.fromEntries(membersR.map((r) => [r.id, hexOnly(r.fields[F.member.color])]));
     const albumById = Object.fromEntries(albumsR.map((r) => [r.id, r.fields]));
     const wantTracks = tracksR.filter((r) => ids.has(r.id));
     const byAlbum = {};
@@ -61,7 +64,7 @@ async function mixRead(req, res) {
       const ver = b ? b.name : "";
       const notes = feedbackR
         .filter((fr) => first(fr.fields[F.feedback.track]) === id && (fr.fields[F.feedback.version] || "") === ver)
-        .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || guestOf(fr.fields), mine: share.isGuestNoteOf(fr.fields[F.feedback.name], shareTitle), thread: (() => { try { const z = JSON.parse(fr.fields[F.feedback.thread] || "[]"); return Array.isArray(z) ? z : []; } catch { return []; } })() }))
+        .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || guestOf(fr.fields), authorColor: memberColor[first(arr(fr.fields[F.feedback.author]))] || "", mine: share.isGuestNoteOf(fr.fields[F.feedback.name], shareTitle), thread: (() => { try { const z = JSON.parse(fr.fields[F.feedback.thread] || "[]"); return Array.isArray(z) ? z : []; } catch { return []; } })() }))
         .sort((a, b2) => a.timestamp - b2.timestamp);
       return { id, title: r.fields[F.track.title] || "Untitled", version: ver, url: b ? b.url : null, notes };
     }).filter(Boolean);

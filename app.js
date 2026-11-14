@@ -24,6 +24,13 @@ let asgOnlyMe = false; // Assignments grouping: "phase" or "song" // Band cards 
 let notesShowResolved = false; // Notes page: include resolved notes
 const PALETTE = ["#6cb6ff", "#46dba0", "#ffab4a", "#f0654f", "#b58cff", "#4fd0e0", "#f078c0", "#e5c94a", "#8a9bff", "#5fd08a"];
 const memberById = (id) => (state.data && state.data.members ? state.data.members.find((m) => m.id === id) : null);
+// Tint a note author's name with their member color so "who said this" reads at a glance.
+// Only hex colors are applied (the value comes from Airtable); guests/unknown authors stay muted.
+const authorStyle = (fb) => {
+  const m = fb && fb.authorId ? memberById(fb.authorId) : null;
+  const c = m && m.color ? String(m.color).trim() : "";
+  return /^#[0-9a-f]{3,8}$/i.test(c) ? ` style="color:${c};font-weight:600"` : "";
+};
 // Normalize a title (or filename) for matching Dropbox audio to a track.
 const normTitle = (s) => String(s || "").toLowerCase().replace(/\.[a-z0-9]+$/, "").replace(/^\s*\d+[_\-.\s]+/, "").replace(/_v\d+.*$/i, "").replace(/[^a-z0-9]+/g, "");
 const trackById = (id) => state.data.tracks.find((t) => t.id === id);
@@ -372,7 +379,7 @@ function openVersionTransfer(trackId) {
           <input type="checkbox" class="vx-chk" data-vid="${fb.id}" checked />
           <span class="vx-time">${mmss(fb.timestamp)}</span>
           <span class="vx-comment">${esc(fb.comment)}</span>
-          <span class="vx-author">${esc(fb.author || "")}</span>
+          <span class="vx-author"${authorStyle(fb)}>${esc(fb.author || "")}</span>
           <button class="fb-mini vx-resolve" data-vresolve="${fb.id}" title="Mark resolved instead of moving">Resolve</button>
         </label>`).join("")}
     </div>`).join("");
@@ -572,7 +579,7 @@ function assignmentsFeedbackBox() {
       <span class="afb-song" data-open="${t.id}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span>
       <span class="afb-time">${mmss(fb.timestamp)}</span>
       <span class="afb-comment">${esc(fb.comment)}</span>
-      <span class="afb-author">${esc(fb.author || "")}</span>
+      <span class="afb-author"${authorStyle(fb)}>${esc(fb.author || "")}</span>
       <button class="fb-mini" data-afbtask="${t.id}:${fb.id}" title="Turn into a task">&#8594; Task</button>
       <button class="fb-mini" data-afbresolve="${t.id}:${fb.id}" title="Mark resolved">Resolve</button>
     </div>`).join("");
@@ -2183,7 +2190,7 @@ function noteRowHTML(t, fb) {
     <div class="note-main">
       <button class="note-time" data-nseek="${fb.timestamp}" data-ntrack="${t.id}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
       <span class="note-when">${fmtWhen(fb.createdTime)}</span>
-      <span class="note-author">${esc(fb.author || "")}</span>
+      <span class="note-author"${authorStyle(fb)}>${esc(fb.author || "")}</span>
       ${fb.mixReviewed ? `<span class="mix-badge" title="Mixer marked this reviewed">✓ mixer</span>` : ""}
       <div class="fb-actions">${resolved ? `<button class="fb-mini" data-nreopen="${fb.id}">Reopen</button>` : `<button class="fb-mini" data-nresolve="${fb.id}">Resolve</button>`}<button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
     </div>
@@ -2282,7 +2289,7 @@ function fbItemHTML(fb, t) {
       <div class="fb-top">
         <button class="fb-time" data-seek="${fb.timestamp}" title="Play from pre-roll before">${mmss(fb.timestamp)}</button>
         <span class="fb-when">${fmtWhen(fb.createdTime)}</span>
-        <span class="fb-author">${esc(fb.author || "—")}</span>
+        <span class="fb-author"${authorStyle(fb)}>${esc(fb.author || "—")}</span>
         ${fb.mixReviewed ? `<span class="mix-badge" title="Mixer marked this reviewed">✓ mixer</span>` : ""}
         <div class="fb-actions">
           <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>

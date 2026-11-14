@@ -119,6 +119,9 @@ links with outside collaborators (mixers, etc.).
   timestamp), or a note whose Name matches `isGuestNoteOf` (`_share.js`). A guest can't touch band
   replies, other links' replies, or band-authored notes, and can't delete a note anyone else has
   replied to. The band can delete any reply and edit band replies (`threadEdit`/`threadDelete`).
+- **Member color on notes:** the author's name is tinted with their member `color` (hex) in note lists
+  (`authorStyle` in `app.js`), on the share page (`mixRead` returns `authorColor`; `mix.html` `hexOk`), and in
+  the PDF (`pdfInk` darkens it to stay readable on white). Non-hex values are ignored; guests have no color.
 - **Share-page PDF:** `mix.html` builds a per-song PDF client-side (`buildPdf`) with jsPDF 2.5.1,
   lazy-loaded from cdnjs with an SRI hash (`loadJsPdf`). It's the only external script in the
   standalone pages; if it fails to load we `window.print()` (there's a small `@media print` block).
