@@ -67,7 +67,8 @@ async function mixRead(req, res) {
       const b = bounceByTrack[id] || null;
       const ver = b ? b.name : "";
       const notes = feedbackR
-        .filter((fr) => first(fr.fields[F.feedback.track]) === id && (fr.fields[F.feedback.version] || "") === ver)
+        // Resolved notes are done: keep them off share links (the band still sees them in the app).
+        .filter((fr) => first(fr.fields[F.feedback.track]) === id && (fr.fields[F.feedback.version] || "") === ver && (fr.fields[F.feedback.status] || "Open") !== "Resolved")
         .map((fr) => ({ id: fr.id, timestamp: fr.fields[F.feedback.timestamp] ?? 0, comment: fr.fields[F.feedback.comment] || "", status: fr.fields[F.feedback.status] || "Open", reviewed: !!fr.fields[F.feedback.mixReviewed], author: (arr(fr.fields[F.feedback.author]).map((x) => memberName[x] || "?"))[0] || guestOf(fr.fields), authorColor: memberColor[first(arr(fr.fields[F.feedback.author]))] || "", global: share.isGlobalName(fr.fields[F.feedback.name]), mine: share.isGuestNoteOf(fr.fields[F.feedback.name], shareTitle), thread: (() => { try { const z = JSON.parse(fr.fields[F.feedback.thread] || "[]"); return Array.isArray(z) ? withReplyColors(z) : []; } catch { return []; } })() }))
         .sort((a, b2) => a.timestamp - b2.timestamp);
       return { id, title: r.fields[F.track.title] || "Untitled", version: ver, url: b ? b.url : null, notes };
