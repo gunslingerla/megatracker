@@ -74,12 +74,13 @@
   .cat { font-size:10.5px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); padding:10px 0 2px; }
   .cat:first-child { padding-top:6px; }
   .gtag { font-size:10px; font-weight:800; letter-spacing:0.06em; color:var(--accent-2); background:var(--accent-soft); border:1px solid var(--accent-soft); border-radius:6px; padding:2px 8px; }
-  .links { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:-4px 0 18px; }
+  .links { margin:-4px 0 18px; padding:14px 16px; border:1px solid var(--accent); border-radius:12px; background:linear-gradient(180deg,var(--accent-soft),rgba(229,57,159,0.05)); }
   .links[hidden] { display:none; }
-  .links .lk-h { font-size:10.5px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); margin-right:2px; }
-  .links a { display:inline-flex; align-items:center; gap:6px; background:var(--panel-2); color:var(--text); border:1px solid var(--stroke-strong); border-radius:8px; padding:6px 12px; font-size:13px; font-weight:600; text-decoration:none; }
+  .links .lk-h { font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:var(--accent-2); margin-bottom:10px; }
+  .links .lk-row { display:flex; flex-wrap:wrap; gap:8px; }
+  .links a { display:inline-flex; align-items:center; gap:8px; background:var(--panel); color:var(--text); border:1px solid var(--stroke-strong); border-radius:9px; padding:9px 16px; font-size:14.5px; font-weight:700; text-decoration:none; }
   .links a:hover { border-color:var(--accent); color:var(--accent-2); }
-  .links a::after { content:"\2197\FE0E"; font-size:12px; color:var(--muted); }
+  .links a::after { content:"\2197\FE0E"; font-size:14px; color:var(--accent-2); }
   .empty { color:var(--muted); font-size:13px; padding:10px 0; }
   .state { padding:40px 0; text-align:center; color:var(--muted); }
   .foot { color:var(--muted); font-size:11px; margin-top:24px; text-align:center; }
@@ -496,9 +497,9 @@
     var ok = (links || []).filter(function (l) { return l && /^https?:\/\//i.test(l.url || ""); });
     var sig = JSON.stringify(ok); if (box.dataset.sig === sig) return; box.dataset.sig = sig;
     box.hidden = !ok.length;
-    box.innerHTML = ok.length ? '<span class="lk-h">Files</span>' + ok.map(function (l) {
+    box.innerHTML = ok.length ? '<div class="lk-h">Files &amp; folders</div><div class="lk-row">' + ok.map(function (l) {
       return '<a href="' + esc(l.url).replace(/"/g, "&quot;") + '" target="_blank" rel="noopener noreferrer">' + esc(l.label || l.url) + '</a>';
-    }).join("") : "";
+    }).join("") + '</div>' : "";
   }
 
   function load() {
