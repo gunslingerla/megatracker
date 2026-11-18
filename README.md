@@ -56,6 +56,9 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   built in the browser with jsPDF, loaded on demand from cdnjs (pinned version + integrity hash);
   if it can't load, the page falls back to the browser's Print dialog.
   Manage links from the share manager in the app.
+  A link can also carry **file/folder links** (stems, deliverables, etc.): add a name + URL pairs in the
+  link's editor and they show as buttons under the heading "Files" at the top of the share page
+  (only http/https URLs are kept; up to 20). The Dropbox folders themselves must be shared as "anyone with the link".
 - **Calendar** — track and phase due dates on a month grid, plus a read-only iCal feed to
   subscribe to from Google/Apple Calendar.
 - **Detail drawer** — edit stage, BPM, key, due date, notes, owners, each phase's status/owner,

@@ -1420,7 +1420,7 @@ function renderShareList() {
   const rows = shares.length ? shares.map((sh) => {
     const url = shareUrl(sh);
     return `<div class="sl-row" data-sid="${sh.id}">
-      <div class="sl-main"><span class="sl-title">${esc(sh.title)}</span><span class="sl-meta">${sh.tracks.length} song${sh.tracks.length === 1 ? "" : "s"}${sh.slug ? ` · /s/${esc(sh.slug)}` : ""}</span></div>
+      <div class="sl-main"><span class="sl-title">${esc(sh.title)}</span><span class="sl-meta">${sh.tracks.length} song${sh.tracks.length === 1 ? "" : "s"}${(sh.links || []).length ? ` · ${sh.links.length} link${sh.links.length === 1 ? "" : "s"}` : ""}${sh.slug ? ` · /s/${esc(sh.slug)}` : ""}</span></div>
       <div class="sl-actions">
         <button class="fb-mini" data-slcopy="${esc(url)}">Copy link</button>
         <button class="fb-mini" data-sledit="${sh.id}">Edit</button>
@@ -1448,17 +1448,31 @@ function shareEditor(sh) {
   body.innerHTML = `
     <div class="field"><label>Link title (also tags their replies)</label><input id="slTitle" type="text" placeholder="e.g. Dalton — mix round 1" value="${esc(sh ? sh.title : "")}" /></div>
     <div class="field"><label>Custom link (optional)</label><div class="sl-slug"><span>/s/</span><input id="slSlug" type="text" placeholder="leave blank for a random one" value="${esc(sh && sh.slug ? sh.slug : "")}" /></div></div>
+    <div class="field"><label>Files &amp; folders (stems, deliverables)</label>
+      <div id="slLinks" class="sl-links"></div>
+      <button class="fb-mini" id="slAddLink" type="button">+ Add link</button>
+      <div class="mix-hint">Paste a Dropbox folder (or any web) link and give it a name. Anyone with the share link sees these as buttons at the top of the page; make sure the Dropbox link itself is set to "anyone with the link".</div></div>
     <div class="mix-pick" id="mixPick">${tracks.map((t) => `<label class="mix-row"><input type="checkbox" class="mix-chk" value="${t.id}"${picked.has(t.id) ? " checked" : ""} /><span class="mix-t">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span><span class="mix-vn">${esc(currentVersion(t) || "no bounce")}</span></label>`).join("")}</div>
     <div class="mix-actions"><button class="fb-mini" id="slBack">&larr; Back</button><span style="flex:1"></span><button class="add-btn" id="slSave">${sh ? "Save changes" : "Create link"}</button></div>
     <div id="slOut"></div>`;
   document.getElementById("slBack").onclick = renderShareList;
+  const linksBox = document.getElementById("slLinks");
+  const addLinkRow = (l) => {
+    const row = document.createElement("div"); row.className = "sl-linkrow";
+    row.innerHTML = `<input type="text" class="sl-lname" placeholder="Name, e.g. Stems" maxlength="80" value="${esc(l ? l.label : "")}" /><input type="text" class="sl-lurl" placeholder="https://www.dropbox.com/..." value="${esc(l ? l.url : "")}" /><button class="fb-mini" type="button" title="Remove link">&times;</button>`;
+    row.querySelector("button").onclick = () => row.remove();
+    linksBox.appendChild(row);
+  };
+  ((sh && sh.links) || []).forEach(addLinkRow);
+  document.getElementById("slAddLink").onclick = () => { addLinkRow(null); linksBox.lastChild.querySelector(".sl-lname").focus(); };
   document.getElementById("slSave").onclick = async () => {
+    const links = [...linksBox.querySelectorAll(".sl-linkrow")].map((r) => ({ label: r.querySelector(".sl-lname").value.trim(), url: r.querySelector(".sl-lurl").value.trim() })).filter((l) => l.url);
     const title = document.getElementById("slTitle").value.trim() || "Untitled link";
     const picks = [...document.querySelectorAll(".mix-chk")].filter((c) => c.checked).map((c) => c.value);
     if (!picks.length) { toast("Pick at least one song", true); return; }
     const slug = (document.getElementById("slSlug").value || "").trim();
     const btn = document.getElementById("slSave"); btn.disabled = true; btn.textContent = "Saving…";
-    const r = await post("/api/update", { entity: sh ? "shareUpdate" : "shareCreate", id: sh ? sh.id : undefined, title, tracks: picks, slug });
+    const r = await post("/api/update", { entity: sh ? "shareUpdate" : "shareCreate", id: sh ? sh.id : undefined, title, tracks: picks, slug, links });
     btn.disabled = false; btn.textContent = sh ? "Save changes" : "Create link";
     if (r && r.error) { toast(r.error, true); return; }
     if (!r || !r.ok) { toast("Couldn't save link", true); return; }

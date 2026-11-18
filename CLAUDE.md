@@ -85,7 +85,11 @@ links with outside collaborators (mixers, etc.).
   `Mixer Reviewed` (checkbox set by share links, distinct from Resolved), `Thread`
   (JSON `[{by, side:"band"|"share", text, at}]` — the reply conversation).
 - **shares** — one login-free link: `Title` (also tags the sharee's replies), `Tracks`
-  (JSON array of track ids), `Slug` (short/custom code for the URL).
+  (JSON array of track ids), `Slug` (short/custom code for the URL),
+  `Links` (JSON `[{label,url}]` — stems/deliverables folders shown as buttons at the top of the share page;
+  sanitised to http(s) by `cleanLinks`/`parseLinks` in `_share.js`; saved by `shareCreate/shareUpdate` in
+  `update.js`, returned by `mixRead` as `links` and on the board as `shares[].links`; edited in `shareEditor` in `app.js`,
+  rendered by `renderLinks` in `mix.html`).
 
 ## Key behaviors / gotchas
 

@@ -223,7 +223,7 @@ module.exports = async (req, res) => {
         slug = (existing && existing[F.share.slug]) || randSlug();
         while (taken.has(slug)) slug = randSlug();
       }
-      const fields = { [F.share.title]: title, [F.share.tracks]: JSON.stringify(tracks), [F.share.slug]: slug };
+      const fields = { [F.share.title]: title, [F.share.tracks]: JSON.stringify(tracks), [F.share.slug]: slug, [F.share.links]: JSON.stringify(share.cleanLinks(body.links)) };
       if (entity === "shareUpdate" && sid) { await patch(T.shares, [{ id: sid, fields }], true); }
       else { const rec = await create(T.shares, [{ fields }]); sid = rec[0].id; }
       return res.status(200).json({ ok: true, id: sid, slug, token: share.sign({ s: sid }) });

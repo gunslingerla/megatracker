@@ -948,6 +948,10 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .th-editbox .th-in { flex:1; background:var(--panel); border:1px solid var(--stroke-strong); border-radius:7px; color:var(--text); padding:5px 8px; font-size:12.5px; }
 .th-reply { display:flex; gap:6px; }
 .th-reply .th-in { flex:1; background:var(--panel); border:1px solid var(--stroke-strong); border-radius:7px; color:var(--text); padding:5px 8px; font-size:12.5px; }
+.sl-links { display:flex; flex-direction:column; gap:6px; margin-bottom:6px; }
+.sl-linkrow { display:flex; gap:6px; align-items:center; }
+.sl-linkrow .sl-lname { flex:0 0 32%; min-width:0; }
+.sl-linkrow .sl-lurl { flex:1; min-width:0; }
 .sl-slug { display:flex; align-items:center; gap:4px; }
 .sl-slug span { color:var(--muted); font-size:13px; }
 .sl-slug input { flex:1; }

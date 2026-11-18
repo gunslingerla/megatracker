@@ -17,18 +17,18 @@ async function mixResolve(q) {
     const rec = sharesR.find((r) => (r.fields[F.share.slug] || "") === q.mixslug);
     if (!rec) return null;
     let t = []; try { t = JSON.parse(rec.fields[F.share.tracks] || "[]"); } catch {}
-    return { idList: Array.isArray(t) ? t : [], title: rec.fields[F.share.title] || "Guest" };
+    return { idList: Array.isArray(t) ? t : [], title: rec.fields[F.share.title] || "Guest", links: share.parseLinks(rec.fields[F.share.links]) };
   }
   const data = share.verify(q.mixtoken);
   if (!data) return null;
-  if (data.s) { const rec = await getRecord(T.shares, data.s); let t = []; try { t = JSON.parse(rec.fields[F.share.tracks] || "[]"); } catch {} return { idList: Array.isArray(t) ? t : [], title: rec.fields[F.share.title] || "Guest" }; }
+  if (data.s) { const rec = await getRecord(T.shares, data.s); let t = []; try { t = JSON.parse(rec.fields[F.share.tracks] || "[]"); } catch {} return { idList: Array.isArray(t) ? t : [], title: rec.fields[F.share.title] || "Guest", links: share.parseLinks(rec.fields[F.share.links]) }; }
   if (Array.isArray(data.t)) return { idList: mixIds(data.t), title: "Guest" };
   return null;
 }
 async function mixRead(req, res) {
   let resolved; try { resolved = await mixResolve(req.query || {}); } catch { resolved = null; }
   if (!resolved) return res.status(403).json({ error: "invalid link" });
-  const idList = resolved.idList, shareTitle = resolved.title;
+  const idList = resolved.idList, shareTitle = resolved.title, shareLinks = resolved.links || [];
   const ids = new Set(idList);
   try {
     const [tracksR, albumsR, feedbackR, membersR] = await Promise.all([listAll(T.tracks), listAll(T.albums), listAll(T.feedback), listAll(T.members)]);
@@ -74,7 +74,7 @@ async function mixRead(req, res) {
       return { id, title: r.fields[F.track.title] || "Untitled", version: ver, url: b ? b.url : null, notes };
     }).filter(Boolean);
     res.setHeader("Cache-Control", "no-store");
-    return res.status(200).json({ mix: true, title: shareTitle, songs });
+    return res.status(200).json({ mix: true, title: shareTitle, links: shareLinks, songs });
   } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
 }
 
@@ -210,7 +210,7 @@ module.exports = async (req, res) => {
     const feedUrl = `${proto}://${host}/api/calendar.ics${feedKey ? `?key=${encodeURIComponent(feedKey)}` : ""}`;
 
     res.setHeader("Cache-Control", "no-store");
-    const shares = sharesR.map((r) => { let t = []; try { t = JSON.parse(r.fields[F.share.tracks] || "[]"); } catch {} return { id: r.id, title: r.fields[F.share.title] || "Untitled link", tracks: Array.isArray(t) ? t : [], slug: r.fields[F.share.slug] || "", token: share.sign({ s: r.id }), createdTime: r.createdTime }; }).sort((a, b) => (a.createdTime < b.createdTime ? 1 : -1));
+    const shares = sharesR.map((r) => { let t = []; try { t = JSON.parse(r.fields[F.share.tracks] || "[]"); } catch {} return { id: r.id, title: r.fields[F.share.title] || "Untitled link", tracks: Array.isArray(t) ? t : [], slug: r.fields[F.share.slug] || "", links: share.parseLinks(r.fields[F.share.links]), token: share.sign({ s: r.id }), createdTime: r.createdTime }; }).sort((a, b) => (a.createdTime < b.createdTime ? 1 : -1));
     res.status(200).json({ albums, tracks, phases, members, feedback, shares, stages: STAGES, phaseNames: PHASE_NAMES, feedUrl, feedSecured: !!feedKey });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });

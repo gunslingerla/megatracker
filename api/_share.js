@@ -39,4 +39,22 @@ function noteNameFor(oldName, makeGlobal, ts) {
   if (g) return "Guest: " + g + " @ " + (makeGlobal ? "Global" : clockOf(ts));
   return makeGlobal ? GLOBAL_NOTE_NAME : "Note @ " + clockOf(ts);
 }
-module.exports = { sign, verify, guestLabel, isGuestNoteOf, guestNameOf, isGlobalName, guestNoteName, noteNameFor };
+// Extra links on a share page (stems / deliverables folders): JSON [{label,url}] in the share's Links field.
+// Only http(s) URLs are kept, so a stored link can never become a javascript: URL on the share page.
+function cleanLinks(arr) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const x of arr) {
+    let url = String((x && x.url) || "").trim();
+    if (!url) continue;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = "https://" + url;
+    let u; try { u = new URL(url); } catch { continue; }
+    if (u.protocol !== "https:" && u.protocol !== "http:") continue;
+    const label = String((x && x.label) || "").replace(/\s+/g, " ").trim().slice(0, 80) || u.hostname.replace(/^www\./, "");
+    out.push({ label, url: u.href.slice(0, 1000) });
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+function parseLinks(raw) { try { return cleanLinks(JSON.parse(raw || "[]")); } catch { return []; } }
+module.exports = { cleanLinks, parseLinks, sign, verify, guestLabel, isGuestNoteOf, guestNameOf, isGlobalName, guestNoteName, noteNameFor };
