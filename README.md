@@ -29,6 +29,9 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   version** (the Dropbox filename): the current bounce's notes show by default, older versions sit
   under "Previous versions", and a "New version detected" banner offers to move still-open notes to
   the newest bounce. Notes also have a reply **thread** (band and share-link guests).
+- **Editing notes** — every note (Notes page, notes bar, notes modal) has an **Edit** button: fix the wording
+  and, for timestamped notes, the time. Handy for cleaning notes up before sending a link; the share page
+  shows the change on its next refresh.
 - **Global notes** — tick **Global** when adding a note (notes bar or the notes modal) to make it apply to
   the whole song instead of a moment in it. It ignores timestamps and is listed first, under its own
   "Global" heading, with a GLOBAL tag in place of a timecode. Global notes also appear

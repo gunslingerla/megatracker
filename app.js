@@ -31,6 +31,60 @@ const noteStamp = (fb) => (isGlobalNote(fb) ? "Global" : mmss(fb.timestamp));
 // Per-note button that switches it between a timestamped note and a whole-song (global) one.
 // Switching to global keeps the stored time, so switching back restores it.
 const globalSwitchBtn = (fb) => `<button class="fb-mini" data-fbglobal="${fb.id}:${isGlobalNote(fb) ? 0 : 1}" title="${isGlobalNote(fb) ? "Give this note a timestamp again" : "Make this a whole-song note (no timestamp)"}">&rarr; ${isGlobalNote(fb) ? "Timed" : "Global"}</button>`;
+// Edit a note in place (Notes page, notes bar and modal all use this). Text for every note; the time too
+// for timestamped ones. Cmd/Ctrl+Enter saves, Esc cancels. Server-side: update.js `feedback` comment/timestamp.
+const editNoteBtn = (fb) => `<button class="fb-mini" data-fbedit="${fb.id}" title="Edit this note">Edit</button>`;
+function strHash(s) { s = String(s || ""); let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+function startNoteEdit(btn, after) {
+  const id = btn.dataset.fbedit;
+  const item = btn.closest("[data-fb]");
+  const fb = ((state.data && state.data.feedback) || []).find((f) => f.id === id);
+  const body = item && item.querySelector(".fb-comment");
+  if (!fb || !body || item.querySelector(".note-edit-box")) return;
+  const global = isGlobalNote(fb);
+  const box = document.createElement("div"); box.className = "note-edit-box";
+  const ta = document.createElement("textarea"); ta.className = "note-edit-ta"; ta.value = fb.comment || "";
+  const row = document.createElement("div"); row.className = "note-edit-row";
+  let timeInp = null;
+  if (!global) {
+    const lab = document.createElement("label"); lab.append("At ");
+    timeInp = document.createElement("input"); timeInp.type = "text"; timeInp.className = "note-edit-time"; timeInp.value = mmss(fb.timestamp); timeInp.setAttribute("aria-label", "Time in song");
+    lab.append(timeInp); row.append(lab);
+  }
+  const sp = document.createElement("span"); sp.className = "spacer"; sp.style.flex = "1";
+  const save = document.createElement("button"); save.className = "add-btn"; save.textContent = "Save";
+  const cancel = document.createElement("button"); cancel.className = "add-btn ghost"; cancel.textContent = "Cancel";
+  row.append(sp, cancel, save); box.append(ta, row);
+  body.style.display = "none"; body.after(box);
+  const close = () => { box.remove(); body.style.display = ""; };
+  const doSave = async () => {
+    const comment = ta.value.trim();
+    if (!comment) { toast("A note can't be empty", true); ta.focus(); return; }
+    const fields = {};
+    if (comment !== (fb.comment || "").trim()) fields.comment = comment;
+    if (timeInp) {
+      const raw = timeInp.value.trim();
+      if (!/^\d+(:\d{1,2})?$/.test(raw)) { toast("Time should look like 1:23", true); timeInp.focus(); return; }
+      const secs = parseTime(raw);
+      if (secs !== Math.round(fb.timestamp)) fields.timestamp = secs;
+    }
+    if (!Object.keys(fields).length) { close(); return; }
+    save.disabled = true;
+    const r = await update("feedback", id, fields);
+    if (r.ok) { toast("Note updated"); box.remove(); await refresh(); if (after) after(); }
+    else save.disabled = false;
+  };
+  save.onclick = doSave; cancel.onclick = close;
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doSave(); }
+  });
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+function wireNoteEdit(root, after) {
+  if (!root) return;
+  root.querySelectorAll("[data-fbedit]").forEach((b) => b.onclick = () => startNoteEdit(b, after));
+}
 function wireGlobalSwitch(root, after) {
   if (!root) return;
   root.querySelectorAll("[data-fbglobal]").forEach((b) => b.onclick = async () => {
@@ -169,7 +223,7 @@ async function refresh(keepDrawer = true) {
 // Two cadences: a snappy 12s pass that keeps an open notes bar live, and a 60s
 // sitewide pass that refreshes every view. Both bail out while you are mid-edit.
 function fbSig(t) {
-  return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${(fb.comment || "").length}:${(fb.thread || []).map((m) => `${m.at || ""}.${(m.text || "").length}`).join(",")}:${fb.mixReviewed ? 1 : 0}:${fb.global ? 1 : 0}`).sort().join("|");
+  return (t.feedback || []).map((fb) => `${fb.id}:${fb.status}:${fb.timestamp}:${fb.version || ""}:${strHash(fb.comment)}:${(fb.thread || []).map((m) => `${m.at || ""}.${strHash(m.text)}`).join(",")}:${fb.mixReviewed ? 1 : 0}:${fb.global ? 1 : 0}`).sort().join("|");
 }
 function dataSig(d) {
   try {
@@ -184,6 +238,7 @@ function pollBusy() {
   const tp = document.getElementById("teleprompter"); if (tp && tp.classList.contains("open")) return true;
   if (typeof identityLock !== "undefined" && identityLock) return true;
   if (document.querySelector(".card.dragging")) return true;
+  if (document.querySelector(".note-edit-box")) return true; // a note is being edited
   const ae = document.activeElement;
   if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable) && ae.closest("#main, #drawer, #modal")) return true;
   return false;
@@ -214,7 +269,7 @@ async function pollNotes() {
   const bar = document.getElementById("notesbar");
   if (!bar || !bar.classList.contains("open") || !notesBarTrack) return;
   if (document.hidden || refreshing || polling) return;
-  if (bar.querySelector(".th-edit-in")) return; // mid-edit of a reply: a redraw would drop it
+  if (bar.querySelector(".th-edit-in") || bar.querySelector(".note-edit-box")) return; // mid-edit: a redraw would drop it
   const before = (() => { const t = trackById(notesBarTrack); return t ? fbSig(t) : ""; })();
   polling = true;
   let d; try { d = await loadData(); } finally { polling = false; }
@@ -905,6 +960,7 @@ function wireBoard() {
   document.querySelectorAll("[data-asgme]").forEach((b) => b.onclick = () => { asgOnlyMe = !asgOnlyMe; render(); });
   document.querySelectorAll("#main .note-time[data-nseek]").forEach((b) => b.onclick = () => seekTo(b.dataset.ntrack, Math.max(0, Number(b.dataset.nseek) - preRoll)));
   wireGlobalSwitch(document.getElementById("main"));
+  wireNoteEdit(document.getElementById("main"));
   document.querySelectorAll("#main [data-nresolve]").forEach((b) => b.onclick = async () => { const r = await update("feedback", b.dataset.nresolve, { status: "Resolved" }); if (r.ok) { toast("Resolved"); refresh(); } });
   document.querySelectorAll("#main [data-nreopen]").forEach((b) => b.onclick = async () => { const r = await update("feedback", b.dataset.nreopen, { status: "Open" }); if (r.ok) { toast("Reopened"); refresh(); } });
   { const rc = document.getElementById("notesResolved"); if (rc) rc.onchange = () => { notesShowResolved = rc.checked; render(); }; }
@@ -2271,7 +2327,7 @@ function noteRowHTML(t, fb) {
       <span class="note-when">${fmtWhen(fb.createdTime)}</span>
       <span class="note-author"${authorStyle(fb)}>${esc(fb.author || "")}</span>
       ${fb.mixReviewed ? `<span class="mix-badge" title="Mixer marked this reviewed">✓ mixer</span>` : ""}
-      <div class="fb-actions">${resolved ? `<button class="fb-mini" data-nreopen="${fb.id}">Reopen</button>` : `<button class="fb-mini" data-nresolve="${fb.id}">Resolve</button>`}${globalSwitchBtn(fb)}<button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
+      <div class="fb-actions">${resolved ? `<button class="fb-mini" data-nreopen="${fb.id}">Reopen</button>` : `<button class="fb-mini" data-nresolve="${fb.id}">Resolve</button>`}${globalSwitchBtn(fb)}${editNoteBtn(fb)}<button class="fb-mini" data-ndel="${fb.id}">&times;</button></div>
     </div>
     <div class="fb-body">
       <div class="fb-comment">${esc(fb.comment)}</div>
@@ -2373,6 +2429,7 @@ function fbItemHTML(fb, t) {
         <div class="fb-actions">
           <button class="fb-mini" data-fbtoggle="${fb.status}">${fb.status === "Open" ? "Resolve" : "Reopen"}</button>
           ${globalSwitchBtn(fb)}
+          ${editNoteBtn(fb)}
           <button class="fb-mini" data-fbdel>&times;</button>
         </div>
       </div>
@@ -2431,6 +2488,7 @@ function renderNotesBar() {
   wireNoteCtrls(bar);
   wireThreads(bar);
   wireGlobalSwitch(bar, () => { renderNotesBar(); if (state.audio.currentId === t.id) renderMarkers(); });
+  wireNoteEdit(bar, () => { renderNotesBar(); if (state.audio.currentId === t.id) renderMarkers(); });
   notesTimeLocked = false;
   const textEl = document.getElementById("nbText");
   const lock = () => { notesTimeLocked = true; };
@@ -2506,6 +2564,7 @@ function renderFeedback(t) {
   });
   wireNoteCtrls(el);
   wireGlobalSwitch(el, () => reRenderFeedback(t.id));
+  wireNoteEdit(el, () => reRenderFeedback(t.id));
   $("#fbGlobal").onchange = () => {
     const g = $("#fbGlobal").checked;
     $("#fbTime").disabled = g; $("#fbNow").disabled = g; el.querySelector(".fb-atwrap").classList.toggle("is-global", g);

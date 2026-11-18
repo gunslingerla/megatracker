@@ -39,7 +39,7 @@ const MAP = {
   },
   feedback: {
     table: T.feedback,
-    fields: { status: F.feedback.status, comment: F.feedback.comment, ownerIds: F.feedback.author, version: F.feedback.version },
+    fields: { status: F.feedback.status, comment: F.feedback.comment, ownerIds: F.feedback.author, version: F.feedback.version, timestamp: F.feedback.timestamp },
     links: ["ownerIds"],
   },
   member: {
@@ -308,17 +308,31 @@ module.exports = async (req, res) => {
       }
     }
 
+    // Editing a note: it can't be emptied, and its time must be a sane number of seconds.
+    if (entity === "feedback") {
+      if ("comment" in fields && !String(fields.comment || "").trim()) return res.status(400).json({ error: "A note can't be empty." });
+      if ("timestamp" in fields) {
+        const ts = Math.round(Number(fields.timestamp));
+        if (!isFinite(ts) || ts < 0 || ts > 86400) return res.status(400).json({ error: "That time isn't valid." });
+        fields.timestamp = ts;
+      }
+    }
+
     const airFields = {};
     for (const [k, v] of Object.entries(fields)) {
       const fid = spec.fields[k];
       if (!fid) continue;
       airFields[fid] = spec.links.includes(k) ? (Array.isArray(v) ? v : v ? [v] : []) : v;
     }
-    // Switch a note between global (whole song) and timestamped. Only the Name changes; the stored
-    // timestamp is left alone so switching back restores the original time.
-    if (entity === "feedback" && typeof fields.global === "boolean") {
+    // Switching a note between global (whole song) and timestamped, or changing a timestamped note's
+    // time, keeps its Name in step ("Note @ m:ss" etc.). A pure global switch leaves the stored
+    // timestamp alone so switching back restores the original time.
+    if (entity === "feedback" && (typeof fields.global === "boolean" || "timestamp" in fields)) {
       const rec = await getRecord(T.feedback, id);
-      airFields[F.feedback.name] = share.noteNameFor(rec.fields[F.feedback.name], fields.global, rec.fields[F.feedback.timestamp]);
+      const oldName = rec.fields[F.feedback.name];
+      const makeGlobal = typeof fields.global === "boolean" ? fields.global : share.isGlobalName(oldName);
+      const ts = "timestamp" in fields ? fields.timestamp : rec.fields[F.feedback.timestamp];
+      if (typeof fields.global === "boolean" || !makeGlobal) airFields[F.feedback.name] = share.noteNameFor(oldName, makeGlobal, ts);
     }
 
     const updated = await patch(spec.table, [{ id, fields: airFields }], true);

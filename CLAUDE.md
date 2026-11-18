@@ -113,6 +113,10 @@ links with outside collaborators (mixers, etc.).
   `GET /api/data?mixslug=…`, checks off a note's `Mixer Reviewed`, and posts replies —
   all authorized by the slug/token resolving to a Shares record. `vercel.json` also has a
   `/s/:slug` rewrite, but links use `/mix?s=` so nothing depends on it.
+- **Editing notes:** every note row has an Edit button (`editNoteBtn`/`startNoteEdit`/`wireNoteEdit` in `app.js`,
+  shared by the Notes page, notes bar and modal) that edits `comment` and, for non-global notes, `timestamp` via
+  `update.js` `feedback`. The server rejects empty text and bad times, and rewrites the note's `Name` when the time
+  changes. Live sync (`fbSig`) hashes comment text so same-length edits sync, and polling skips while an editor is open.
 - **Global notes:** a whole-song note (no timestamp). No Airtable field: it's encoded in the note's `Name`.
   All note naming lives in `_share.js` (`isGlobalName`, `guestNoteName`, `noteNameFor`, `guestNameOf`):
   band `Note @ m:ss` / global `GLOBAL_NOTE_NAME` ("Global note", in `_airtable.js`); guest
