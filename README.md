@@ -62,7 +62,7 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   A link can also carry **file/folder links** (stems, deliverables, etc.): add a name + URL pairs in the
   link's editor and they show as buttons under the heading "Files" at the top of the share page
   (only http/https URLs are kept; up to 20). The Dropbox folders themselves must be shared as "anyone with the link".
-- **Calendar** — month and week grids showing song deadlines, open production phases as bars running from
+- **Calendar** — month and week grids (weeks start on Sunday) showing song deadlines, open production phases as bars running from
   their **start** to their due date, and your own **events** (rehearsal, studio, release...; all-day, multi-day
   or timed). Drag a bar to move it, double-click a day to add an event, filter by song or by member. A phase's
   start date is optional (without one it's a single day); set it in the song drawer or by dragging in the Gantt.
@@ -70,7 +70,8 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   deadline and a line for today. Drag a bar to move it, drag its ends to change the start or due date, click to
   open the song. **Move several at once:** Shift/Cmd/Ctrl-click bars (or drag a box on empty space around them) to
   select them, then drag any selected bar and they all shift by the same number of days (deadline flags can be
-  selected too; Esc clears). **Zoom** with the Days / Weeks / Months presets, the − and + buttons, **Fit**, or
+  selected too; Esc clears). Dragging near the left or right edge scrolls the view, and the timeline leaves a few
+  months of room each side, so things can be moved a long way. **Zoom** with the Days / Weeks / Months presets, the − and + buttons, **Fit**, or
   Ctrl/Cmd + scroll (a trackpad pinch works too), which zooms around the pointer. Filter by song or member.
 - **Detail drawer** — edit stage, BPM, key, due date, notes, owners, each phase's status/owner,
   reference/song links, art, and on-hold state.

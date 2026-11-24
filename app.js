@@ -867,14 +867,14 @@ function calendarHTML() {
   const todayIso = isoOf(new Date());
   const weekly = calView === "week";
   const start = new Date(calMonth); start.setHours(0, 0, 0, 0);
-  if (weekly) start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
-  else { start.setDate(1); start.setDate(1 - ((start.getDay() + 6) % 7)); }
+  if (weekly) start.setDate(start.getDate() - start.getDay()); // weeks start on Sunday
+  else { start.setDate(1); start.setDate(1 - start.getDay()); }
   const cellCount = weekly ? 7 : 42;
   const curMonth = calMonth.getMonth();
   const title = weekly
     ? (() => { const e = new Date(start); e.setDate(e.getDate() + 6); const o = { month: "short", day: "numeric" }; return `${start.toLocaleDateString(undefined, o)} – ${e.toLocaleDateString(undefined, o)}`; })()
     : calMonth.toLocaleString(undefined, { month: "long", year: "numeric" });
-  const heads = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => `<div class="cal-head">${d}</div>`).join("");
+  const heads = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => `<div class="cal-head">${d}</div>`).join("");
 
   // Multi-day items (phase spans, multi-day events) are packed into lanes per week row so a bar keeps
   // the same height as it runs across the days; single-day items follow underneath.
@@ -1096,6 +1096,8 @@ function ganttHTML() {
   songs.forEach((t) => { note(t.dueDate); (t.phases || []).filter(memSel).forEach((p) => { if (p.due) { note(p.due); note(phaseSpan(p)[0]); } }); });
   lo = isoAdd(lo, -7); hi = isoAdd(hi, 14);
   if (isoDiff(lo, hi) < 60) hi = isoAdd(lo, 60);
+  const fitLo = lo, fitDays = isoDiff(lo, hi) + 1; // what "Fit" shows
+  lo = isoAdd(lo, -30); hi = isoAdd(hi, 90);        // plus room on both sides to drag things a long way
   const dw = ganttDW, days = isoDiff(lo, hi) + 1, W = days * dw;
   const left = (iso) => isoDiff(lo, iso) * dw;
   // header: months on top, days underneath
@@ -1103,7 +1105,7 @@ function ganttHTML() {
   for (let i = 0, ms = 0; i < days; i++) {
     const iso = isoAdd(lo, i), d = new Date(iso + "T00:00:00Z"), dom = d.getUTCDate(), dow = d.getUTCDay();
     if (dom === 1 || i === 0) { const nm = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)); const endI = Math.min(days, isoDiff(lo, nm.toISOString().slice(0, 10))); months += `<div class="g-month" style="left:${i * dw}px;width:${(endI - i) * dw}px">${d.toLocaleString(undefined, { month: "long", year: "numeric", timeZone: "UTC" })}</div>`; ms = i; }
-    const showNum = dw >= 24 || (dw >= 10 && dow === 1);
+    const showNum = dw >= 24 || (dw >= 10 && dow === 0); // label each week's Sunday
     dayCells += `<div class="g-day${dow === 0 || dow === 6 ? " we" : ""}${iso === today ? " today" : ""}" style="left:${i * dw}px;width:${dw}px">${showNum ? dom : ""}</div>`;
     if (dow === 6 && dw >= 6) weekends += `<div class="g-we" style="left:${i * dw}px;width:${Math.min(2, days - i) * dw}px"></div>`;
     else if (dow === 0 && i === 0 && dw >= 6) weekends += `<div class="g-we" style="left:0;width:${dw}px"></div>`;
@@ -1144,7 +1146,7 @@ function ganttHTML() {
         <button class="add-btn ghost" data-gexp="0">Collapse all</button>
         <button class="add-btn ghost" id="gToday">Today</button>
       </div>
-      ${songs.length ? `<div class="gantt" id="gantt" data-lo="${lo}" data-dw="${dw}" data-days="${days}" data-today="${todayLeft}" style="--glabel:${GANTT_LABEL_W}px">
+      ${songs.length ? `<div class="gantt" id="gantt" data-lo="${lo}" data-dw="${dw}" data-days="${days}" data-fitoff="${isoDiff(lo, fitLo)}" data-fitdays="${fitDays}" data-today="${todayLeft}" style="--glabel:${GANTT_LABEL_W}px">
         <div class="g-inner" style="width:${GANTT_LABEL_W + W}px">
           <div class="g-head"><div class="g-corner"></div><div class="g-headtrack" style="width:${W}px"><div class="g-months">${months}</div><div class="g-days">${dayCells}</div></div></div>
           <div class="g-layer" style="left:${GANTT_LABEL_W}px;width:${W}px">${weekends}<div class="g-todayline" style="left:${todayLeft}px"></div></div>
@@ -1154,6 +1156,27 @@ function ganttHTML() {
       <div class="cal-hint">Drag a bar to move it, drag its ends to change the start or due date, click it to open the song. To move several at once, Shift-click bars (or drag a box around them) and drag any selected one; Esc clears the selection. Zoom with the buttons or Ctrl/Cmd + scroll. The flag is the song deadline. Bars are coloured by owner.</div>`
       : `<div class="empty">No songs to show${calMember ? " for that person" : ""}.</div>`}
     </div>`;
+}
+// While a drag is held near an edge of the Gantt, keep scrolling that way (also when the pointer is still).
+// onScroll runs after each scroll step so the caller can re-apply its drag using the new scroll position.
+function ganttAutoScroll(box, onScroll, vertical) {
+  const EDGE = 80, MAX = 26;
+  let px = 0, py = 0, raf = 0, on = true;
+  const tick = () => {
+    raf = 0; if (!on) return;
+    const r = box.getBoundingClientRect();
+    const l = r.left + GANTT_LABEL_W, rt = r.right - 16, t = r.top + 56, b = r.bottom - 16;
+    const speed = (over) => Math.min(MAX, Math.max(2, (over / EDGE) * MAX));
+    let dx = 0, dy = 0;
+    if (px > rt - EDGE) dx = speed(px - (rt - EDGE)); else if (px < l + EDGE) dx = -speed(l + EDGE - px);
+    if (vertical) { if (py > b - EDGE) dy = speed(py - (b - EDGE)); else if (py < t + EDGE) dy = -speed(t + EDGE - py); }
+    if (dx || dy) { const x0 = box.scrollLeft, y0 = box.scrollTop; box.scrollLeft += dx; box.scrollTop += dy; if (box.scrollLeft !== x0 || box.scrollTop !== y0) onScroll(); }
+    raf = requestAnimationFrame(tick);
+  };
+  return {
+    update(x, y) { px = x; py = y; if (!raf && on) raf = requestAnimationFrame(tick); },
+    stop() { on = false; if (raf) cancelAnimationFrame(raf); raf = 0; },
+  };
 }
 // Selection: Shift/Cmd/Ctrl-click a bar (or drag a box around several) and drag any selected bar to move them all.
 function paintGanttSel() {
@@ -1190,10 +1213,14 @@ function wireGantt() {
   const dw = Number(box.dataset.dw), lo = box.dataset.lo, days = Number(box.dataset.days);
   const toToday = () => { box.scrollLeft = Math.max(0, Number(box.dataset.today) - 160); };
   if (ganttAnchor) { box.scrollLeft = Math.max(0, ganttAnchor.day * dw + GANTT_LABEL_W - ganttAnchor.x); box.scrollTop = ganttScroll ? ganttScroll.y : 0; ganttAnchor = null; }
-  else if (ganttScroll) { box.scrollLeft = ganttScroll.x; box.scrollTop = ganttScroll.y; } else toToday();
-  box.addEventListener("scroll", () => { ganttScroll = { x: box.scrollLeft, y: box.scrollTop }; });
+  else if (ganttScroll) { box.scrollLeft = ganttScroll.x + (ganttScroll.lo ? isoDiff(lo, ganttScroll.lo) * dw : 0); box.scrollTop = ganttScroll.y; } else toToday();
+  box.addEventListener("scroll", () => { ganttScroll = { x: box.scrollLeft, y: box.scrollTop, lo }; });
   const gt = document.getElementById("gToday"); if (gt) gt.onclick = toToday;
-  const fit = document.getElementById("gFit"); if (fit) fit.onclick = () => { ganttScroll = null; setGanttZoom((box.clientWidth - GANTT_LABEL_W - 24) / days, null); box.scrollLeft = 0; };
+  const fit = document.getElementById("gFit"); if (fit) fit.onclick = () => {
+    const fitDays = Number(box.dataset.fitdays), off = Number(box.dataset.fitoff);
+    const target = Math.max(GANTT_MIN_DW, Math.min(GANTT_MAX_DW, (box.clientWidth - GANTT_LABEL_W - 24) / fitDays));
+    ganttAnchor = { day: off, x: GANTT_LABEL_W + 4 }; ganttDW = target; render(); // put the first fitted day at the left edge
+  };
   // Ctrl/Cmd + scroll (a trackpad pinch arrives as ctrl + wheel) zooms around the pointer.
   let wheelDw = null, wheelRaf = 0, wheelX = 0;
   box.addEventListener("wheel", (e) => {
@@ -1219,16 +1246,17 @@ function wireGantt() {
     let els = [el];
     if (mode === "m" && !additive && ganttSel.has(el.dataset.key) && ganttSel.size > 1) els = [...box.querySelectorAll("[data-key]")].filter((x) => ganttSel.has(x.dataset.key));
     const items = els.map((x) => ({ el: x, flag: x.classList.contains("g-flag"), s0: x.dataset.s, e0: x.dataset.e, ns: x.dataset.s, ne: x.dataset.e, txt: x.querySelector(".g-bar-t") }));
-    const x0 = e.clientX; let dd = 0, moved = false;
+    const x0 = e.clientX, scroll0 = box.scrollLeft; let dd = 0, moved = false, lastX = x0;
     try { el.setPointerCapture(e.pointerId); } catch {}
     els.forEach((x) => x.classList.add("dragging"));
     const apply = (it) => {
       if (it.flag) it.el.style.left = (isoDiff(lo, it.ns) * dw + dw / 2 - 8) + "px";
       else { it.el.style.left = isoDiff(lo, it.ns) * dw + "px"; it.el.style.width = (isoDiff(it.ns, it.ne) + 1) * dw + "px"; if (it.txt) it.txt.textContent = it.ns === it.ne ? fmtDay(it.ns) : fmtDay(it.ns) + " – " + fmtDay(it.ne); }
     };
-    const move = (ev) => {
-      if (Math.abs(ev.clientX - x0) > 3) moved = true;
-      dd = Math.round((ev.clientX - x0) / dw);
+    const recalc = () => {
+      const dx = (lastX - x0) + (box.scrollLeft - scroll0); // pointer travel plus how far the view has scrolled
+      if (Math.abs(dx) > 3) moved = true;
+      dd = Math.round(dx / dw);
       items.forEach((it) => {
         if (mode === "m") { it.ns = isoAdd(it.s0, dd); it.ne = isoAdd(it.e0, dd); }
         else if (mode === "l") { it.ns = isoAdd(it.s0, dd); if (it.ns > it.e0) it.ns = it.e0; it.ne = it.e0; }
@@ -1236,7 +1264,10 @@ function wireGantt() {
         apply(it);
       });
     };
+    const auto = ganttAutoScroll(box, recalc, false);
+    const move = (ev) => { lastX = ev.clientX; auto.update(ev.clientX, ev.clientY); recalc(); };
     const finish = async (ev, cancelled) => {
+      auto.stop();
       el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", cancel);
       try { el.releasePointerCapture(e.pointerId); } catch {}
       els.forEach((x) => x.classList.remove("dragging"));
@@ -1269,20 +1300,26 @@ function wireGantt() {
     if (e.button !== 0 || e.target === box || !e.target.closest(".g-inner")) return;
     if (e.target.closest(".g-bar, .g-flag, .g-label, .g-head, button, .g-tog, .g-title")) return;
     const additive = e.shiftKey || e.metaKey || e.ctrlKey, base = additive ? new Set(ganttSel) : new Set();
-    const inner = box.querySelector(".g-inner"), ir = inner.getBoundingClientRect();
-    const x0 = e.clientX, y0 = e.clientY; let mq = null, moved = false;
+    const inner = box.querySelector(".g-inner");
+    const at = (cx, cy) => { const r = inner.getBoundingClientRect(); return { x: cx - r.left, y: cy - r.top }; }; // pointer in content coordinates
+    const a0 = at(e.clientX, e.clientY), x0 = e.clientX, y0 = e.clientY; let mq = null, moved = false, lx = x0, ly = y0;
     try { box.setPointerCapture(e.pointerId); } catch {}
-    const move = (ev) => {
-      if (!moved && Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) < 5) return;
+    const recalc = () => {
+      const cur = at(lx, ly);
+      if (!moved && Math.abs(lx - x0) + Math.abs(ly - y0) < 5 && Math.abs(cur.x - a0.x) + Math.abs(cur.y - a0.y) < 5) return;
       moved = true;
       if (!mq) { mq = document.createElement("div"); mq.className = "g-marquee"; inner.appendChild(mq); }
-      const l = Math.min(x0, ev.clientX), t = Math.min(y0, ev.clientY), r = Math.max(x0, ev.clientX), b = Math.max(y0, ev.clientY);
-      Object.assign(mq.style, { left: l - ir.left + "px", top: t - ir.top + "px", width: r - l + "px", height: b - t + "px" });
+      const l = Math.min(a0.x, cur.x), t = Math.min(a0.y, cur.y), r = Math.max(a0.x, cur.x), b = Math.max(a0.y, cur.y);
+      Object.assign(mq.style, { left: l + "px", top: t + "px", width: r - l + "px", height: b - t + "px" });
+      const ir = inner.getBoundingClientRect();
       ganttSel.clear(); base.forEach((k) => ganttSel.add(k));
-      box.querySelectorAll("[data-key]").forEach((el) => { const q = el.getBoundingClientRect(); if (q.right >= l && q.left <= r && q.bottom >= t && q.top <= b) ganttSel.add(el.dataset.key); });
+      box.querySelectorAll("[data-key]").forEach((el) => { const q = el.getBoundingClientRect(); if (q.right - ir.left >= l && q.left - ir.left <= r && q.bottom - ir.top >= t && q.top - ir.top <= b) ganttSel.add(el.dataset.key); });
       paintGanttSel();
     };
+    const auto = ganttAutoScroll(box, recalc, true);
+    const move = (ev) => { lx = ev.clientX; ly = ev.clientY; auto.update(lx, ly); recalc(); };
     const up = () => {
+      auto.stop();
       box.removeEventListener("pointermove", move); box.removeEventListener("pointerup", up); box.removeEventListener("pointercancel", up);
       try { box.releasePointerCapture(e.pointerId); } catch {}
       if (mq) mq.remove();
