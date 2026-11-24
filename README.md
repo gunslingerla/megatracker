@@ -11,7 +11,7 @@ shared band password, and pick who they are.
 
 ## What it does
 
-Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Notes · Band · Calendar**.
+Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Notes · Band · Calendar · Gantt**.
 
 - **Dashboard** — Kanban board of the pipeline: Idea → Writing → Demo → **Production** → Mixing →
   Mastering → Released. Drag a card to change its stage. An album strip filters by album, and
@@ -62,8 +62,13 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   A link can also carry **file/folder links** (stems, deliverables, etc.): add a name + URL pairs in the
   link's editor and they show as buttons under the heading "Files" at the top of the share page
   (only http/https URLs are kept; up to 20). The Dropbox folders themselves must be shared as "anyone with the link".
-- **Calendar** — track and phase due dates on a month grid, plus a read-only iCal feed to
-  subscribe to from Google/Apple Calendar.
+- **Calendar** — month and week grids showing song deadlines, open production phases as bars running from
+  their **start** to their due date, and your own **events** (rehearsal, studio, release...; all-day, multi-day
+  or timed). Drag a bar to move it, double-click a day to add an event, filter by song or by member. A phase's
+  start date is optional (without one it's a single day); set it in the song drawer or by dragging in the Gantt.
+- **Gantt** — one row per song (expand it to see each phase), bars coloured by owner, a flag for the song
+  deadline and a line for today. Drag a bar to move it, drag its ends to change the start or due date, click to
+  open the song. Zoom between days, weeks and months; filter by song or member.
 - **Detail drawer** — edit stage, BPM, key, due date, notes, owners, each phase's status/owner,
   reference/song links, art, and on-hold state.
 - **Lyrics editor + teleprompter** — structured sections (Verse/Chorus/…), highlight ranges, and a
@@ -85,6 +90,7 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
 | `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `DROPBOX_REFRESH_TOKEN` | for audio | Permanent Dropbox access (preferred). See Dropbox setup. |
 | `DROPBOX_TOKEN` | optional | A short-lived (~4h) Dropbox token for quick testing instead of the trio above. |
 | `DROPBOX_SHARED_LINK` / `DROPBOX_FOLDER_PATH` | optional | Legacy single-folder config. Albums now carry their own Dropbox folder, so these are only a fallback (see `api/_dropbox.js`). |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` / `GOOGLE_CALENDAR_ID` | for Google Calendar sync | Service-account key (whole JSON file) and the calendar to write into. See Google Calendar sync. Optional `GOOGLE_CALENDAR_TZ`. |
 | `CAL_FEED_KEY` | optional | If set, the `.ics` feed only responds to `/api/calendar.ics?key=THISVALUE`. If unset, the feed is reachable by anyone with the URL. |
 
 Copy `.env.example` to `.env.local` for local runs. Never commit real values.
@@ -130,12 +136,37 @@ them up automatically. Tracks with no audio file simply show no play button.
 The app addresses tables and fields by **ID**, not name, so renaming a field in Airtable won't
 break it. All IDs live in `api/_airtable.js`; add new Airtable fields there.
 
-## Google Calendar sync (one-way)
+## Google Calendar sync (two-way)
 
-The Calendar view has a **Sync to Google Calendar** button that shows a subscribe URL
-(`/api/calendar.ics`). In Google Calendar: **Other calendars → + → From URL**, paste it, Add
-calendar. Due dates then appear as their own read-only calendar (Google refreshes every few
-hours). Set `CAL_FEED_KEY` to keep the link private.
+The tracker and a Google calendar are kept in step both ways: song deadlines, open production phases
+(start to due) and free-form events go to Google, and edits made in Google come back.
+
+- **To Google:** a few seconds after each edit in the app, on **Sync now** in the Calendar view's Google
+  Calendar panel, and every few minutes while the app is open. Done phases and held songs are removed.
+- **From Google:** moving or resizing a phase or deadline updates its dates in the app; editing an event's
+  title, date or time updates it; an event created directly in Google is imported as an app event (so the
+  first sync imports what's already on the calendar, from 45 days back to 3 years ahead).
+- **Deleting:** deleting an app event in Google deletes it in the app, and deleting one in the app deletes it in
+  Google. Deleting a phase or deadline in Google just puts it back (change or finish those in the app).
+- **Conflicts:** if both sides changed the same item since the last sync, the most recent edit wins.
+- **Left alone:** recurring events and non-ordinary Google events (birthdays, out-of-office...) are never
+  imported, and an edit to a phase's *title* in Google isn't read back (titles come from the app).
+- Safety nets: a Google event the app wrote in the last 5 minutes is never deleted by a stale read, and the sync
+  refuses to delete a large share of the calendar if the tracker looks suspiciously empty.
+
+One-time setup, using a Google service account (a robot login you share the calendar with):
+
+1. In **console.cloud.google.com** create a project and enable the **Google Calendar API**.
+2. **IAM & Admin → Service accounts**: create one, then **Keys → Add key → JSON** to download a key file.
+3. In Google Calendar open the calendar's **Settings and sharing → Share with specific people**, add the
+   service account's email (`client_email` in the file) with **Make changes to events**.
+4. On the same page, under **Integrate calendar**, copy the **Calendar ID**.
+5. In Vercel set `GOOGLE_SERVICE_ACCOUNT_JSON` (the whole key file) and `GOOGLE_CALENDAR_ID`, then redeploy.
+   Optional: `GOOGLE_CALENDAR_TZ` (default `America/Los_Angeles`) for timed events.
+
+The old read-only subscribe feed (`/api/calendar.ics`, deadlines only; guard it with `CAL_FEED_KEY`) still
+works and is listed in the panel as an older option; skip it once the sync is connected, or you'll see
+deadlines twice.
 
 ## Deploy to Vercel
 
@@ -172,6 +203,7 @@ api/
   _auth.js        # shared-password cookie auth
   _dropbox.js     # Dropbox access (album folders, newest bounce, version history, folder creation)
   _share.js       # HMAC sign/verify for share tokens
+  _gcal.js        # Google Calendar push (service-account auth, event diff/sync) + event validation
   data.js         # GET  /api/data      → whole board (also the login-free share read: ?mixslug= / ?mixtoken=)
   update.js       # POST /api/update    → all edits, bulk actions, share-link CRUD, note replies, login-free share review/reply
   create.js       # POST /api/create    → album / track (+ auto-creates all phases) / member / phase / feedback

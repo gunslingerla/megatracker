@@ -1,5 +1,6 @@
 const { T, F, PHASE_NAMES, GLOBAL_NOTE_NAME, listAll, create } = require("./_airtable");
 const { requireAuth } = require("./_auth");
+const gcal = require("./_gcal");
 
 // Default owner(s) for each production phase.
 // Primary source of truth: each member's "Default Phases" list. If nobody has claimed
@@ -84,6 +85,19 @@ module.exports = async (req, res) => {
       const recs = toCreate.map((tid) => ({ fields: { [F.phase.name]: label, [F.phase.phase]: label, [F.phase.status]: "Not started", [F.phase.track]: [tid] } }));
       for (let i = 0; i < recs.length; i += 10) await create(T.phases, recs.slice(i, i + 10));
       return res.status(200).json({ ok: true, added: recs.length, skipped: inAlbum.length - recs.length });
+    }
+
+    if (entity === "event") {
+      const c = gcal.cleanEvent(fields, false);
+      if (c.error) return res.status(400).json({ error: c.error });
+      const e = c.fields, af = { [F.event.title]: e.title, [F.event.date]: e.date };
+      if (e.endDate) af[F.event.endDate] = e.endDate;
+      if (e.startTime) af[F.event.startTime] = e.startTime;
+      if (e.endTime) af[F.event.endTime] = e.endTime;
+      if (e.kind) af[F.event.kind] = e.kind;
+      if (e.notes) af[F.event.notes] = e.notes;
+      const rec = await create(T.events, [{ fields: af }]);
+      return res.status(200).json({ ok: true, id: rec[0].id });
     }
 
     if (entity === "phase") {

@@ -21,7 +21,7 @@ links with outside collaborators (mixers, etc.).
   **not** start with `_` count. We are at exactly 12:
   `calendar.ics, create, data, delete, importdoc, login, logout, makefolders, playlist,
   update, upload, versions`.
-  Shared code goes in `_`-prefixed helpers (`_airtable, _auth, _dropbox, _share`) which
+  Shared code goes in `_`-prefixed helpers (`_airtable, _auth, _dropbox, _gcal, _share`) which
   are NOT counted. **Do not add a new non-underscore `/api` file** — fold new endpoints
   into an existing one (usually `data.js` for reads, `update.js` for writes) via an
   `entity`/action switch or a query-param branch.
@@ -54,6 +54,9 @@ links with outside collaborators (mixers, etc.).
 - `api/_dropbox.js` — Dropbox access: `albumData` (per-album song folders + newest
   bounce), `projectVersions`, `tempLink`, `makeAlbumFolders`, etc.
 - `api/_share.js` — HMAC sign/verify for login-free share tokens.
+- `api/_gcal.js` — Google Calendar two-way sync: `cleanEvent` (event validation), `buildItems` (what Google should hold),
+  `decide`/`planSync` (pure: what to push/pull/import/delete), `applyPlan`, `runSync`/`syncAll`. Triggered by
+  `update.js` `entity:"gcalSync"`.
 - `api/data.js` — returns the whole board as JSON (auth required). Also hosts the
   **login-free `mixRead`** branch (`?mixtoken=` or `?mixslug=`) for share pages.
 - `api/update.js` — all writes (auth required) via `{entity, id, fields}`; plus bulk
@@ -76,8 +79,13 @@ links with outside collaborators (mixers, etc.).
   (e.g. `The Belmonts`), `current` (is the active album).
 - **phases** — production phases per track (`PHASE_NAMES`: Drums, Bass, Eric/Josh Guitar,
   Eric/Josh Vocals, Backing Vocals, Synth, Sound Design). `owner`, `due`, and
+  **`start`** (first day; `due` is the last; optional, so a phase with no start is one day), and
   **`subtasks`** = JSON array `[{text, done, owner, note}]` where `note` is a linked
   feedback id (checking the subtask resolves that note).
+- **events** — free-form calendar events (`T.events`/`F.event`): `Title`, `Date`, `End date`, `Start time`/`End time`
+  (HH:MM text; blank = all-day), `Kind`, `Notes`, `Google ID` (set for events imported from Google), `Modified`
+  (lastModifiedTime, for sync conflicts). Phases also have `Dates modified`, tracks `Due modified` (same purpose). CRUD via `create.js`/`update.js`/`delete.js` with `entity:"event"`
+  (validated by `cleanEvent`).
 - **members** — band members; `Default Phases` (which phases they own), `color`,
   `Scratchpad` (JSON `{current, history:[{t,text}]}`, per-member private notes).
 - **feedback** = **notes** — timestamped comments on a song, **pinned to a bounce
@@ -113,6 +121,22 @@ links with outside collaborators (mixers, etc.).
   it does not move the playhead. `mix.html` has the same thing as a marker strip above its player
   (`renderStrip`, `.mk`, `.n.flash`). Redraws must keep scroll: `renderNotesBar` restores `.nb-list` scrollTop and
   `render()` restores window scroll when the view is unchanged.
+- **Calendar / Gantt:** `calendarHTML` packs multi-day items (phase spans, multi-day events) into lanes per week row so
+  bars stay level; dragging sends `kind:id:offset` so a bar moves by the day grabbed. `ganttHTML`/`wireGantt` draw one
+  row per song with pointer-drag bars (move / resize start / resize due / deadline flag). `calMember`/`calSong`
+  filters are shared by both views.
+- **Google sync (two-way, `api/_gcal.js`):** the client triggers it (`scheduleGcalSync`, debounced, from `post()` for
+  entities in `GCAL_WATCH`; also on load, every 5 min while open, and a Sync now button). Phase/deadline/app-created
+  event ids derive from the Airtable record id (`eventId`); imported events keep Google's id in the event's
+  `Google ID` field. Each Google event carries private props `megas=1`, `base` (the dates/title both sides agreed on),
+  `sig` (hash of what we wrote) and `at` (when). A side "changed" when its semantic state (`semOf`) differs from
+  `base`; one-sided changes copy across, a both-sided one is won by the later of Airtable's last-modified fields
+  (`F.phase.modified`, `F.track.dueModified`, `F.event.modified`) vs Google's `updated`. Only `megas=1`/`megas...` events
+  are ever deleted, with a 5-minute grace after our last write and a mass-delete guard. Free-form events missing from the
+  list are looked up by id before deciding "never synced" vs "deleted in Google" (`check` action). Runs are capped by
+  ops/time and report `more` so the client loops. Needs `GOOGLE_SERVICE_ACCOUNT_JSON` + `GOOGLE_CALENDAR_ID`; unset =
+  feature hidden. The decision logic is tested against fake Google/Airtable stores; the HTTP calls are untested
+  without real credentials.
 - **Identity:** each browser picks "who am I" (stored in localStorage `megasMe`); a hard
   gate on first load (`pickIdentity(true)`) requires it before using the app.
 - **Live sync (no websockets):** `app.js` polls — a 12s pass keeps an open notes bar

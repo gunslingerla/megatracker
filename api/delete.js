@@ -25,6 +25,10 @@ module.exports = async (req, res) => {
       await del(T.feedback, [id]);
       return res.status(200).json({ ok: true });
     }
+    if (entity === "event") {
+      await del(T.events, [id]);
+      return res.status(200).json({ ok: true });
+    }
     if (entity === "phase") {
       await del(T.phases, [id]);
       return res.status(200).json({ ok: true });

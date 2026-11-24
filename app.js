@@ -146,6 +146,8 @@ async function loadData() {
   return r.json();
 }
 
+// Writes that change something the Google calendar shows (see runGcalSync).
+const GCAL_WATCH = new Set(["phase", "track", "event", "reassign"]);
 async function post(url, payload) {
   const r = await fetch(url, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
@@ -154,6 +156,7 @@ async function post(url, payload) {
   let j = {}; try { j = await r.json(); } catch {}
   if (r.status === 409) { toast(j.message || "Blocked", true); return { ok: false, gate: true }; }
   if (!r.ok) { toast(j.message || j.error || "Request failed", true); return { ok: false }; }
+  if (payload && GCAL_WATCH.has(payload.entity)) scheduleGcalSync();
   return { ok: true, ...j };
 }
 
@@ -350,14 +353,16 @@ function render() {
   else if (state.view === "members") main.innerHTML = membersHTML();
   else if (state.view === "notes") main.innerHTML = notesHTML();
   else if (state.view === "calendar") main.innerHTML = calendarHTML();
+  else if (state.view === "gantt") main.innerHTML = ganttHTML();
   else if (state.view === "hold") main.innerHTML = holdHTML();
   else if (state.view === "roster") main.innerHTML = rosterHTML();
   wireBoard();
+  if (state.view === "gantt") wireGantt();
   wireSwitchers();
   wireArtView();
   // The header strip switcher shows on album-scoped views; on Preview each section
   // header is its own switcher, so the strip is hidden there.
-  const showStrip = ["tracks", "members", "calendar", "notes"].includes(state.view);
+  const showStrip = ["tracks", "members", "calendar", "gantt", "notes"].includes(state.view);
   $("#albumStrip").style.display = showStrip ? "" : "none";
   if (keepPage) window.scrollTo(px, py);
 }
@@ -831,20 +836,32 @@ function openPlanModal() {
     const assignments = computePlan(open, deadline, $("#planSpread").value).map((s) => ({ phaseId: s.phase.id, due: s.due }));
     const r = await fetch("/api/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "planphases", trackId: t.id, deadline, assignments }) });
     const j = await r.json().catch(() => ({}));
-    if (r.ok && j.ok) { toast(`Scheduled ${assignments.length} phase(s)`); closeModal(); await refresh(false); render(); }
+    if (r.ok && j.ok) { toast(`Scheduled ${assignments.length} phase(s)`); scheduleGcalSync(); closeModal(); await refresh(false); render(); }
     else toast(j.error || "Plan failed", true);
   };
 }
 let calMonth = new Date();
 let calView = "month";
 let calSong = "";
+let calMember = ""; // "" = everyone; shared by the Calendar and Gantt views
+// ---- Day arithmetic on YYYY-MM-DD strings (timezone-proof)
+const isoAdd = (iso, n) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const isoDiff = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 864e5); // days from a to b
+// A phase covers start..due (inclusive). With no start date it is just its due day.
+const phaseSpan = (p) => { const s = p.start && p.start <= p.due ? p.start : p.due; return [s, p.due]; };
+const phaseColor = (p) => { const mm = memberById((p.ownerIds || [])[0]); return mm && mm.color ? mm.color : "#6a6478"; };
+const memberOpts = () => (state.data.members || []).map((m) => `<option value="${m.id}"${calMember === m.id ? " selected" : ""}>${esc(m.display || m.name)}</option>`).join("");
+const calEventLabel = (ev) => (ev.startTime ? ev.startTime + " " : "") + ev.title;
+
 function calendarHTML() {
   const alb = currentAlbum();
   const inScope = (t) => !t.onHold && (!alb || t.albumId === alb.id);
   const tracksById = {}; state.data.tracks.forEach((t) => (tracksById[t.id] = t));
   const songSel = (t) => !calSong || t.id === calSong;
-  const tasks = state.data.phases.filter((p) => p.due && p.status !== "Done" && tracksById[p.trackId] && inScope(tracksById[p.trackId]) && songSel(tracksById[p.trackId]));
+  const memSel = (p) => !calMember || (p.ownerIds || []).includes(calMember);
+  const tasks = state.data.phases.filter((p) => p.due && p.status !== "Done" && tracksById[p.trackId] && inScope(tracksById[p.trackId]) && songSel(tracksById[p.trackId]) && memSel(p));
   const deadlines = state.data.tracks.filter((t) => t.dueDate && inScope(t) && songSel(t));
+  const events = calSong ? [] : (state.data.events || []);
   const songOpts = state.data.tracks.filter((t) => inScope(t)).sort((a, b) => effOrder(a) - effOrder(b)).map((t) => `<option value="${t.id}"${calSong === t.id ? " selected" : ""}>${dispNum(t) !== "" ? dispNum(t) + ". " : ""}${esc(t.title)}</option>`).join("");
   const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const todayIso = isoOf(new Date());
@@ -858,16 +875,45 @@ function calendarHTML() {
     ? (() => { const e = new Date(start); e.setDate(e.getDate() + 6); const o = { month: "short", day: "numeric" }; return `${start.toLocaleDateString(undefined, o)} – ${e.toLocaleDateString(undefined, o)}`; })()
     : calMonth.toLocaleString(undefined, { month: "long", year: "numeric" });
   const heads = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => `<div class="cal-head">${d}</div>`).join("");
+
+  // Multi-day items (phase spans, multi-day events) are packed into lanes per week row so a bar keeps
+  // the same height as it runs across the days; single-day items follow underneath.
+  const spans = [];
+  tasks.forEach((p, i) => { const [s, e] = phaseSpan(p); spans.push({ kind: "phase", id: p.id, s, e, p, t: tracksById[p.trackId], order: effOrder(tracksById[p.trackId]) * 100 + i % 100 }); });
+  events.filter((ev) => ev.endDate && ev.endDate > ev.date).forEach((ev) => spans.push({ kind: "event", id: ev.id, s: ev.date, e: ev.endDate, ev, order: -1 }));
+  const iso0 = isoOf(start);
+  const rowInfo = [];
+  for (let r = 0; r < cellCount / 7; r++) {
+    const rs = isoAdd(iso0, 7 * r), re = isoAdd(rs, 6);
+    const here = spans.filter((sp) => sp.s <= re && sp.e >= rs).sort((a, b) => (a.s < b.s ? -1 : a.s > b.s ? 1 : b.e > a.e ? 1 : b.e < a.e ? -1 : a.order - b.order));
+    const laneEnd = [], placed = [];
+    here.forEach((sp) => { const s = sp.s < rs ? rs : sp.s; let k = laneEnd.findIndex((le) => le < s); if (k < 0) { k = laneEnd.length; laneEnd.push(sp.e); } else laneEnd[k] = sp.e; placed.push({ sp, lane: k }); });
+    rowInfo.push({ placed, lanes: laneEnd.length });
+  }
+  const spanChip = (sp, iso, col) => {
+    const first = iso === sp.s, lastDay = iso === sp.e;
+    const cls = `${first || col === 0 ? " capl" : ""}${lastDay || col === 6 ? " capr" : ""}`;
+    const label = first || col === 0, off = isoDiff(sp.s, iso);
+    const range = sp.s !== sp.e ? ` (${fmtDay(sp.s)} – ${fmtDay(sp.e)})` : "";
+    if (sp.kind === "phase") { const p = sp.p, t = sp.t; return `<div class="cal-task${cls}" draggable="true" data-ct="${p.id}" data-off="${off}" data-open="${p.trackId}" style="--own:${phaseColor(p)}" title="${esc(t.title)} — ${esc(p.phase)}: ${esc(p.owners.join(", ") || "unassigned")}${range}">${label ? `${esc(t.title)} — ${esc(p.phase)}` : "&nbsp;"}</div>`; }
+    return `<div class="cal-event${cls}" draggable="true" data-evid="${sp.id}" data-off="${off}" title="${esc(sp.ev.title)}${range}">${label ? esc(calEventLabel(sp.ev)) : "&nbsp;"}</div>`;
+  };
+
   let cells = "";
   for (let i = 0; i < cellCount; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i);
-    const iso = isoOf(d);
+    const iso = isoOf(d), col = i % 7, info = rowInfo[Math.floor(i / 7)];
     const dl = deadlines.filter((t) => t.dueDate === iso);
-    const tk = tasks.filter((p) => p.due === iso).sort((a, b) => effOrder(tracksById[a.trackId]) - effOrder(tracksById[b.trackId]));
+    const evs = events.filter((ev) => !(ev.endDate && ev.endDate > ev.date) && ev.date === iso).sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
+    const slots = new Array(info.lanes).fill(null);
+    info.placed.forEach(({ sp, lane }) => { if (sp.s <= iso && sp.e >= iso) slots[lane] = sp; });
+    let last = slots.length - 1; while (last >= 0 && !slots[last]) last--;
+    const lanes = slots.slice(0, last + 1).map((sp) => (sp ? spanChip(sp, iso, col) : `<div class="cal-gap"></div>`)).join("");
     cells += `<div class="cal-cell${(!weekly && d.getMonth() !== curMonth) ? " out" : ""}${iso === todayIso ? " today" : ""}${weekly ? " wk" : ""}" data-day="${iso}">
       <div class="d">${weekly ? d.toLocaleDateString(undefined, { weekday: "short" }) + " " : ""}${d.getDate()}</div>
+      ${lanes}
       ${dl.map((t) => `<div class="cal-deadline" draggable="true" data-cd="${t.id}" data-open="${t.id}" title="Deadline: ${esc(t.title)}"><span class="flag">&#9873;</span><span class="dl-txt">${dispNum(t) !== "" ? `${dispNum(t)}. ` : ""}${esc(t.title)}</span></div>`).join("")}
-      ${tk.map((p) => { const t = tracksById[p.trackId]; const mm = memberById(p.ownerIds[0]); const col = mm && mm.color ? mm.color : "#6a6478"; return `<div class="cal-task" draggable="true" data-ct="${p.id}" data-open="${p.trackId}" style="--own:${col}" title="${esc(p.owners.join(', ') || 'unassigned')}">${esc(t.title)} — ${esc(p.phase)}</div>`; }).join("")}
+      ${evs.map((ev) => `<div class="cal-event capl capr" draggable="true" data-evid="${ev.id}" data-off="0" title="${esc(ev.title)}${ev.kind ? " (" + esc(ev.kind) + ")" : ""}">${esc(calEventLabel(ev))}</div>`).join("")}
     </div>`;
   }
   return `
@@ -881,41 +927,287 @@ function calendarHTML() {
           <button class="${weekly ? "on" : ""}" data-calview="week">Week</button>
         </div>
         <select id="calSongFilter" class="cal-songfilter" title="Filter by song"><option value="">All songs</option>${songOpts}</select>
+        <select id="calMemberFilter" class="cal-songfilter" title="Show one person's phases"><option value="">All members</option>${memberOpts()}</select>
         <span class="spacer" style="flex:1"></span>
+        <span class="cal-syncstate" id="calSyncState">${esc(gcalStateText())}</span>
         <button class="add-btn" id="calPlanBtn">Plan a song</button>
-        <button class="add-btn ghost" id="calSubBtn">Sync to Google Calendar</button>
+        <button class="add-btn" id="calEventBtn">+ Event</button>
+        <button class="add-btn ghost" id="calSubBtn">Google Calendar</button>
       </div>
       <div id="calSubBody"></div>
       <div class="cal-grid">${heads}${cells}</div>
+      <div class="cal-hint">Drag a bar to move it. Double-click a day to add an event.</div>
     </div>`;
 }
-function openCalSync() {
-  const body = $("#calSubBody");
-  if (!body) return;
-  body.innerHTML = `<div class="cal-sync"><div class="loading" style="padding:8px 0">Getting your feed link…</div></div>`;
-  Promise.resolve({ url: (state.data && state.data.feedUrl) || "", secured: !!(state.data && state.data.feedSecured) }).then((j) => {
-    if (!j || !j.url) { body.innerHTML = `<div class="cal-sync">Couldn't build the feed link.</div>`; return; }
-    body.innerHTML = `
-      <div class="cal-sync">
-        <div class="cal-sync-h">Subscribe in Google Calendar</div>
-        <div class="cal-sync-row">
-          <input id="calFeedUrl" type="text" readonly value="${esc(j.url)}" />
-          <button class="add-btn" id="calCopy">Copy</button>
-        </div>
-        <ol class="cal-sync-steps">
-          <li>Open Google Calendar on the web.</li>
-          <li>Left sidebar → <b>Other calendars</b> → <b>+</b> → <b>From URL</b>.</li>
-          <li>Paste this link and click <b>Add calendar</b>.</li>
-        </ol>
-        <div class="cal-sync-note">Your due dates appear as a separate calendar and refresh automatically (Google polls every few hours). It's read-only — edit due dates here in the app.${j.secured ? "" : " Tip: set a CAL_FEED_KEY env var in Vercel to keep this link private."}</div>
-      </div>`;
-    const copy = $("#calCopy");
-    copy.onclick = async () => {
-      const inp = $("#calFeedUrl");
-      try { await navigator.clipboard.writeText(inp.value); toast("Feed link copied"); }
-      catch { inp.select(); document.execCommand("copy"); toast("Feed link copied"); }
+
+/* ---- Free-form events (rehearsal, studio, release...) ---------------------------------------*/
+function openEventModal(id, presetDay) {
+  const ev = id ? (state.data.events || []).find((e) => e.id === id) : null;
+  const d = ev || { title: "", kind: "", date: presetDay || todayISO(), endDate: "", startTime: "", endTime: "", notes: "" };
+  const kinds = ["Rehearsal", "Studio", "Show", "Meeting", "Release", "Deadline"];
+  openModal(`
+    <div class="mhd"><h2>${ev ? "Edit event" : "New event"}</h2><span style="flex:1"></span><button class="icon-btn close" id="mClose">&times;</button></div>
+    <div class="mbd">
+      <div class="field"><label>Title</label><input id="evTitle" type="text" maxlength="120" placeholder="e.g. Studio day at Sunset Sound" value="${esc(d.title)}" /></div>
+      <div class="row2">
+        <div class="field"><label>Kind (optional)</label><input id="evKind" type="text" list="evKinds" maxlength="40" value="${esc(d.kind)}" /><datalist id="evKinds">${kinds.map((k) => `<option value="${k}"></option>`).join("")}</datalist></div>
+        <div class="field"><label>&nbsp;</label><label class="ev-allday"><input type="checkbox" id="evAllDay"${d.startTime ? "" : " checked"} /> All day</label></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Date</label><input type="date" id="evDate" value="${esc(d.date)}" /></div>
+        <div class="field"><label>Ends (optional)</label><input type="date" id="evEnd" value="${esc(d.endDate || "")}" /></div>
+      </div>
+      <div class="row2" id="evTimes">
+        <div class="field"><label>Start time</label><input type="time" id="evStart" value="${esc(d.startTime)}" /></div>
+        <div class="field"><label>End time</label><input type="time" id="evEndT" value="${esc(d.endTime)}" /></div>
+      </div>
+      <div class="field"><label>Notes</label><textarea id="evNotes" rows="3" maxlength="2000">${esc(d.notes)}</textarea></div>
+      <div class="drawer-actions">${ev ? `<button class="add-btn ghost" id="evDel">Delete</button>` : ""}<button class="add-btn" id="evSave">${ev ? "Save changes" : "Add event"}</button></div>
+    </div>`);
+  $("#mClose").onclick = closeModal;
+  const allDay = $("#evAllDay"), times = $("#evTimes");
+  const syncTimes = () => { times.style.display = allDay.checked ? "none" : ""; };
+  allDay.onchange = () => { syncTimes(); if (!allDay.checked && !$("#evStart").value) $("#evStart").value = "19:00"; };
+  syncTimes();
+  $("#evSave").onclick = async () => {
+    const fields = {
+      title: $("#evTitle").value, kind: $("#evKind").value, date: $("#evDate").value, endDate: $("#evEnd").value || "",
+      startTime: allDay.checked ? "" : $("#evStart").value, endTime: allDay.checked ? "" : $("#evEndT").value, notes: $("#evNotes").value,
     };
-  }).catch(() => { body.innerHTML = `<div class="cal-sync">Couldn't build the feed link.</div>`; });
+    const btn = $("#evSave"); btn.disabled = true;
+    const r = ev ? await update("event", ev.id, fields) : await createEntity("event", fields);
+    btn.disabled = false;
+    if (r.ok) { toast(ev ? "Event updated" : "Event added"); closeModal(); await refresh(false); }
+  };
+  if (ev) $("#evDel").onclick = async () => {
+    if (!(await confirmDialog("Delete this event? It will be removed from Google Calendar too.", { title: "Delete event", okText: "Delete", danger: true }))) return;
+    const r = await deleteEntity("event", ev.id);
+    if (r.ok) { toast("Event deleted"); closeModal(); await refresh(false); }
+  };
+  setTimeout(() => { const t = $("#evTitle"); if (t && !ev) t.focus(); }, 50);
+}
+
+/* ---- Google Calendar sync (one-way push; see api/_gcal.js) ----------------------------------*/
+const gcalState = { busy: false, at: null, ok: true, msg: "" };
+try { const a = Number(localStorage.getItem("megasGcalAt")); if (a) gcalState.at = a; } catch {}
+const gcalOn = () => !!(state.data && state.data.gcal && state.data.gcal.configured);
+function gcalStateText() {
+  if (!gcalOn()) return "";
+  if (gcalState.busy) return "Syncing to Google Calendar...";
+  if (!gcalState.ok) return "Google sync problem - open Google Calendar";
+  return gcalState.at ? "Synced to Google " + new Date(gcalState.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Not synced yet";
+}
+function paintGcalState() {
+  const el = document.getElementById("calSyncState");
+  if (el) { el.textContent = gcalStateText(); el.classList.toggle("bad", gcalOn() && !gcalState.ok && !gcalState.busy); }
+  const pm = document.getElementById("gcalPanelMsg"); if (pm) pm.textContent = gcalState.busy ? "Syncing..." : gcalState.msg;
+  const nb = document.getElementById("gcalNow"); if (nb) nb.disabled = gcalState.busy;
+}
+let gcalTimer = null;
+// Called after anything that changes dates; waits for a quiet moment so a burst of edits is one sync.
+function scheduleGcalSync(ms = 5000) { if (!gcalOn()) return; clearTimeout(gcalTimer); gcalTimer = setTimeout(runGcalSync, ms); }
+async function runGcalSync() {
+  if (!gcalOn()) return;
+  if (gcalState.busy) { scheduleGcalSync(4000); return; }
+  gcalState.busy = true; paintGcalState();
+  const sum = { created: 0, updated: 0, deleted: 0, pulled: 0, imported: 0, removed: 0 }, errs = []; let res = null;
+  try {
+    for (let i = 0; i < 8; i++) { // a big first sync is done in chunks to stay inside the server's time limit
+      const r = await fetch("/api/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "gcalSync" }) });
+      if (r.status === 401) { location.href = "/login.html"; return; }
+      res = await r.json().catch(() => ({ ok: false, error: "Unexpected reply from the server." }));
+      if (!res.ok) break;
+      for (const k of Object.keys(sum)) sum[k] += res[k] || 0;
+      (res.errors || []).forEach((m) => errs.push(m));
+      if (!res.more) break;
+    }
+  } catch { res = { ok: false, error: "Couldn't reach the server." }; }
+  gcalState.busy = false;
+  if (res && res.ok && !errs.length) {
+    gcalState.ok = true; gcalState.at = Date.now();
+    const toG = sum.created + sum.updated + sum.deleted, fromG = sum.pulled + sum.imported + sum.removed;
+    gcalState.msg = `Synced. Sent to Google: ${toG} change${toG === 1 ? "" : "s"}. Brought in from Google: ${sum.pulled} edited, ${sum.imported} new, ${sum.removed} deleted. ${res.total} items are linked.`;
+    try { localStorage.setItem("megasGcalAt", String(gcalState.at)); } catch {}
+  } else { gcalState.ok = false; gcalState.msg = (res && !res.ok && res.error) || ("Some items couldn't be synced: " + errs[0]); }
+  paintGcalState();
+  if (sum.pulled + sum.imported + sum.removed > 0) { toast("Updated from Google Calendar"); await refresh(false); } // show what came in
+}
+// Pick up edits made in Google while the app is open.
+let gcalPoll = null;
+function startGcalPolling() {
+  if (gcalPoll) return;
+  gcalPoll = setInterval(() => { if (!document.hidden && gcalOn() && !gcalState.busy) runGcalSync(); }, 5 * 60 * 1000);
+}
+function openCalSync() {
+  const body = $("#calSubBody"); if (!body) return;
+  if (body.innerHTML.trim()) { body.innerHTML = ""; return; } // second click closes it
+  const g = state.data.gcal || {};
+  const feed = (state.data && state.data.feedUrl) || "";
+  const feedHTML = feed ? `<details class="cal-feed"><summary>Older option: read-only subscribe feed (song deadlines only)</summary>
+      <div class="cal-sync-row"><input id="calFeedUrl" type="text" readonly value="${esc(feed)}" /><button class="add-btn" id="calCopy">Copy</button></div>
+      <div class="cal-sync-note">In Google Calendar: Other calendars, +, From URL. Google refreshes it every few hours and it can't be edited. Not needed once the sync above is connected.</div></details>` : "";
+  body.innerHTML = g.configured ? `
+    <div class="cal-sync">
+      <div class="cal-sync-h">Google Calendar sync</div>
+      <p class="cal-sync-p">Song deadlines, open production phases (start to due) and your events are kept in step with your Google calendar, both ways. Moving or resizing a phase or deadline in Google changes its dates here, and edits to your events in Google (title, date, time) come back too. An event you create in Google is imported as an app event; deleting an app event in Google deletes it here, while deleting a phase or deadline in Google just puts it back. If both sides changed the same thing, the most recent edit wins. Recurring events in Google are left alone, and so is everything else on the calendar.</p>
+      <div class="cal-sync-row"><button class="add-btn" id="gcalNow">Sync now</button><span id="gcalPanelMsg" class="cal-sync-note">${esc(gcalState.msg)}</span></div>
+      <div class="cal-sync-note">Syncing as ${esc(g.email)}. Checks every few minutes while the app is open, and a few seconds after each edit here.</div>
+      ${feedHTML}
+    </div>` : `
+    <div class="cal-sync">
+      <div class="cal-sync-h">Connect your Google Calendar</div>
+      <p class="cal-sync-p">One-time setup (about 10 minutes). The app signs in to Google as a small robot account that you share your calendar with.</p>
+      <ol class="cal-sync-steps">
+        <li>In <b>console.cloud.google.com</b> create a project, then enable the <b>Google Calendar API</b>.</li>
+        <li><b>IAM &amp; Admin, Service accounts</b>: create one, open it, <b>Keys, Add key, JSON</b>. A key file downloads.</li>
+        <li>In Google Calendar, open your calendar's <b>Settings and sharing</b>, <b>Share with specific people</b>, and add the service account's email (the <b>client_email</b> in the file) with <b>Make changes to events</b>.</li>
+        <li>On that same settings page, under <b>Integrate calendar</b>, copy the <b>Calendar ID</b>.</li>
+        <li>In Vercel, add environment variables <b>GOOGLE_SERVICE_ACCOUNT_JSON</b> (paste the whole key file) and <b>GOOGLE_CALENDAR_ID</b>, then redeploy. Optional: <b>GOOGLE_CALENDAR_TZ</b> (default America/Los_Angeles) for timed events.</li>
+      </ol>
+      <div class="cal-sync-note">After that, this panel shows a Sync now button and the calendar updates itself.</div>
+      ${feedHTML}
+    </div>`;
+  const copy = $("#calCopy");
+  if (copy) copy.onclick = async () => { const inp = $("#calFeedUrl"); try { await navigator.clipboard.writeText(inp.value); toast("Feed link copied"); } catch { inp.select(); document.execCommand("copy"); toast("Feed link copied"); } };
+  const now = $("#gcalNow"); if (now) now.onclick = () => runGcalSync();
+  paintGcalState();
+}
+
+/* ---- Gantt: one row per song, a bar per production phase ------------------------------------*/
+const GANTT_PX = { day: 34, week: 16, month: 6 };
+let ganttZoom = "week", ganttInit = false, ganttScroll = null;
+const ganttOpen = new Set();
+const GANTT_LABEL_W = 210;
+function ganttHTML() {
+  const alb = currentAlbum();
+  const inScope = (t) => !t.onHold && (!alb || t.albumId === alb.id);
+  const memSel = (p) => !calMember || (p.ownerIds || []).includes(calMember);
+  const songs = state.data.tracks.filter((t) => inScope(t) && (!calSong || t.id === calSong))
+    .filter((t) => !calMember || (t.phases || []).some(memSel)).sort((a, b) => effOrder(a) - effOrder(b));
+  const songOpts = state.data.tracks.filter(inScope).sort((a, b) => effOrder(a) - effOrder(b)).map((t) => `<option value="${t.id}"${calSong === t.id ? " selected" : ""}>${dispNum(t) !== "" ? dispNum(t) + ". " : ""}${esc(t.title)}</option>`).join("");
+  if (!ganttInit && songs.length) { ganttInit = true; if (songs.length <= 3) songs.forEach((t) => ganttOpen.add(t.id)); }
+  const today = todayISO();
+  let lo = today, hi = today;
+  const note = (d) => { if (!d) return; if (d < lo) lo = d; if (d > hi) hi = d; };
+  songs.forEach((t) => { note(t.dueDate); (t.phases || []).filter(memSel).forEach((p) => { if (p.due) { note(p.due); note(phaseSpan(p)[0]); } }); });
+  lo = isoAdd(lo, -7); hi = isoAdd(hi, 14);
+  if (isoDiff(lo, hi) < 60) hi = isoAdd(lo, 60);
+  const dw = GANTT_PX[ganttZoom], days = isoDiff(lo, hi) + 1, W = days * dw;
+  const left = (iso) => isoDiff(lo, iso) * dw;
+  // header: months on top, days underneath
+  let months = "", dayCells = "", weekends = "";
+  for (let i = 0, ms = 0; i < days; i++) {
+    const iso = isoAdd(lo, i), d = new Date(iso + "T00:00:00Z"), dom = d.getUTCDate(), dow = d.getUTCDay();
+    if (dom === 1 || i === 0) { const nm = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)); const endI = Math.min(days, isoDiff(lo, nm.toISOString().slice(0, 10))); months += `<div class="g-month" style="left:${i * dw}px;width:${(endI - i) * dw}px">${d.toLocaleString(undefined, { month: "long", year: "numeric", timeZone: "UTC" })}</div>`; ms = i; }
+    const showNum = dw >= 28 || (dw >= 14 && dow === 1);
+    dayCells += `<div class="g-day${dow === 0 || dow === 6 ? " we" : ""}${iso === today ? " today" : ""}" style="left:${i * dw}px;width:${dw}px">${showNum ? dom : ""}</div>`;
+    if (dow === 6 && dw >= 10) weekends += `<div class="g-we" style="left:${i * dw}px;width:${Math.min(2, days - i) * dw}px"></div>`;
+    else if (dow === 0 && i === 0 && dw >= 10) weekends += `<div class="g-we" style="left:0;width:${dw}px"></div>`;
+  }
+  const barTxt = (s, e) => (s === e ? fmtDay(s) : fmtDay(s) + " – " + fmtDay(e));
+  let rows = "";
+  songs.forEach((t) => {
+    const ps = (t.phases || []).filter(memSel);
+    const spans = ps.filter((p) => p.due).map(phaseSpan);
+    const open = ganttOpen.has(t.id);
+    const done = ps.filter((p) => p.status === "Done").length;
+    const sMin = spans.length ? spans.map((x) => x[0]).sort()[0] : null, sMax = spans.length ? spans.map((x) => x[1]).sort().pop() : null;
+    const sumBar = sMin ? `<div class="g-sum" style="left:${left(sMin)}px;width:${(isoDiff(sMin, sMax) + 1) * dw}px" title="${esc(t.title)}: ${done}/${ps.length} phases done, ${barTxt(sMin, sMax)}"></div>` : `<span class="g-none">${ps.length ? "No dates yet" : "No phases"}</span>`;
+    const flag = t.dueDate ? `<div class="g-flag" data-gtid="${t.id}" data-s="${t.dueDate}" data-e="${t.dueDate}" style="left:${left(t.dueDate) + dw / 2 - 8}px" title="Deadline ${fmtDay(t.dueDate)} (drag to move)">&#9873;</div>` : "";
+    rows += `<div class="g-row g-songrow"><div class="g-label"><button class="g-tog" data-gtoggle="${t.id}" aria-label="${open ? "Collapse" : "Expand"}">${open ? "&#9662;" : "&#9656;"}</button><span class="g-title" data-open="${t.id}" title="Open ${esc(t.title)}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span><span class="g-prog" title="Phases done">${done}/${ps.length}</span></div><div class="g-track" style="width:${W}px">${sumBar}${flag}</div></div>`;
+    if (open) ps.forEach((p) => {
+      const own = (p.owners || []).join(", ");
+      let bar = `<button class="g-setdates" data-gset="${p.id}">Set dates</button>`;
+      if (p.due) {
+        const [s, e] = phaseSpan(p);
+        bar = `<div class="g-bar${p.status === "Done" ? " done" : ""}${p.status === "In progress" ? " prog" : ""}" data-gpid="${p.id}" data-tid="${t.id}" data-s="${s}" data-e="${e}" data-hs="${p.start ? 1 : 0}" style="left:${left(s)}px;width:${(isoDiff(s, e) + 1) * dw}px;--own:${phaseColor(p)}" title="${esc(p.phase)}${own ? " - " + esc(own) : ""} (${esc(p.status)})"><i class="gh gh-l"></i><span class="g-bar-t">${barTxt(s, e)}</span><i class="gh gh-r"></i></div>`;
+      }
+      rows += `<div class="g-row g-phaserow"><div class="g-label"><span class="g-ph">${esc(p.phase)}</span><span class="g-own" style="--own:${phaseColor(p)}">${own ? esc(own) : "unassigned"}</span></div><div class="g-track" style="width:${W}px">${bar}</div></div>`;
+    });
+  });
+  const todayLeft = left(today) + dw / 2;
+  return `
+    <div class="gantt-wrap">
+      <div class="cal-nav">
+        <h2>Gantt</h2>
+        <div class="cal-viewtoggle">${["day", "week", "month"].map((z) => `<button class="${ganttZoom === z ? "on" : ""}" data-gzoom="${z}">${z === "day" ? "Days" : z === "week" ? "Weeks" : "Months"}</button>`).join("")}</div>
+        <select id="calSongFilter" class="cal-songfilter" title="Filter by song"><option value="">All songs</option>${songOpts}</select>
+        <select id="calMemberFilter" class="cal-songfilter" title="Show one person's phases"><option value="">All members</option>${memberOpts()}</select>
+        <span class="spacer" style="flex:1"></span>
+        <button class="add-btn ghost" data-gexp="1">Expand all</button>
+        <button class="add-btn ghost" data-gexp="0">Collapse all</button>
+        <button class="add-btn ghost" id="gToday">Today</button>
+      </div>
+      ${songs.length ? `<div class="gantt" id="gantt" data-lo="${lo}" data-dw="${dw}" data-today="${todayLeft}" style="--glabel:${GANTT_LABEL_W}px">
+        <div class="g-inner" style="width:${GANTT_LABEL_W + W}px">
+          <div class="g-head"><div class="g-corner"></div><div class="g-headtrack" style="width:${W}px"><div class="g-months">${months}</div><div class="g-days">${dayCells}</div></div></div>
+          <div class="g-layer" style="left:${GANTT_LABEL_W}px;width:${W}px">${weekends}<div class="g-todayline" style="left:${todayLeft}px"></div></div>
+          ${rows}
+        </div>
+      </div>
+      <div class="cal-hint">Drag a bar to move it, drag its ends to change the start or due date, click it to open the song. The flag is the song deadline. Bars are coloured by owner.</div>`
+      : `<div class="empty">No songs to show${calMember ? " for that person" : ""}.</div>`}
+    </div>`;
+}
+function wireGantt() {
+  const box = document.getElementById("gantt");
+  const sf = document.getElementById("calSongFilter"); if (sf) sf.onchange = () => { calSong = sf.value; render(); };
+  const mf = document.getElementById("calMemberFilter"); if (mf) mf.onchange = () => { calMember = mf.value; render(); };
+  document.querySelectorAll("[data-gzoom]").forEach((b) => b.onclick = () => { ganttZoom = b.dataset.gzoom; ganttScroll = null; render(); });
+  document.querySelectorAll("[data-gexp]").forEach((b) => b.onclick = () => {
+    const alb = currentAlbum();
+    state.data.tracks.filter((t) => !t.onHold && (!alb || t.albumId === alb.id)).forEach((t) => (b.dataset.gexp === "1" ? ganttOpen.add(t.id) : ganttOpen.delete(t.id)));
+    render();
+  });
+  if (!box) return;
+  const dw = Number(box.dataset.dw), lo = box.dataset.lo;
+  const toToday = () => { box.scrollLeft = Math.max(0, Number(box.dataset.today) - 160); };
+  if (ganttScroll) { box.scrollLeft = ganttScroll.x; box.scrollTop = ganttScroll.y; } else toToday();
+  box.addEventListener("scroll", () => { ganttScroll = { x: box.scrollLeft, y: box.scrollTop }; });
+  const gt = document.getElementById("gToday"); if (gt) gt.onclick = toToday;
+  box.querySelectorAll("[data-gtoggle]").forEach((b) => b.onclick = () => { const id = b.dataset.gtoggle; if (ganttOpen.has(id)) ganttOpen.delete(id); else ganttOpen.add(id); render(); });
+  box.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openDrawer(b.dataset.open));
+  box.querySelectorAll("[data-gset]").forEach((b) => b.onclick = async () => {
+    const t0 = todayISO(); const r = await update("phase", b.dataset.gset, { start: t0, due: t0 });
+    if (r.ok) { toast("Dates set - drag to adjust"); refresh(false); }
+  });
+  // Drag a bar (move), its left/right handle (change start/due), or the deadline flag.
+  box.querySelectorAll(".g-bar[data-gpid], .g-flag[data-gtid]").forEach((el) => el.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const isFlag = el.classList.contains("g-flag");
+    const mode = isFlag ? "m" : e.target.classList.contains("gh-l") ? "l" : e.target.classList.contains("gh-r") ? "r" : "m";
+    const s0 = el.dataset.s, e0 = el.dataset.e, x0 = e.clientX;
+    let ns = s0, ne = e0, moved = false;
+    try { el.setPointerCapture(e.pointerId); } catch {}
+    el.classList.add("dragging");
+    const txt = el.querySelector(".g-bar-t");
+    const apply = () => {
+      if (isFlag) el.style.left = (isoDiff(lo, ns) * dw + dw / 2 - 8) + "px";
+      else { el.style.left = isoDiff(lo, ns) * dw + "px"; el.style.width = (isoDiff(ns, ne) + 1) * dw + "px"; if (txt) txt.textContent = ns === ne ? fmtDay(ns) : fmtDay(ns) + " – " + fmtDay(ne); }
+    };
+    const move = (ev) => {
+      if (Math.abs(ev.clientX - x0) > 3) moved = true;
+      const dd = Math.round((ev.clientX - x0) / dw);
+      if (mode === "m") { ns = isoAdd(s0, dd); ne = isoAdd(e0, dd); }
+      else if (mode === "l") { ns = isoAdd(s0, dd); if (ns > e0) ns = e0; ne = e0; }
+      else { ne = isoAdd(e0, dd); if (ne < s0) ne = s0; ns = s0; }
+      apply();
+    };
+    const finish = async (ev, cancelled) => {
+      el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", cancel);
+      try { el.releasePointerCapture(e.pointerId); } catch {}
+      el.classList.remove("dragging");
+      if (cancelled) { render(); return; }
+      if (!moved || (ns === s0 && ne === e0)) { if (!moved) openDrawer(el.dataset.tid || el.dataset.gtid); else render(); return; }
+      let r;
+      if (isFlag) r = await update("track", el.dataset.gtid, { dueDate: ns });
+      else r = await update("phase", el.dataset.gpid, el.dataset.hs === "0" && mode === "m" ? { due: ne } : { start: ns, due: ne });
+      if (r.ok) { toast(isFlag ? "Deadline moved to " + fmtDay(ns) : "Rescheduled: " + fmtDay(ns) + (ns === ne ? "" : " – " + fmtDay(ne))); refresh(false); } else render();
+    };
+    const up = (ev) => finish(ev, false), cancel = (ev) => finish(ev, true);
+    el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", cancel);
+    e.preventDefault();
+  }));
 }
 
 /* ---- Wiring ----------------------------------------------------------------*/
@@ -1009,7 +1301,7 @@ function wireBoard() {
     try {
       const res = await fetch("/api/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "reassign" }) });
       const j = await res.json();
-      if (res.ok && j.ok) { toast(`Updated ${j.changed} phase${j.changed === 1 ? "" : "s"}`); await refresh(false); }
+      if (res.ok && j.ok) { toast(`Updated ${j.changed} phase${j.changed === 1 ? "" : "s"}`); scheduleGcalSync(); await refresh(false); }
       else toast(j.error || "Failed");
     } catch (e) { toast("Failed"); }
     applyBtn.disabled = false; applyBtn.textContent = "Apply to all tracks";
@@ -1045,11 +1337,25 @@ function wireBoard() {
   document.querySelectorAll("[data-cal]").forEach((b) =>
     b.addEventListener("click", () => { const n = Number(b.dataset.cal); if (calView === "week") calMonth.setDate(calMonth.getDate() + 7 * n); else calMonth.setMonth(calMonth.getMonth() + n); render(); }));
   document.querySelectorAll("[data-calview]").forEach((b) => b.onclick = () => { calView = b.dataset.calview; render(); });
-  { const sf = document.getElementById("calSongFilter"); if (sf) sf.onchange = () => { calSong = sf.value; render(); }; }
+  { const sf = document.getElementById("calSongFilter"); if (sf && state.view === "calendar") sf.onchange = () => { calSong = sf.value; render(); }; }
+  { const mf = document.getElementById("calMemberFilter"); if (mf && state.view === "calendar") mf.onchange = () => { calMember = mf.value; render(); }; }
   { const cs = document.getElementById("calSubBtn"); if (cs) cs.onclick = openCalSync; }
   { const cp = document.getElementById("calPlanBtn"); if (cp) cp.onclick = openPlanModal; }
-  document.querySelectorAll(".cal-task[data-ct], .cal-deadline[data-cd]").forEach((el) => {
-    el.addEventListener("dragstart", (e) => { el.classList.add("dragging"); const kind = el.dataset.ct ? "phase" : "track"; e.dataTransfer.setData("text/cal", kind + ":" + (el.dataset.ct || el.dataset.cd)); e.dataTransfer.effectAllowed = "move"; });
+  { const ce = document.getElementById("calEventBtn"); if (ce) ce.onclick = () => openEventModal(null, null); }
+  document.querySelectorAll(".cal-event[data-evid]").forEach((el) => el.addEventListener("click", () => { if (!el.classList.contains("dragging")) openEventModal(el.dataset.evid); }));
+  document.querySelectorAll(".cal-cell[data-day]").forEach((cell) => cell.addEventListener("dblclick", (e) => {
+    if (e.target.closest(".cal-task, .cal-deadline, .cal-event")) return;
+    openEventModal(null, cell.dataset.day);
+  }));
+  // Dragging: "kind:id:offset" where offset is how many days into a multi-day bar the grab happened,
+  // so dropping on a day puts that part of the bar there and moves the whole bar with it.
+  document.querySelectorAll(".cal-task[data-ct], .cal-deadline[data-cd], .cal-event[data-evid]").forEach((el) => {
+    el.addEventListener("dragstart", (e) => {
+      el.classList.add("dragging");
+      const kind = el.dataset.ct ? "phase" : el.dataset.evid ? "event" : "track";
+      e.dataTransfer.setData("text/cal", kind + ":" + (el.dataset.ct || el.dataset.evid || el.dataset.cd) + ":" + (el.dataset.off || 0));
+      e.dataTransfer.effectAllowed = "move";
+    });
     el.addEventListener("dragend", () => el.classList.remove("dragging"));
   });
   document.querySelectorAll(".cal-cell[data-day]").forEach((cell) => {
@@ -1058,8 +1364,17 @@ function wireBoard() {
     cell.addEventListener("drop", async (e) => {
       e.preventDefault(); cell.classList.remove("cal-over");
       const data = e.dataTransfer.getData("text/cal"); if (!data) return;
-      const ix = data.indexOf(":"); const kind = data.slice(0, ix), idv = data.slice(ix + 1); const day = cell.dataset.day;
-      const r = kind === "phase" ? await update("phase", idv, { due: day }) : await update("track", idv, { dueDate: day });
+      const [kind, idv, offS] = data.split(":"); const off = Number(offS) || 0; const day = cell.dataset.day;
+      let r;
+      if (kind === "phase") {
+        const p = (state.data.phases || []).find((x) => x.id === idv); if (!p) return;
+        if (p.start && p.start < p.due) { const newS = isoAdd(day, -off), delta = isoDiff(p.start, newS); r = await update("phase", idv, { start: newS, due: isoAdd(p.due, delta) }); }
+        else r = await update("phase", idv, p.start ? { start: day, due: day } : { due: day });
+      } else if (kind === "event") {
+        const ev = (state.data.events || []).find((x) => x.id === idv); if (!ev) return;
+        const newS = isoAdd(day, -off), delta = isoDiff(ev.date, newS);
+        r = await update("event", idv, { date: newS, endDate: ev.endDate ? isoAdd(ev.endDate, delta) : "" });
+      } else r = await update("track", idv, { dueDate: day });
       if (r.ok) { toast("Rescheduled to " + fmtDay(day)); refresh(false); }
     });
   });
@@ -1124,6 +1439,7 @@ function openDrawer(id) {
           <span class="pname2${custom ? " is-custom" : ""}">${esc(p.phase)}${custom ? ` <span class="cust-dot" title="Custom phase — unique to this song"></span>` : ""}</span>
           <button class="sub-toggle${open ? " open" : ""}" data-subtoggle="${p.id}" title="Subtasks">&#9745;&#xFE0E; ${subs.length ? `${sdone}/${subs.length}` : "+"}</button>
           <details class="powner-det"><summary class="powner-sum" title="Assign owner(s)"><span data-ownersum="${p.id}">${ownerLabel}</span></summary><div class="powner-menu">${ownerChecks}</div></details>
+          <input type="date" class="pdue" data-pf="start" value="${p.start || ""}" title="Phase start date (optional; shows as a span on the calendar and Gantt)" />
           <input type="date" class="pdue" data-pf="due" value="${p.due || ""}" title="Phase due date" />
           ${custom ? `<button class="pdel" data-pdel="${p.id}" title="Remove this phase">&times;</button>` : ""}
         </div>
@@ -1214,10 +1530,17 @@ function openDrawer(id) {
       if (r.ok) { toast(done ? "Marked done" : "Reopened — added to today's calendar"); refresh(); }
       else { e.target.checked = !e.target.checked; }
     });
-    const du = row.querySelector('[data-pf="due"]');
+    const du = row.querySelector('[data-pf="due"]'), st = row.querySelector('[data-pf="start"]');
     if (du) du.addEventListener("change", async (e) => {
-      const r = await update("phase", row.dataset.phase, { due: e.target.value || null });
-      if (r.ok) toast(e.target.value ? "Phase date set" : "Phase date cleared");
+      const f = { due: e.target.value || null };
+      if (f.due && st && st.value && st.value > f.due) { f.start = f.due; st.value = f.due; } // keep start <= due
+      const r = await update("phase", row.dataset.phase, f);
+      if (r.ok) { toast(e.target.value ? "Phase date set" : "Phase date cleared"); refresh(false); }
+    });
+    if (st) st.addEventListener("change", async (e) => {
+      if (e.target.value && du && du.value && e.target.value > du.value) { toast("The start can't be after the due date", true); e.target.value = (state.data.phases.find((x) => x.id === row.dataset.phase) || {}).start || ""; return; }
+      const r = await update("phase", row.dataset.phase, { start: e.target.value || null });
+      if (r.ok) { toast(e.target.value ? "Phase start set" : "Phase start cleared"); refresh(false); }
     });
     row.querySelectorAll('[data-owner]').forEach((c) => c.addEventListener("change", async () => {
       const pid = row.dataset.phase;
@@ -2863,6 +3186,7 @@ function wireChrome() {
   await refresh(false);
   await fetchPlaylist();
   render(); // re-render so play buttons appear once the playlist is known
+  if (gcalOn()) { scheduleGcalSync(8000); startGcalPolling(); } // bring in anything changed in Google while the app was closed
   // First-time on this browser: ask who "you" are so notes/assignments are tagged correctly.
   if (!getMe() && (state.data.members || []).length) pickIdentity(true);
   else if (getMe()) maybeVersionPrompt();

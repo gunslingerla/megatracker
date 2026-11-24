@@ -1,6 +1,7 @@
 const { T, F, STAGES, PHASE_NAMES, listAll, getRecord, patch, create, del } = require("./_airtable");
 const { requireAuth } = require("./_auth");
 const share = require("./_share");
+const gcal = require("./_gcal");
 
 // Recompute every phase record's owner(s) from the members' "Default Phases" mapping.
 // (Folded in from the old /api/reassign to stay under Vercel's function limit.)
@@ -49,8 +50,13 @@ const MAP = {
   },
   phase: {
     table: T.phases,
-    fields: { status: F.phase.status, ownerIds: F.phase.owner, due: F.phase.due, subtasks: F.phase.subtasks },
+    fields: { status: F.phase.status, ownerIds: F.phase.owner, due: F.phase.due, start: F.phase.start, subtasks: F.phase.subtasks },
     links: ["ownerIds"],
+  },
+  event: {
+    table: T.events,
+    fields: { title: F.event.title, date: F.event.date, endDate: F.event.endDate, startTime: F.event.startTime, endTime: F.event.endTime, kind: F.event.kind, notes: F.event.notes },
+    links: [],
   },
   album: {
     table: T.albums,
@@ -229,6 +235,15 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true, id: sid, slug, token: share.sign({ s: sid }) });
     } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
   }
+  // Push the tracker's dates into the Google calendar (one-way; see _gcal.js). Safe to run repeatedly.
+  if (entity === "gcalSync") {
+    if (!gcal.isConfigured()) return res.status(200).json({ ok: false, configured: false, error: "Google Calendar isn't set up yet." });
+    try {
+      const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0], host = req.headers["x-forwarded-host"] || req.headers.host;
+      const stat = await gcal.syncAll(`${proto}://${host}`);
+      return res.status(200).json({ ok: true, configured: true, ...stat });
+    } catch (e) { return res.status(200).json({ ok: false, configured: true, error: String(e.message || e) }); }
+  }
   if (entity === "shareDelete") {
     if (!id) return res.status(400).json({ error: "id required" });
     try { await del(T.shares, [id]); return res.status(200).json({ ok: true }); } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
@@ -316,6 +331,21 @@ module.exports = async (req, res) => {
         if (!isFinite(ts) || ts < 0 || ts > 86400) return res.status(400).json({ error: "That time isn't valid." });
         fields.timestamp = ts;
       }
+    }
+
+    if (entity === "event") {
+      const c = gcal.cleanEvent(fields, true);
+      if (c.error) return res.status(400).json({ error: c.error });
+      Object.keys(fields).forEach((k) => delete fields[k]); Object.assign(fields, c.fields);
+    }
+    // A phase's dates: YYYY-MM-DD or cleared, and it can't start after it is due.
+    if (entity === "phase" && ("start" in fields || "due" in fields)) {
+      for (const k of ["start", "due"]) {
+        if (!(k in fields)) continue;
+        if (fields[k] === "" || fields[k] == null) fields[k] = null;
+        else if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fields[k])) || isNaN(new Date(fields[k] + "T00:00:00Z"))) return res.status(400).json({ error: "That date isn't valid." });
+      }
+      if (fields.start && fields.due && fields.start > fields.due) return res.status(400).json({ error: "A phase can't start after it is due." });
     }
 
     const airFields = {};

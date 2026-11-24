@@ -12,6 +12,7 @@ const T = {
   members: "tblwgBJzoEHAmfISz",
   feedback: "tblPqaEXRjvC5JLNv",
   shares: "tbl6JIejCROGxk2hB",
+  events: "tblWOB24tzeZvqUqN",
 };
 
 const F = {
@@ -45,6 +46,7 @@ const F = {
     notes: "fldUISZAPAm1Na75e",
     lyrics: "fldkCENxYs2jBKGU7",
     dueDate: "fldKnV8H8zDNm1NoK",
+    dueModified: "fldAVAezKBy9sf0y1", // lastModifiedTime of dueDate (Google Calendar sync conflicts)
     order: "fld4e5fhcrFpIxQgx",
     album: "fldhuUu1qlJ5dhjQQ",
     owner: "fldjGKYW7MmeplnLp",
@@ -78,6 +80,19 @@ const F = {
     isDone: "fldFNK4qLW250BiGn",
     due: "fldIdcVR9Ae64NCUF",
     subtasks: "fldza2Sz3EBFOe2Io",
+    start: "fldIEnQjt1EcuPLjg", // first day of the phase (due is the last)
+    modified: "fldCjv2y1n8Q6uTrj", // lastModifiedTime of start/due (Google Calendar sync conflicts)
+  },
+  event: {
+    title: "fld72DFWM5KiClvrZ",
+    date: "fldxEVRnlmgHwqba2",
+    endDate: "fld8gnfrGsALuKwnc",
+    startTime: "fld7mQhkTocZLpeVa",
+    endTime: "fldfiFBbv37ACR93H",
+    kind: "fldDksFQLcPwyfe30",
+    notes: "fldeua3GcrM5HteZz",
+    googleId: "fldNNldjaPYaGfWbl", // linked Google event id (set when imported from Google)
+    modified: "fld6OAknspUAmWFNd", // lastModifiedTime (Google Calendar sync conflicts)
   },
   share: {
     title: "fldIsDBz1BfZVrmZv",

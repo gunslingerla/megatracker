@@ -2,6 +2,7 @@ const { T, F, STAGES, PHASE_NAMES, listAll, getRecord } = require("./_airtable")
 const { albumData, tempLink } = require("./_dropbox");
 const { requireAuth } = require("./_auth");
 const share = require("./_share");
+const gcalHelper = require("./_gcal");
 
 // Login-free read for a mixer link. The token grants a set of track ids; this always
 // resolves each track's CURRENT Dropbox bounce (so one link follows the whole process),
@@ -84,13 +85,14 @@ module.exports = async (req, res) => {
   if (req.query && (req.query.mixtoken || req.query.mixslug)) return mixRead(req, res); // login-free share link
   if (!requireAuth(req, res)) return;
   try {
-    const [albumsR, tracksR, phasesR, membersR, feedbackR, sharesR] = await Promise.all([
+    const [albumsR, tracksR, phasesR, membersR, feedbackR, sharesR, eventsR] = await Promise.all([
       listAll(T.albums),
       listAll(T.tracks),
       listAll(T.phases),
       listAll(T.members),
       listAll(T.feedback),
       listAll(T.shares),
+      listAll(T.events).catch(() => []), // never let the optional events table take the board down
     ]);
 
     const first = (v) => (Array.isArray(v) ? v[0] : v);
@@ -114,6 +116,7 @@ module.exports = async (req, res) => {
       ownerIds: arr(r.fields[F.phase.owner]),
       owners: arr(r.fields[F.phase.owner]).map((id) => memberName[id] || "?"),
       due: r.fields[F.phase.due] || null,
+      start: r.fields[F.phase.start] || null,
       subtasks: (() => { try { const d = JSON.parse(r.fields[F.phase.subtasks] || "[]"); return Array.isArray(d) ? d.filter((x) => x && typeof x.text === "string").map((x) => ({ text: String(x.text), done: !!x.done, owner: (typeof x.owner === "string" && x.owner) ? x.owner : null, note: (typeof x.note === "string" && x.note) ? x.note : null })) : []; } catch { return []; } })(),
     }));
     const phasesByTrack = {};
@@ -211,7 +214,9 @@ module.exports = async (req, res) => {
 
     res.setHeader("Cache-Control", "no-store");
     const shares = sharesR.map((r) => { let t = []; try { t = JSON.parse(r.fields[F.share.tracks] || "[]"); } catch {} return { id: r.id, title: r.fields[F.share.title] || "Untitled link", tracks: Array.isArray(t) ? t : [], slug: r.fields[F.share.slug] || "", links: share.parseLinks(r.fields[F.share.links]), token: share.sign({ s: r.id }), createdTime: r.createdTime }; }).sort((a, b) => (a.createdTime < b.createdTime ? 1 : -1));
-    res.status(200).json({ albums, tracks, phases, members, feedback, shares, stages: STAGES, phaseNames: PHASE_NAMES, feedUrl, feedSecured: !!feedKey });
+    const events = eventsR.map((r) => ({ id: r.id, title: r.fields[F.event.title] || "", date: r.fields[F.event.date] || null, endDate: r.fields[F.event.endDate] || null, startTime: r.fields[F.event.startTime] || "", endTime: r.fields[F.event.endTime] || "", kind: r.fields[F.event.kind] || "", notes: r.fields[F.event.notes] || "" })).filter((e) => e.date);
+    const gcal = { configured: gcalHelper.isConfigured(), email: gcalHelper.serviceEmail() };
+    res.status(200).json({ albums, tracks, phases, members, feedback, shares, events, gcal, stages: STAGES, phaseNames: PHASE_NAMES, feedUrl, feedSecured: !!feedKey });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
