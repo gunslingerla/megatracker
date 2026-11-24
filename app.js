@@ -147,7 +147,7 @@ async function loadData() {
 }
 
 // Writes that change something the Google calendar shows (see runGcalSync).
-const GCAL_WATCH = new Set(["phase", "track", "event", "reassign"]);
+const GCAL_WATCH = new Set(["phase", "track", "event", "reassign", "bulkdates"]);
 async function post(url, payload) {
   const r = await fetch(url, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
@@ -1077,9 +1077,10 @@ function openCalSync() {
 }
 
 /* ---- Gantt: one row per song, a bar per production phase ------------------------------------*/
-const GANTT_PX = { day: 34, week: 16, month: 6 };
-let ganttZoom = "week", ganttInit = false, ganttScroll = null;
-const ganttOpen = new Set();
+const GANTT_PRESETS = { day: 34, week: 16, month: 6 };
+const GANTT_MIN_DW = 2, GANTT_MAX_DW = 90; // pixels per day
+let ganttDW = 16, ganttInit = false, ganttScroll = null, ganttAnchor = null;
+const ganttOpen = new Set(), ganttSel = new Set();
 const GANTT_LABEL_W = 210;
 function ganttHTML() {
   const alb = currentAlbum();
@@ -1095,17 +1096,17 @@ function ganttHTML() {
   songs.forEach((t) => { note(t.dueDate); (t.phases || []).filter(memSel).forEach((p) => { if (p.due) { note(p.due); note(phaseSpan(p)[0]); } }); });
   lo = isoAdd(lo, -7); hi = isoAdd(hi, 14);
   if (isoDiff(lo, hi) < 60) hi = isoAdd(lo, 60);
-  const dw = GANTT_PX[ganttZoom], days = isoDiff(lo, hi) + 1, W = days * dw;
+  const dw = ganttDW, days = isoDiff(lo, hi) + 1, W = days * dw;
   const left = (iso) => isoDiff(lo, iso) * dw;
   // header: months on top, days underneath
   let months = "", dayCells = "", weekends = "";
   for (let i = 0, ms = 0; i < days; i++) {
     const iso = isoAdd(lo, i), d = new Date(iso + "T00:00:00Z"), dom = d.getUTCDate(), dow = d.getUTCDay();
     if (dom === 1 || i === 0) { const nm = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)); const endI = Math.min(days, isoDiff(lo, nm.toISOString().slice(0, 10))); months += `<div class="g-month" style="left:${i * dw}px;width:${(endI - i) * dw}px">${d.toLocaleString(undefined, { month: "long", year: "numeric", timeZone: "UTC" })}</div>`; ms = i; }
-    const showNum = dw >= 28 || (dw >= 14 && dow === 1);
+    const showNum = dw >= 24 || (dw >= 10 && dow === 1);
     dayCells += `<div class="g-day${dow === 0 || dow === 6 ? " we" : ""}${iso === today ? " today" : ""}" style="left:${i * dw}px;width:${dw}px">${showNum ? dom : ""}</div>`;
-    if (dow === 6 && dw >= 10) weekends += `<div class="g-we" style="left:${i * dw}px;width:${Math.min(2, days - i) * dw}px"></div>`;
-    else if (dow === 0 && i === 0 && dw >= 10) weekends += `<div class="g-we" style="left:0;width:${dw}px"></div>`;
+    if (dow === 6 && dw >= 6) weekends += `<div class="g-we" style="left:${i * dw}px;width:${Math.min(2, days - i) * dw}px"></div>`;
+    else if (dow === 0 && i === 0 && dw >= 6) weekends += `<div class="g-we" style="left:0;width:${dw}px"></div>`;
   }
   const barTxt = (s, e) => (s === e ? fmtDay(s) : fmtDay(s) + " – " + fmtDay(e));
   let rows = "";
@@ -1116,14 +1117,14 @@ function ganttHTML() {
     const done = ps.filter((p) => p.status === "Done").length;
     const sMin = spans.length ? spans.map((x) => x[0]).sort()[0] : null, sMax = spans.length ? spans.map((x) => x[1]).sort().pop() : null;
     const sumBar = sMin ? `<div class="g-sum" style="left:${left(sMin)}px;width:${(isoDiff(sMin, sMax) + 1) * dw}px" title="${esc(t.title)}: ${done}/${ps.length} phases done, ${barTxt(sMin, sMax)}"></div>` : `<span class="g-none">${ps.length ? "No dates yet" : "No phases"}</span>`;
-    const flag = t.dueDate ? `<div class="g-flag" data-gtid="${t.id}" data-s="${t.dueDate}" data-e="${t.dueDate}" style="left:${left(t.dueDate) + dw / 2 - 8}px" title="Deadline ${fmtDay(t.dueDate)} (drag to move)">&#9873;</div>` : "";
+    const flag = t.dueDate ? `<div class="g-flag${ganttSel.has("t:" + t.id) ? " sel" : ""}" data-key="t:${t.id}" data-gtid="${t.id}" data-s="${t.dueDate}" data-e="${t.dueDate}" style="left:${left(t.dueDate) + dw / 2 - 8}px" title="Deadline ${fmtDay(t.dueDate)} (drag to move)">&#9873;</div>` : "";
     rows += `<div class="g-row g-songrow"><div class="g-label"><button class="g-tog" data-gtoggle="${t.id}" aria-label="${open ? "Collapse" : "Expand"}">${open ? "&#9662;" : "&#9656;"}</button><span class="g-title" data-open="${t.id}" title="Open ${esc(t.title)}">${dispNum(t) !== "" ? `<span class="tnum">${dispNum(t)}</span> ` : ""}${esc(t.title)}</span><span class="g-prog" title="Phases done">${done}/${ps.length}</span></div><div class="g-track" style="width:${W}px">${sumBar}${flag}</div></div>`;
     if (open) ps.forEach((p) => {
       const own = (p.owners || []).join(", ");
       let bar = `<button class="g-setdates" data-gset="${p.id}">Set dates</button>`;
       if (p.due) {
         const [s, e] = phaseSpan(p);
-        bar = `<div class="g-bar${p.status === "Done" ? " done" : ""}${p.status === "In progress" ? " prog" : ""}" data-gpid="${p.id}" data-tid="${t.id}" data-s="${s}" data-e="${e}" data-hs="${p.start ? 1 : 0}" style="left:${left(s)}px;width:${(isoDiff(s, e) + 1) * dw}px;--own:${phaseColor(p)}" title="${esc(p.phase)}${own ? " - " + esc(own) : ""} (${esc(p.status)})"><i class="gh gh-l"></i><span class="g-bar-t">${barTxt(s, e)}</span><i class="gh gh-r"></i></div>`;
+        bar = `<div class="g-bar${ganttSel.has("p:" + p.id) ? " sel" : ""}${p.status === "Done" ? " done" : ""}${p.status === "In progress" ? " prog" : ""}" data-key="p:${p.id}" data-gpid="${p.id}" data-tid="${t.id}" data-s="${s}" data-e="${e}" data-hs="${p.start ? 1 : 0}" style="left:${left(s)}px;width:${(isoDiff(s, e) + 1) * dw}px;--own:${phaseColor(p)}" title="${esc(p.phase)}${own ? " - " + esc(own) : ""} (${esc(p.status)})"><i class="gh gh-l"></i><span class="g-bar-t">${barTxt(s, e)}</span><i class="gh gh-r"></i></div>`;
       }
       rows += `<div class="g-row g-phaserow"><div class="g-label"><span class="g-ph">${esc(p.phase)}</span><span class="g-own" style="--own:${phaseColor(p)}">${own ? esc(own) : "unassigned"}</span></div><div class="g-track" style="width:${W}px">${bar}</div></div>`;
     });
@@ -1133,84 +1134,164 @@ function ganttHTML() {
     <div class="gantt-wrap">
       <div class="cal-nav">
         <h2>Gantt</h2>
-        <div class="cal-viewtoggle">${["day", "week", "month"].map((z) => `<button class="${ganttZoom === z ? "on" : ""}" data-gzoom="${z}">${z === "day" ? "Days" : z === "week" ? "Weeks" : "Months"}</button>`).join("")}</div>
+        <div class="cal-viewtoggle">${["day", "week", "month"].map((z) => `<button class="${Math.abs(ganttDW - GANTT_PRESETS[z]) < 0.5 ? "on" : ""}" data-gzoom="${z}">${z === "day" ? "Days" : z === "week" ? "Weeks" : "Months"}</button>`).join("")}</div>
+        <div class="cal-viewtoggle g-zoomctl"><button data-gz="-1" title="Zoom out (or Ctrl/Cmd + scroll)" aria-label="Zoom out">&minus;</button><button data-gz="1" title="Zoom in (or Ctrl/Cmd + scroll)" aria-label="Zoom in">+</button><button id="gFit" title="Fit everything in view">Fit</button></div>
         <select id="calSongFilter" class="cal-songfilter" title="Filter by song"><option value="">All songs</option>${songOpts}</select>
         <select id="calMemberFilter" class="cal-songfilter" title="Show one person's phases"><option value="">All members</option>${memberOpts()}</select>
+        <span class="g-selinfo" id="gSelInfo"></span>
         <span class="spacer" style="flex:1"></span>
         <button class="add-btn ghost" data-gexp="1">Expand all</button>
         <button class="add-btn ghost" data-gexp="0">Collapse all</button>
         <button class="add-btn ghost" id="gToday">Today</button>
       </div>
-      ${songs.length ? `<div class="gantt" id="gantt" data-lo="${lo}" data-dw="${dw}" data-today="${todayLeft}" style="--glabel:${GANTT_LABEL_W}px">
+      ${songs.length ? `<div class="gantt" id="gantt" data-lo="${lo}" data-dw="${dw}" data-days="${days}" data-today="${todayLeft}" style="--glabel:${GANTT_LABEL_W}px">
         <div class="g-inner" style="width:${GANTT_LABEL_W + W}px">
           <div class="g-head"><div class="g-corner"></div><div class="g-headtrack" style="width:${W}px"><div class="g-months">${months}</div><div class="g-days">${dayCells}</div></div></div>
           <div class="g-layer" style="left:${GANTT_LABEL_W}px;width:${W}px">${weekends}<div class="g-todayline" style="left:${todayLeft}px"></div></div>
           ${rows}
         </div>
       </div>
-      <div class="cal-hint">Drag a bar to move it, drag its ends to change the start or due date, click it to open the song. The flag is the song deadline. Bars are coloured by owner.</div>`
+      <div class="cal-hint">Drag a bar to move it, drag its ends to change the start or due date, click it to open the song. To move several at once, Shift-click bars (or drag a box around them) and drag any selected one; Esc clears the selection. Zoom with the buttons or Ctrl/Cmd + scroll. The flag is the song deadline. Bars are coloured by owner.</div>`
       : `<div class="empty">No songs to show${calMember ? " for that person" : ""}.</div>`}
     </div>`;
 }
+// Selection: Shift/Cmd/Ctrl-click a bar (or drag a box around several) and drag any selected bar to move them all.
+function paintGanttSel() {
+  document.querySelectorAll("#gantt [data-key]").forEach((el) => el.classList.toggle("sel", ganttSel.has(el.dataset.key)));
+  const info = document.getElementById("gSelInfo");
+  if (info) info.innerHTML = ganttSel.size ? `${ganttSel.size} selected <button class="fb-mini" id="gSelClear">Clear</button>` : "";
+  const c = document.getElementById("gSelClear"); if (c) c.onclick = () => { ganttSel.clear(); paintGanttSel(); };
+}
+// Zoom, keeping the day under `clientX` (or the middle of the view) where it is.
+function setGanttZoom(newDw, clientX) {
+  const box = document.getElementById("gantt");
+  newDw = Math.max(GANTT_MIN_DW, Math.min(GANTT_MAX_DW, newDw));
+  if (!box || Math.abs(newDw - ganttDW) < 0.01) return;
+  const r = box.getBoundingClientRect();
+  const x = Math.max(GANTT_LABEL_W, clientX == null ? GANTT_LABEL_W + (r.width - GANTT_LABEL_W) / 2 : clientX - r.left);
+  ganttAnchor = { day: (box.scrollLeft + x - GANTT_LABEL_W) / ganttDW, x };
+  ganttDW = newDw;
+  render();
+}
+let ganttKeysBound = false;
 function wireGantt() {
   const box = document.getElementById("gantt");
   const sf = document.getElementById("calSongFilter"); if (sf) sf.onchange = () => { calSong = sf.value; render(); };
   const mf = document.getElementById("calMemberFilter"); if (mf) mf.onchange = () => { calMember = mf.value; render(); };
-  document.querySelectorAll("[data-gzoom]").forEach((b) => b.onclick = () => { ganttZoom = b.dataset.gzoom; ganttScroll = null; render(); });
+  document.querySelectorAll("[data-gzoom]").forEach((b) => b.onclick = () => setGanttZoom(GANTT_PRESETS[b.dataset.gzoom]));
+  document.querySelectorAll("[data-gz]").forEach((b) => b.onclick = () => setGanttZoom(ganttDW * (Number(b.dataset.gz) > 0 ? 1.35 : 1 / 1.35)));
   document.querySelectorAll("[data-gexp]").forEach((b) => b.onclick = () => {
     const alb = currentAlbum();
     state.data.tracks.filter((t) => !t.onHold && (!alb || t.albumId === alb.id)).forEach((t) => (b.dataset.gexp === "1" ? ganttOpen.add(t.id) : ganttOpen.delete(t.id)));
     render();
   });
+  if (!ganttKeysBound) { ganttKeysBound = true; document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.view === "gantt" && ganttSel.size) { ganttSel.clear(); paintGanttSel(); } }); }
   if (!box) return;
-  const dw = Number(box.dataset.dw), lo = box.dataset.lo;
+  const dw = Number(box.dataset.dw), lo = box.dataset.lo, days = Number(box.dataset.days);
   const toToday = () => { box.scrollLeft = Math.max(0, Number(box.dataset.today) - 160); };
-  if (ganttScroll) { box.scrollLeft = ganttScroll.x; box.scrollTop = ganttScroll.y; } else toToday();
+  if (ganttAnchor) { box.scrollLeft = Math.max(0, ganttAnchor.day * dw + GANTT_LABEL_W - ganttAnchor.x); box.scrollTop = ganttScroll ? ganttScroll.y : 0; ganttAnchor = null; }
+  else if (ganttScroll) { box.scrollLeft = ganttScroll.x; box.scrollTop = ganttScroll.y; } else toToday();
   box.addEventListener("scroll", () => { ganttScroll = { x: box.scrollLeft, y: box.scrollTop }; });
   const gt = document.getElementById("gToday"); if (gt) gt.onclick = toToday;
+  const fit = document.getElementById("gFit"); if (fit) fit.onclick = () => { ganttScroll = null; setGanttZoom((box.clientWidth - GANTT_LABEL_W - 24) / days, null); box.scrollLeft = 0; };
+  // Ctrl/Cmd + scroll (a trackpad pinch arrives as ctrl + wheel) zooms around the pointer.
+  let wheelDw = null, wheelRaf = 0, wheelX = 0;
+  box.addEventListener("wheel", (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    wheelDw = Math.max(GANTT_MIN_DW, Math.min(GANTT_MAX_DW, (wheelDw || ganttDW) * Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.008))); wheelX = e.clientX;
+    if (!wheelRaf) wheelRaf = requestAnimationFrame(() => { wheelRaf = 0; const d = wheelDw; wheelDw = null; setGanttZoom(d, wheelX); });
+  }, { passive: false });
   box.querySelectorAll("[data-gtoggle]").forEach((b) => b.onclick = () => { const id = b.dataset.gtoggle; if (ganttOpen.has(id)) ganttOpen.delete(id); else ganttOpen.add(id); render(); });
   box.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => openDrawer(b.dataset.open));
   box.querySelectorAll("[data-gset]").forEach((b) => b.onclick = async () => {
     const t0 = todayISO(); const r = await update("phase", b.dataset.gset, { start: t0, due: t0 });
     if (r.ok) { toast("Dates set - drag to adjust"); refresh(false); }
   });
-  // Drag a bar (move), its left/right handle (change start/due), or the deadline flag.
+
+  // Drag a bar (move), its left/right handle (change start/due), or the deadline flag. If the bar is part of a
+  // selection, every selected bar and flag moves by the same number of days.
   box.querySelectorAll(".g-bar[data-gpid], .g-flag[data-gtid]").forEach((el) => el.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     const isFlag = el.classList.contains("g-flag");
     const mode = isFlag ? "m" : e.target.classList.contains("gh-l") ? "l" : e.target.classList.contains("gh-r") ? "r" : "m";
-    const s0 = el.dataset.s, e0 = el.dataset.e, x0 = e.clientX;
-    let ns = s0, ne = e0, moved = false;
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    let els = [el];
+    if (mode === "m" && !additive && ganttSel.has(el.dataset.key) && ganttSel.size > 1) els = [...box.querySelectorAll("[data-key]")].filter((x) => ganttSel.has(x.dataset.key));
+    const items = els.map((x) => ({ el: x, flag: x.classList.contains("g-flag"), s0: x.dataset.s, e0: x.dataset.e, ns: x.dataset.s, ne: x.dataset.e, txt: x.querySelector(".g-bar-t") }));
+    const x0 = e.clientX; let dd = 0, moved = false;
     try { el.setPointerCapture(e.pointerId); } catch {}
-    el.classList.add("dragging");
-    const txt = el.querySelector(".g-bar-t");
-    const apply = () => {
-      if (isFlag) el.style.left = (isoDiff(lo, ns) * dw + dw / 2 - 8) + "px";
-      else { el.style.left = isoDiff(lo, ns) * dw + "px"; el.style.width = (isoDiff(ns, ne) + 1) * dw + "px"; if (txt) txt.textContent = ns === ne ? fmtDay(ns) : fmtDay(ns) + " – " + fmtDay(ne); }
+    els.forEach((x) => x.classList.add("dragging"));
+    const apply = (it) => {
+      if (it.flag) it.el.style.left = (isoDiff(lo, it.ns) * dw + dw / 2 - 8) + "px";
+      else { it.el.style.left = isoDiff(lo, it.ns) * dw + "px"; it.el.style.width = (isoDiff(it.ns, it.ne) + 1) * dw + "px"; if (it.txt) it.txt.textContent = it.ns === it.ne ? fmtDay(it.ns) : fmtDay(it.ns) + " – " + fmtDay(it.ne); }
     };
     const move = (ev) => {
       if (Math.abs(ev.clientX - x0) > 3) moved = true;
-      const dd = Math.round((ev.clientX - x0) / dw);
-      if (mode === "m") { ns = isoAdd(s0, dd); ne = isoAdd(e0, dd); }
-      else if (mode === "l") { ns = isoAdd(s0, dd); if (ns > e0) ns = e0; ne = e0; }
-      else { ne = isoAdd(e0, dd); if (ne < s0) ne = s0; ns = s0; }
-      apply();
+      dd = Math.round((ev.clientX - x0) / dw);
+      items.forEach((it) => {
+        if (mode === "m") { it.ns = isoAdd(it.s0, dd); it.ne = isoAdd(it.e0, dd); }
+        else if (mode === "l") { it.ns = isoAdd(it.s0, dd); if (it.ns > it.e0) it.ns = it.e0; it.ne = it.e0; }
+        else { it.ne = isoAdd(it.e0, dd); if (it.ne < it.s0) it.ne = it.s0; it.ns = it.s0; }
+        apply(it);
+      });
     };
     const finish = async (ev, cancelled) => {
       el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", cancel);
       try { el.releasePointerCapture(e.pointerId); } catch {}
-      el.classList.remove("dragging");
+      els.forEach((x) => x.classList.remove("dragging"));
       if (cancelled) { render(); return; }
-      if (!moved || (ns === s0 && ne === e0)) { if (!moved) openDrawer(el.dataset.tid || el.dataset.gtid); else render(); return; }
+      const changed = items.some((it) => it.ns !== it.s0 || it.ne !== it.e0);
+      if (!moved || !changed) {
+        if (moved) { render(); return; }
+        if (additive) { const k = el.dataset.key; if (ganttSel.has(k)) ganttSel.delete(k); else ganttSel.add(k); paintGanttSel(); }
+        else openDrawer(el.dataset.tid || el.dataset.gtid);
+        return;
+      }
+      const fieldsFor = (it) => it.flag ? { entity: "track", id: it.el.dataset.gtid, fields: { dueDate: it.ns } }
+        : { entity: "phase", id: it.el.dataset.gpid, fields: it.el.dataset.hs === "0" && mode === "m" ? { due: it.ne } : { start: it.ns, due: it.ne } };
       let r;
-      if (isFlag) r = await update("track", el.dataset.gtid, { dueDate: ns });
-      else r = await update("phase", el.dataset.gpid, el.dataset.hs === "0" && mode === "m" ? { due: ne } : { start: ns, due: ne });
-      if (r.ok) { toast(isFlag ? "Deadline moved to " + fmtDay(ns) : "Rescheduled: " + fmtDay(ns) + (ns === ne ? "" : " – " + fmtDay(ne))); refresh(false); } else render();
+      if (items.length > 1) r = await post("/api/update", { entity: "bulkdates", items: items.map(fieldsFor) });
+      else { const f = fieldsFor(items[0]); r = await update(f.entity, f.id, f.fields); }
+      if (r.ok) {
+        const it = items[0];
+        toast(items.length > 1 ? `Moved ${items.length} items ${dd > 0 ? "+" : ""}${dd} day${Math.abs(dd) === 1 ? "" : "s"}` : it.flag ? "Deadline moved to " + fmtDay(it.ns) : "Rescheduled: " + fmtDay(it.ns) + (it.ns === it.ne ? "" : " – " + fmtDay(it.ne)));
+        refresh(false);
+      } else render();
     };
     const up = (ev) => finish(ev, false), cancel = (ev) => finish(ev, true);
     el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", cancel);
     e.preventDefault();
   }));
+
+  // Drag a box on empty space to select every bar and flag it touches (hold Shift to add to the selection).
+  box.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.target === box || !e.target.closest(".g-inner")) return;
+    if (e.target.closest(".g-bar, .g-flag, .g-label, .g-head, button, .g-tog, .g-title")) return;
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey, base = additive ? new Set(ganttSel) : new Set();
+    const inner = box.querySelector(".g-inner"), ir = inner.getBoundingClientRect();
+    const x0 = e.clientX, y0 = e.clientY; let mq = null, moved = false;
+    try { box.setPointerCapture(e.pointerId); } catch {}
+    const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) < 5) return;
+      moved = true;
+      if (!mq) { mq = document.createElement("div"); mq.className = "g-marquee"; inner.appendChild(mq); }
+      const l = Math.min(x0, ev.clientX), t = Math.min(y0, ev.clientY), r = Math.max(x0, ev.clientX), b = Math.max(y0, ev.clientY);
+      Object.assign(mq.style, { left: l - ir.left + "px", top: t - ir.top + "px", width: r - l + "px", height: b - t + "px" });
+      ganttSel.clear(); base.forEach((k) => ganttSel.add(k));
+      box.querySelectorAll("[data-key]").forEach((el) => { const q = el.getBoundingClientRect(); if (q.right >= l && q.left <= r && q.bottom >= t && q.top <= b) ganttSel.add(el.dataset.key); });
+      paintGanttSel();
+    };
+    const up = () => {
+      box.removeEventListener("pointermove", move); box.removeEventListener("pointerup", up); box.removeEventListener("pointercancel", up);
+      try { box.releasePointerCapture(e.pointerId); } catch {}
+      if (mq) mq.remove();
+      if (!moved && !additive) { ganttSel.clear(); paintGanttSel(); }
+    };
+    box.addEventListener("pointermove", move); box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
+    e.preventDefault();
+  });
+  paintGanttSel();
 }
 
 /* ---- Wiring ----------------------------------------------------------------*/

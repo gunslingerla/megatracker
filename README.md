@@ -68,7 +68,10 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   start date is optional (without one it's a single day); set it in the song drawer or by dragging in the Gantt.
 - **Gantt** — one row per song (expand it to see each phase), bars coloured by owner, a flag for the song
   deadline and a line for today. Drag a bar to move it, drag its ends to change the start or due date, click to
-  open the song. Zoom between days, weeks and months; filter by song or member.
+  open the song. **Move several at once:** Shift/Cmd/Ctrl-click bars (or drag a box on empty space around them) to
+  select them, then drag any selected bar and they all shift by the same number of days (deadline flags can be
+  selected too; Esc clears). **Zoom** with the Days / Weeks / Months presets, the − and + buttons, **Fit**, or
+  Ctrl/Cmd + scroll (a trackpad pinch works too), which zooms around the pointer. Filter by song or member.
 - **Detail drawer** — edit stage, BPM, key, due date, notes, owners, each phase's status/owner,
   reference/song links, art, and on-hold state.
 - **Lyrics editor + teleprompter** — structured sections (Verse/Chorus/…), highlight ranges, and a

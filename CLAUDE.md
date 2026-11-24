@@ -123,7 +123,9 @@ links with outside collaborators (mixers, etc.).
   `render()` restores window scroll when the view is unchanged.
 - **Calendar / Gantt:** `calendarHTML` packs multi-day items (phase spans, multi-day events) into lanes per week row so
   bars stay level; dragging sends `kind:id:offset` so a bar moves by the day grabbed. `ganttHTML`/`wireGantt` draw one
-  row per song with pointer-drag bars (move / resize start / resize due / deadline flag). `calMember`/`calSong`
+  row per song with pointer-drag bars (move / resize start / resize due / deadline flag). Multi-select (`ganttSel`, keys `p:<phaseId>` / `t:<trackId>`; Shift/Cmd-click or a marquee) makes a drag
+  move every selected item and saves them in one `update.js` `bulkdates` call. Zoom is continuous pixels-per-day
+  (`ganttDW`, `setGanttZoom` keeps the day under the pointer fixed; Ctrl/Cmd+wheel and pinch). `calMember`/`calSong`
   filters are shared by both views.
 - **Google sync (two-way, `api/_gcal.js`):** the client triggers it (`scheduleGcalSync`, debounced, from `post()` for
   entities in `GCAL_WATCH`; also on load, every 5 min while open, and a Sync now button). Phase/deadline/app-created

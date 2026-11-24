@@ -244,6 +244,31 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true, configured: true, ...stat });
     } catch (e) { return res.status(200).json({ ok: false, configured: true, error: String(e.message || e) }); }
   }
+  // Move several phases / song deadlines at once (Gantt multi-select drag). All-or-nothing validation, then
+  // written in batches of 10.
+  if (entity === "bulkdates") {
+    const list = Array.isArray(body.items) ? body.items.slice(0, 200) : [];
+    const okDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) && !isNaN(new Date(v + "T00:00:00Z"));
+    const ph = [], tr = [];
+    for (const it of list) {
+      const f = (it && it.fields) || {};
+      if (!it || !it.id) return res.status(400).json({ error: "bad request" });
+      if (it.entity === "phase") {
+        const o = {};
+        for (const k of ["start", "due"]) if (k in f) { if (f[k] == null || f[k] === "") o[F.phase[k]] = null; else if (okDate(f[k])) o[F.phase[k]] = f[k]; else return res.status(400).json({ error: "That date isn't valid." }); }
+        if (f.start && f.due && f.start > f.due) return res.status(400).json({ error: "A phase can't start after it is due." });
+        ph.push({ id: it.id, fields: o });
+      } else if (it.entity === "track" && "dueDate" in f) {
+        if (!okDate(f.dueDate)) return res.status(400).json({ error: "That date isn't valid." });
+        tr.push({ id: it.id, fields: { [F.track.dueDate]: f.dueDate } });
+      } else return res.status(400).json({ error: "bad request" });
+    }
+    try {
+      for (let i = 0; i < ph.length; i += 10) await patch(T.phases, ph.slice(i, i + 10), true);
+      for (let i = 0; i < tr.length; i += 10) await patch(T.tracks, tr.slice(i, i + 10), true);
+      return res.status(200).json({ ok: true, count: ph.length + tr.length });
+    } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+  }
   if (entity === "shareDelete") {
     if (!id) return res.status(400).json({ error: "id required" });
     try { await del(T.shares, [id]); return res.status(200).json({ ok: true }); } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
