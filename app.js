@@ -230,17 +230,18 @@ function fbSig(t) {
 }
 function dataSig(d) {
   try {
-    const tr = (d.tracks || []).map((t) => `${t.id}:${t.stage}:${t.order}:${t.onHold ? 1 : 0}:${(t.phases || []).map((p) => p.id + p.status + (Array.isArray(p.subtasks) ? p.subtasks.filter((s) => s.done).length + "/" + p.subtasks.length : "")).join(",")}:${fbSig(t)}`).join("|");
+    const tr = (d.tracks || []).map((t) => `${t.id}:${t.stage}:${t.order}:${t.onHold ? 1 : 0}:${t.dueDate || ""}:${(t.phases || []).map((p) => p.id + p.status + (p.start || "") + ">" + (p.due || "") + (Array.isArray(p.subtasks) ? p.subtasks.filter((s) => s.done).length + "/" + p.subtasks.length : "")).join(",")}:${fbSig(t)}`).join("|");
     const al = (d.albums || []).map((a) => `${a.id}:${a.stage}:${a.current}`).join("|");
     const mb = (d.members || []).map((m) => `${m.id}:${(m.phases || []).join(",")}`).join("|");
-    return tr + "||" + al + "||" + mb;
+    const ev = (d.events || []).map((e) => `${e.id}:${e.date}:${e.endDate || ""}:${e.startTime}:${e.endTime}:${e.kind}:${strHash(e.title)}:${strHash(e.notes)}`).join("|");
+    return tr + "||" + al + "||" + mb + "||" + ev;
   } catch { return String(Math.random()); }
 }
 // True when the user is actively editing something a re-render would clobber.
 function pollBusy() {
   const tp = document.getElementById("teleprompter"); if (tp && tp.classList.contains("open")) return true;
   if (typeof identityLock !== "undefined" && identityLock) return true;
-  if (document.querySelector(".card.dragging")) return true;
+  if (document.querySelector(".card.dragging, .cal-task.dragging, .cal-event.dragging, .cal-deadline.dragging, .g-bar.dragging, .g-flag.dragging, .g-marquee")) return true; // mid-drag on the board, calendar or Gantt
   if (document.querySelector(".note-edit-box")) return true; // a note is being edited
   const ae = document.activeElement;
   if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable) && ae.closest("#main, #drawer, #modal")) return true;

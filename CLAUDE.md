@@ -146,7 +146,10 @@ links with outside collaborators (mixers, etc.).
   gate on first load (`pickIdentity(true)`) requires it before using the app.
 - **Live sync (no websockets):** `app.js` polls — a 12s pass keeps an open notes bar
   current, a 60s pass refreshes the whole board. Both bail while the user is mid-edit and
-  preserve scroll / drawer / in-progress note draft. Change detection via `fbSig`/`dataSig`.
+  preserve scroll / drawer / in-progress note draft. Change detection via `fbSig`/`dataSig`
+  (`dataSig` also covers phase start/due, song deadlines and events, so calendar/Gantt edits by others appear;
+  anything new that a view shows must go in the signature or it only updates on refresh). `pollBusy` also holds
+  off while a card, calendar item or Gantt bar/marquee is being dragged.
 - **Share links:** `/mix?s=<slug>` (preferred; served from `mix.html` by Vercel
   `cleanUrls`) or `?t=<signed token>`. The mix page is login-free; it reads via
   `GET /api/data?mixslug=…`, checks off a note's `Mixer Reviewed`, and posts replies —
