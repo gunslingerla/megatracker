@@ -669,7 +669,8 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .player .seekwrap { position: relative; flex: 1; display: flex; align-items: center; }
 .player .pseek input[type="range"] { flex: 1; accent-color: var(--accent); }
 .player .markers { position: absolute; left: 0; right: 0; top: 50%; height: 0; pointer-events: none; }
-.player .marker { position: absolute; top: 0; transform: translate(-50%, -50%); width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--bg-1); pointer-events: none; box-shadow: 0 0 0 1px rgba(0,0,0,0.4); }
+.player .marker { position: absolute; top: 0; transform: translate(-50%, -50%); width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--bg-1); pointer-events: auto; cursor: pointer; box-shadow: 0 0 0 1px rgba(0,0,0,0.4); }
+.player .marker::after { content: ""; position: absolute; inset: -7px; }
 .player .marker.open { background: var(--warn); }
 .player .marker.resolved { background: var(--good); }
 .player .marker:hover { transform: translate(-50%, -50%) scale(1.25); }
@@ -969,3 +970,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .fb-global { color: var(--accent-2); }
 .nb-global, .fb-glob { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .nb-add.is-global .nb-time, .fb-atwrap.is-global #fbTime { opacity: 0.35; pointer-events: none; }
+
+/* Flash on a note after clicking its marker on the player bar */
+@keyframes noteFlash { 0% { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); } 60% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 2px transparent; } }
+.note-flash { animation: noteFlash 2s ease-out; border-radius: 10px; }

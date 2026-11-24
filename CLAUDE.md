@@ -107,6 +107,12 @@ links with outside collaborators (mixers, etc.).
   `volumechange`). It's hidden when the browser won't let pages set `audio.volume` (iOS); detected, not UA-sniffed.
 - **Loop:** both players have a loop toggle (`loopOn` / `#pLoop` in `app.js`, `#loop` in `mix.html`) that sets
   `audio.loop`. Session-only, not persisted; `playAlbum` turns it off because a looping song never fires `ended`.
+- **Note markers:** the band player's seek bar shows a dot per timestamped (non-global) note on the current bounce
+  (`renderMarkers`). Clicking one calls `locateNotes` (`app.js`): it finds the note rows (`.note-row`/`.fb-item`
+  `[data-fb]`) in whichever list is visible, opens the notes bar if none is, scrolls to them and adds `.note-flash`;
+  it does not move the playhead. `mix.html` has the same thing as a marker strip above its player
+  (`renderStrip`, `.mk`, `.n.flash`). Redraws must keep scroll: `renderNotesBar` restores `.nb-list` scrollTop and
+  `render()` restores window scroll when the view is unchanged.
 - **Identity:** each browser picks "who am I" (stored in localStorage `megasMe`); a hard
   gate on first load (`pickIdentity(true)`) requires it before using the app.
 - **Live sync (no websockets):** `app.js` polls — a 12s pass keeps an open notes bar

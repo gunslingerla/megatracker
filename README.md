@@ -42,6 +42,9 @@ Views (top tabs / side nav): **Dashboard · Preview Albums · Assignments · Not
   bar with version history per track. Every player, in the app and on share links,
   has a volume slider with mute (remembered per browser; hidden on iPhones, which only allow hardware volume)
   and a loop button that repeats the current song until switched off (not remembered; "Play album" turns it off).
+  The dots on the player's seek bar are the song's timestamped notes: click one to jump to that note in the
+  list (it opens the notes bar if no list is showing) and flash it. Share pages show the same dots on a thin
+  strip above the player (click the strip elsewhere to seek).
 - **Share links** — create a titled, login-free link for a chosen set of songs
   (`/mix?s=<slug>`). The page always shows each song's *current* bounce and its notes (click a
   timecode to play from an adjustable pre-roll before it — default 3s, remembered per link in

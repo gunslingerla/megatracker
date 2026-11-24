@@ -337,7 +337,11 @@ function syncFilters() {
 }
 
 /* ---- Render dispatch -------------------------------------------------------*/
+let lastRenderedView = null;
 function render() {
+  const keepPage = lastRenderedView === state.view; // same view redrawn (e.g. after a reply) -> stay put
+  const px = window.scrollX, py = window.scrollY;
+  lastRenderedView = state.view;
   document.querySelectorAll(".tab, .navitem").forEach((t) => t.classList.toggle("active", t.dataset.view === state.view));
   renderAlbumStrip();
   const main = $("#main");
@@ -355,6 +359,7 @@ function render() {
   // header is its own switcher, so the strip is hidden there.
   const showStrip = ["tracks", "members", "calendar", "notes"].includes(state.view);
   $("#albumStrip").style.display = showStrip ? "" : "none";
+  if (keepPage) window.scrollTo(px, py);
 }
 
 // Click any album/track art to view it full-size in a lightbox.
@@ -1692,12 +1697,32 @@ function renderMarkers() {
   const t = trackById(state.audio.currentId);
   if (!t || !a.duration || !isFinite(a.duration)) { wrap.innerHTML = ""; return; }
   const cur = currentVersion(t);
-  wrap.innerHTML = (t.feedback || []).filter((fb) => !fb.global && (fb.version || "") === (cur || "")).map((fb) => {
+  const here = (t.feedback || []).filter((fb) => !fb.global && (fb.version || "") === (cur || ""));
+  wrap.innerHTML = here.map((fb) => {
     const pct = Math.min(100, Math.max(0, (fb.timestamp / a.duration) * 100));
-    return `<div class="marker ${fb.status === "Resolved" ? "resolved" : "open"}" style="left:${pct}%" data-mk="${fb.timestamp}" title="${esc(mmss(fb.timestamp))} — ${esc(fb.author || "")}: ${esc((fb.comment || "").slice(0, 80))}"></div>`;
+    return `<div class="marker ${fb.status === "Resolved" ? "resolved" : "open"}" style="left:${pct}%" data-mk="${fb.timestamp}" title="${esc(mmss(fb.timestamp))} — ${esc(fb.author || "")}: ${esc((fb.comment || "").slice(0, 80))} (click to jump to the note)"></div>`;
   }).join("");
+  // Clicking a marker finds that note in the list (every note at the same time, since dots can overlap).
   wrap.querySelectorAll("[data-mk]").forEach((m) =>
-    m.onclick = () => { a.currentTime = Number(m.dataset.mk); a.play().catch(() => {}); });
+    m.onclick = (e) => { e.stopPropagation(); locateNotes(t.id, here.filter((fb) => String(fb.timestamp) === m.dataset.mk).map((fb) => fb.id)); });
+}
+// Scroll to the given notes in whichever list is showing (notes bar, Notes page or modal) and flash
+// them. If no list is showing, open the notes bar for the song.
+function findNoteEls(ids) {
+  const out = [];
+  ids.forEach((id) => document.querySelectorAll(`.note-row[data-fb="${id}"], .fb-item[data-fb="${id}"]`).forEach((el) => { if (el.getClientRects().length) out.push(el); }));
+  return out;
+}
+function flashNote(el) {
+  el.classList.remove("note-flash"); void el.offsetWidth; el.classList.add("note-flash");
+  setTimeout(() => el.classList.remove("note-flash"), 2200);
+}
+function locateNotes(trackId, ids) {
+  let els = findNoteEls(ids);
+  if (!els.length) { openNotesBar(trackId, false); els = findNoteEls(ids); }
+  if (!els.length) { toast("Couldn't find that note", true); return; }
+  (els.find((el) => el.closest("#notesbar")) || els[0]).scrollIntoView({ behavior: "smooth", block: "center" });
+  els.forEach(flashNote);
 }
 
 function wireAudio() {
@@ -2469,6 +2494,10 @@ function openNotesBar(id, lockNow) { const t = trackById(id); if (!t) return; no
 function renderNotesBar() {
   const bar = document.getElementById("notesbar"); if (!bar || !notesBarTrack) return;
   const t = trackById(notesBarTrack); if (!t) { closeNotesBar(); return; }
+  // Redrawing the same song's list (after a reply, new note, task, edit...) must not snap it to the top.
+  const prevList = bar.dataset.nbTrack === notesBarTrack ? bar.querySelector(".nb-list") : null;
+  const keepScroll = prevList ? prevList.scrollTop : 0;
+  const keepOlderOpen = !!(prevList && prevList.querySelector("details.fb-older[open]"));
   const cur = currentVersion(t);
   const list = (t.feedback || []).filter((fb) => (fb.version || "") === (cur || "")).sort(noteCmp);
   const playing = state.audio.currentId === t.id;
@@ -2493,6 +2522,8 @@ function renderNotesBar() {
       <button class="add-btn" id="nbAdd">Add note</button>
     </div>
     <div class="nb-hint">${playing ? "Live time — click to resync; locks when you type" : "Timestamp"}</div>`;
+  bar.dataset.nbTrack = notesBarTrack;
+  { const nl = bar.querySelector(".nb-list"); if (nl) { const od = nl.querySelector("details.fb-older"); if (od && keepOlderOpen) od.open = true; nl.scrollTop = keepScroll; } }
   bar.querySelectorAll("[data-seek]").forEach((s) => s.onclick = () => seekTo(t.id, Math.max(0, Number(s.dataset.seek) - preRoll)));
   bar.querySelectorAll(".fb-item").forEach((item) => {
     const fid = item.dataset.fb;
