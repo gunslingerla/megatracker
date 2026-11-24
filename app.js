@@ -1012,7 +1012,7 @@ async function runGcalSync() {
   gcalState.busy = true; paintGcalState();
   const sum = { created: 0, updated: 0, deleted: 0, pulled: 0, imported: 0, removed: 0 }, errs = []; let res = null;
   try {
-    for (let i = 0; i < 8; i++) { // a big first sync is done in chunks to stay inside the server's time limit
+    for (let i = 0; i < 12; i++) { // a big first sync is done in chunks (the server's time limit, and Google's write rate limit)
       const r = await fetch("/api/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "gcalSync" }) });
       if (r.status === 401) { location.href = "/login.html"; return; }
       res = await r.json().catch(() => ({ ok: false, error: "Unexpected reply from the server." }));
@@ -1020,16 +1020,19 @@ async function runGcalSync() {
       for (const k of Object.keys(sum)) sum[k] += res[k] || 0;
       (res.errors || []).forEach((m) => errs.push(m));
       if (!res.more) break;
+      await new Promise((r) => setTimeout(r, 2500)); // let Google's rate limit recover between chunks
     }
   } catch { res = { ok: false, error: "Couldn't reach the server." }; }
   gcalState.busy = false;
   if (res && res.ok && !errs.length) {
     gcalState.ok = true; gcalState.at = Date.now();
     const toG = sum.created + sum.updated + sum.deleted, fromG = sum.pulled + sum.imported + sum.removed;
-    gcalState.msg = `Synced. Sent to Google: ${toG} change${toG === 1 ? "" : "s"}. Brought in from Google: ${sum.pulled} edited, ${sum.imported} new, ${sum.removed} deleted. ${res.total} items are linked.`;
+    const catchingUp = !!(res && res.more);
+    gcalState.msg = (catchingUp ? "Part of the way there, still catching up. " : "Synced. ") + `Sent to Google: ${toG} change${toG === 1 ? "" : "s"}. Brought in from Google: ${sum.pulled} edited, ${sum.imported} new, ${sum.removed} deleted. ${res.total} items are linked.`;
     try { localStorage.setItem("megasGcalAt", String(gcalState.at)); } catch {}
   } else { gcalState.ok = false; gcalState.msg = (res && !res.ok && res.error) || ("Some items couldn't be synced: " + errs[0]); }
   paintGcalState();
+  if (res && res.ok && res.more) scheduleGcalSync(30000); // finish the rest shortly
   if (sum.pulled + sum.imported + sum.removed > 0) { toast("Updated from Google Calendar"); await refresh(false); } // show what came in
 }
 // Pick up edits made in Google while the app is open.

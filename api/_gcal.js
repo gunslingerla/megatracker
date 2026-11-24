@@ -32,7 +32,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const TZ = () => process.env.GOOGLE_CALENDAR_TZ || "America/Los_Angeles";
 const ORPHAN_GRACE_MS = 5 * 60 * 1000; // never delete a Google event we wrote less than this ago (guards stale reads)
-const TIME_BUDGET_MS = 6500;           // stop starting new work after this; the caller runs again if `more`
+const TIME_BUDGET_MS = 6000;           // stop starting new work after this; the caller runs again if `more`
 const MAX_OPS = 150;
 
 function creds() {
@@ -214,6 +214,7 @@ function planSync(items, googleList, ctx) {
 }
 
 // ---- Google API ---------------------------------------------------------------------------------
+const pause = (n) => (typeof setTimeout === "function" ? new Promise((r) => setTimeout(r, n)) : Promise.resolve());
 const b64u = (buf) => Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 let tokenCache = { tok: "", exp: 0 };
 async function accessToken(c) {
@@ -233,12 +234,19 @@ async function accessToken(c) {
 }
 function googleApi(c) {
   const base = "https://www.googleapis.com/calendar/v3/calendars/" + encodeURIComponent(c.cal) + "/events";
+  // Google throttles bursts of writes ("Rate Limit Exceeded"); retry with a growing pause, then give up
+  // quietly (e.rateLimited) so the caller can carry on with the rest on the next pass.
   const call = async (method, path, body) => {
-    const r = await fetch(base + path, { method, headers: { Authorization: "Bearer " + (await accessToken(c)), "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
-    if (r.status === 204) return {};
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { const e = new Error(((j.error && j.error.message) || "Google error " + r.status)); e.status = r.status; throw e; }
-    return j;
+    for (let attempt = 0; ; attempt++) {
+      const r = await fetch(base + path, { method, headers: { Authorization: "Bearer " + (await accessToken(c)), "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+      if (r.status === 204) return {};
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) return j;
+      const text = ((j.error && j.error.errors && j.error.errors[0] && j.error.errors[0].reason) || "") + " " + ((j.error && j.error.message) || "");
+      const limited = r.status === 429 || (r.status === 403 && /rate\s?limit|quota/i.test(text));
+      if ((limited || r.status >= 500) && attempt < 3) { await pause(700 * 2 ** attempt + Math.random() * 300); continue; }
+      const e = new Error(((j.error && j.error.message) || "Google error " + r.status)); e.status = r.status; e.rateLimited = limited; throw e;
+    }
   };
   return {
     // Everything in the sync window, including deleted events (status "cancelled").
@@ -305,7 +313,10 @@ async function applyPlan(plan, deps, stat, t0) {
         await Promise.all(a.batch.map((c) => api.patch(c.g.id, propsFor(deps.now, semOf(c.g, "event", tz), "imported")).catch((e) => stat.errors.push("Couldn't tag imported event: " + String(e.message || e).slice(0, 100)))));
         return;
       }
-    } catch (e) { stat.errors.push(String(e.message || e).slice(0, 160)); }
+    } catch (e) {
+      if (e.rateLimited) { stat.throttled = (stat.throttled || 0) + 1; stat.more = true; return; } // not an error: finish on the next pass
+      stat.errors.push(String(e.message || e).slice(0, 160));
+    }
   };
   const weight = (a) => (a.t === "import" ? a.batch.length : 1);
   const order = { pull: 0, appdelete: 1, push: 2, props: 2, check: 3, gdelete: 4, import: 5 };
@@ -314,8 +325,10 @@ async function applyPlan(plan, deps, stat, t0) {
   for (let i = 0; i < todo.length; ) {
     if (used >= MAX_OPS || Date.now() - t0 > TIME_BUDGET_MS) { stat.more = true; break; }
     const batch = [];
-    while (i < todo.length && batch.length < 8) { used += weight(todo[i]); batch.push(todo[i++]); }
+    while (i < todo.length && batch.length < 3) { used += weight(todo[i]); batch.push(todo[i++]); }
     await Promise.all(batch.map(run));
+    if (stat.throttled) { stat.more = true; break; } // Google asked us to slow down: stop here, resume next pass
+    if (i < todo.length) await (deps.pause || pause)(400);
   }
   return stat;
 }
@@ -364,4 +377,4 @@ async function syncAll(appUrl) {
   }, appUrl);
 }
 
-module.exports = { isConfigured, serviceEmail, cleanEvent, buildItems, decide, planSync, applyPlan, runSync, syncAll, eventId, addDays, gParse, semOf, importable };
+module.exports = { googleApi, isConfigured, serviceEmail, cleanEvent, buildItems, decide, planSync, applyPlan, runSync, syncAll, eventId, addDays, gParse, semOf, importable };
